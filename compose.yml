@@ -1,0 +1,65 @@
+services:
+  kit:
+    build: .
+    image: matt-vapt-kit:0.1.0
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    volumes:
+      - ./projects:/workspace/projects:ro
+
+  # Dormant tools, not scheduled jobs. Network access requires an explicit override.
+  zap:
+    profiles: [tools]
+    image: ghcr.io/zaproxy/zaproxy@sha256:781a2bdaea47324e7bab583e2263f21d257b0aee61ed51521a5be45f5f5081ef
+    network_mode: none
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command: ["zap-baseline.py", "-h"]
+
+  nuclei:
+    profiles: [tools]
+    image: projectdiscovery/nuclei@sha256:582d5546902e67052097cb2d07296c642d50a1afc5e44623cb038845df9a32eb
+    network_mode: none
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command: ["-version"]
+
+  gitleaks:
+    profiles: [tools]
+    image: ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+    network_mode: none
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command: ["version"]
+
+  semgrep:
+    profiles: [tools]
+    image: semgrep/semgrep@sha256:acaac22ffc7b7cc5926de0751b223bce0b2491c33d18422fa72f632c78d81198
+    network_mode: none
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      SEMGREP_SEND_METRICS: "off"
+      SEMGREP_ENABLE_VERSION_CHECK: "0"
+    entrypoint: ["semgrep"]
+    command: ["--version"]
+
+  subfinder:
+    profiles: [tools]
+    image: projectdiscovery/subfinder@sha256:c0f4683f91e8e30fbb5bf45051ef45e245ef48424b0d5bc99f8a72cb45163ea9
+    network_mode: none
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command: ["-version"]
+
+  testssl:
+    profiles: [tools]
+    image: drwetter/testssl.sh@sha256:eac924f5c1ebe5404085ddb63b5c07543ddc79a2f441520e5b4544b7037bccc2
+    network_mode: none
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command: ["--version"]

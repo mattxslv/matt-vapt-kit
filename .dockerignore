@@ -1,0 +1,5 @@
+*
+!pyproject.toml
+!vaptkit/
+!vaptkit/**
+vaptkit/**/__pycache__/

@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools==75.8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "matt-vapt-kit"
+version = "0.1.0"
+description = "Private, staging-first security assessment toolkit foundation"
+requires-python = ">=3.11"
+dependencies = ["PyYAML==6.0.2", "jsonschema==4.23.0"]
+
+[project.scripts]
+vapt = "vaptkit.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["vaptkit*"]
+
+[tool.setuptools.package-data]
+vaptkit = ["schemas/*.json"]

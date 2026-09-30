@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Matt VAPT Kit project configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "project", "target", "scope", "credentials"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "project": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"},
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["environment", "url", "allowed_hosts", "verification"],
+      "properties": {
+        "environment": {"const": "staging"},
+        "url": {"type": "string", "maxLength": 2048},
+        "allowed_hosts": {
+          "type": "array", "minItems": 1, "maxItems": 1, "uniqueItems": true,
+          "items": {"type": "string", "maxLength": 253, "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$"}
+        },
+        "verification": {"enum": ["pending", "reachable-not-authorized"]}
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["api_prefixes", "excluded_prefixes", "roles"],
+      "properties": {
+        "api_prefixes": {"$ref": "#/$defs/paths"},
+        "excluded_prefixes": {"$ref": "#/$defs/paths"},
+        "roles": {
+          "type": "array", "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"}
+        }
+      }
+    },
+    "credentials": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["token_env"],
+        "properties": {"token_env": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]*$"}}
+      }
+    }
+  },
+  "$defs": {
+    "paths": {
+      "type": "array", "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^/", "maxLength": 2048}
+    }
+  }
+}

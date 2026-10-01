@@ -2,10 +2,6 @@
 
 [README](../README.md) | [Reference](reference.md) | [Team pilot](pilot-checklist.md)
 
-**Want an application rather than CLI commands?** Follow the
-[Docker browser-dashboard guide](dashboard.md). It includes the Python runtime,
-report browser and a guided UI. The steps below are for the local CLI alternative.
-
 Start with a synthetic report. Install additional tools only for the capability
 you plan to use. None of the steps in the first-run walkthrough scans a live target.
 

@@ -15,7 +15,6 @@ an external vulnerability assessment and penetration test.
 > nothing was found in the tested scope, not that the application is secure.
 
 [Getting started](docs/getting-started.md) |
-[Browser dashboard](docs/dashboard.md) |
 [Assessment reference](docs/reference.md) |
 [Team pilot checklist](docs/pilot-checklist.md) |
 [Contributing](CONTRIBUTING.md)
@@ -31,7 +30,6 @@ an external vulnerability assessment and penetration test.
 | Review API authentication | Offline, heuristic review of committed Next.js route handlers |
 | Review Cloud Armor configuration | Read-only Cloud Run/backend/policy metadata, with explicit association and coverage gaps |
 | Produce private reports | Self-contained HTML, optional PDF and sanitized evidence figures |
-| Use a local browser application | Guided project/scope approval, isolated role runs and report downloads in Docker |
 | Exercise the detector locally | HTTPS fixtures, ownership/workflow, browser XSS and real ModSecurity/CRS labs, plus a separate release challenge |
 
 Live role testing currently supports **DTAP's cookie-login contract only**.
@@ -44,28 +42,7 @@ evidence requirements and limits. WAF configuration is not proof of application 
 The [local WAF lab](docs/cloud-armor-and-xss.md#local-modsecurity-and-owasp-crs-lab)
 verifies real request blocking without GCP resources; it does not verify Cloud Armor.
 
-## Recommended: run the browser application
-
-With Docker and Compose installed, run this from the toolkit folder in your
-terminal or VS Code terminal:
-
-```sh
-docker compose -f compose.dashboard.yml up --build
-```
-
-Then open **http://127.0.0.1:8765**. Click **Create sample report** to try the complete
-flow without credentials or a live scan. For staging, the application guides you
-through project selection, exact scope, approval and private QA credential entry,
-then produces downloadable HTML/PDF evidence.
-
-No host Python installation is required for this path. It does not automatically
-grant cloud access, disable IAP or scan a target at startup.
-See the [dashboard walkthrough](docs/dashboard.md) for keyless IAP access, storage
-and stopping the app. This is a localhost-only, single-operator pilot.
-
 ## Step-by-step: use it in your terminal or VS Code
-
-Prefer commands or Git hooks? Use the CLI path below instead of the dashboard.
 
 This walkthrough uses **Linux/Bash**, Python **3.11+**, Git and access to this
 private repository. It creates a **sample report only**. You do not need Docker,

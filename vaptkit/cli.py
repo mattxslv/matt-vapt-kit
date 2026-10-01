@@ -30,7 +30,7 @@ def main(argv=None) -> int:
     hooks.add_argument("repo", type=Path)
     scope = commands.add_parser("scope-template", help="Print an unapproved HEAD-only scope template")
     scope.add_argument("config", type=Path)
-    scan = commands.add_parser("run", help="Make approved HEAD requests; no crawling or exploitation")
+    scan = commands.add_parser("run", help="Make approved HEAD requests; optional configured IAP login")
     scan.add_argument("config", type=Path)
     scan.add_argument("--approval", type=Path, required=True)
     scan.add_argument("--output", type=Path, required=True)

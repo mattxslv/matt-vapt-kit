@@ -3,14 +3,14 @@
 Private, staging-first security tooling for Matthew's team. Reports are internal
 self-assessments, not CERT-PH reports or certifications.
 
-## Available in 0.2
+## Available in 0.3
 
 | Component | What it actually does |
 |---|---|
 | Push protection | Scan committed history with Gitleaks and audit the exact pushed pnpm lockfile; optional local Semgrep rules |
 | Git integration | Install/remove local pre-push hooks without replacing existing hook behavior |
 | CI integration | Reusable composite action and push-to-main/staging workflow template, no PR required |
-| Scoped runner | Up to ten approved HTTPS HEAD requests; no redirects, bodies, authentication or crawling |
+| Scoped runner | Up to ten approved HTTPS HEAD requests; optional bearer/IAP login, no assessment redirects, bodies or crawling |
 | Report generator | Original light HTML/PDF briefing and PNG screenshots of sanitized observations |
 | Docker tools | Core tools plus separate pinned ZAP, Nuclei, Gitleaks, Semgrep, Subfinder and testssl images |
 
@@ -90,13 +90,16 @@ must be connected to Cloud Build with separate approval.
 ## Project scope
 
 `projects/pemedes.vapt.yml` contains the PEMEDES staging origin and preliminary roles.
+`projects/pemedes-iap.vapt.yml` adds normal govmail sign-in and a reusable private
+toolkit browser profile, without changing PEMEDES or IAP.
 `projects/dtap.vapt.yml` is a draft; its target did not respond during setup and roles
 need review. Application repositories may use the same format in `.vapt.yml`.
 
 Offline validation accepts only an exact HTTPS origin on port 443, no wildcards or
 embedded credentials. `environment: staging` is a declaration, not proof of isolation.
-The schema is `vaptkit/schemas/project.json`. Credentials are environment-variable
-names only; this HEAD runner never loads or sends them.
+The schema is `vaptkit/schemas/project.json`. Per-role `credentials` are reserved
+for future application testing and are not loaded. The optional `access` field
+selects the actual gateway-access method described below.
 
 ### Approve a bounded header check
 
@@ -108,6 +111,8 @@ The template is intentionally invalid. An authorized owner must set their name,
 ISO-8601 start/end timestamps with timezone, and 1-10 exact paths. The scope expires
 within four hours; request intervals must be 1-30 seconds. The approval is bound to
 the project config's SHA-256. Changing the config requires a new approval.
+`request_timeout_seconds` defaults to 30 in new templates and must be 1-60 seconds.
+Old approval files without that field retain a ten-second timeout.
 This is an owner attestation, not a digital signature or an authorization system.
 
 Use synthetic staging data, an agreed test window and disabled real email/payment
@@ -124,8 +129,10 @@ tests or third-party reconnaissance services are in scope.
 
 The local runner makes a maximum of ten serial HEAD requests. It requires public DNS
 addresses, pins the chosen address while validating TLS against the configured host,
-does not follow redirects or use proxies, and uses a ten-second socket timeout.
-It stops on transport/scope errors, 401/403/429 or server errors. Non-2xx responses
+does not follow redirects or use proxies, and bounds socket timeouts by both the
+approved timeout and the remaining approval window. It rechecks expiry after DNS,
+before sending the request, and after receiving response headers.
+It stops on redirects, transport/scope errors, 401/403/429 or server errors. Non-2xx responses
 remain explicit coverage gaps, not passing results. Existing output directories are
 never overwritten. Record and watch the assessment window; DNS resolution itself
 uses the operating system resolver's timeout.
@@ -134,6 +141,69 @@ uses the operating system resolver's timeout.
 response bodies or account credentials. Header presence is not proof of effective
 policy. Missing defense headers are observations, not demonstrated exploits.
 Data exposure and unauthorized access remain **Not tested** for this profile.
+Report generation rejects a "completed" result with missing paths, failed responses
+or recorded errors. Blocked responses display **Not assessed**, not misleading
+missing-header observations.
+
+### Access through Google IAP
+
+Do not disable IAP or alter IAM just to obtain a passing assessment.
+A normal `gcloud auth print-identity-token` token is not necessarily accepted:
+IAP programmatic access may require a configured client allowlist. The toolkit
+does not create that allowlist or grant permissions.
+
+For ordinary browser/govmail login:
+
+```sh
+.venv/bin/pip install -e '.[report]'
+.venv/bin/playwright install chromium
+.venv/bin/vapt scope-template projects/pemedes-iap.vapt.yml > approval.local.json
+# Fill the approved owner, time window and exact paths. For example, /api/health and /.
+.venv/bin/vapt run projects/pemedes-iap.vapt.yml \
+  --approval approval.local.json --acknowledge-scope \
+  --output /existing/private/folder/pemedes-001
+```
+
+Sign in yourself in the toolkit's browser. The toolkit never fills password/MFA
+fields, records the login screen, or reads your regular browser's profile. Only
+the configured origin's secure IAP cookies are selected for scoped HEAD requests.
+Application cookies are not forwarded. The browser closes before those checks.
+
+`access: {type: iap-browser, remember_login: true}` reuses a separate, origin-specific
+profile under `$XDG_STATE_HOME/matt-vapt-kit/iap-browser/` (normally
+`~/.local/state/matt-vapt-kit/iap-browser/`). Profile directories are mode 0700 and
+are outside Git and reports. **This profile contains sensitive Google login state.**
+Its contents are not guaranteed to be encrypted. Secure the workstation and never
+upload or share it. Google may still require reauthentication after expiry or revocation.
+Only one process may use the same profile at a time.
+
+For one-off use, omit `remember_login` or set it to `false`; the login profile is
+temporary. Changing it creates a different config digest, so regenerate approval.
+To forget a saved login, close its toolkit browser and delete only the specific
+origin-hash directory, or sign out through that browser. Do not delete unrelated profiles.
+
+Login itself involves ordinary browser navigation and Google sign-in requests,
+separate from the assessment's HEAD request budget. It may refresh Google's
+session cookies. The login browser blocks non-GET/HEAD application requests except
+IAP's own authentication callback, honors excluded application prefixes, and blocks
+third-party origins other than Google's login resources. It is not a crawler.
+Do not use it to log into application accounts or perform application actions.
+The interactive window waits up to five minutes or approval expiry, whichever comes first.
+
+For an already-approved programmatic client instead:
+
+```yaml
+access:
+  type: bearer
+  token_env: VAPT_IAP_TOKEN
+  header: Proxy-Authorization
+```
+
+Supply the short-lived token in that environment variable, never YAML or CLI arguments.
+Use `Authorization` instead only when the application's approved authentication
+mechanism requires it. The config/approval bind this choice to the exact target.
+Missing/invalid credentials fail before network traffic. Tokens are not logged or
+saved in assessment/report artifacts. HTTP 401/403 remains an incomplete result.
 
 Compose defaults to no networking. Enabling network access for the core container
 requires an explicit override and does not waive CLI scope checks. Scanner containers
@@ -204,7 +274,10 @@ docker compose run --rm kit doctor
 ```
 
 `tests/fixtures/assessment.json` is synthetic and labeled as such in exports.
-No live application is contacted by the test suite or the toolkit CI.
+The suite includes a local HTTPS server with a temporary certificate to exercise
+successful requests, rejected credentials, redirects, and report export through
+the real HTTP client. It requires `openssl`. No live application or Google login
+is contacted by the test suite or the toolkit CI.
 
 Use push checks on every push, daily advisory monitoring, and manual access-control
 review before releases. Weekly approved staging scans and quarterly deeper VAPT are

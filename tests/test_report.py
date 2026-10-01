@@ -65,3 +65,33 @@ class ReportTests(unittest.TestCase):
         with self.assertRaises(ToolError) as error:
             validate_result(self.result)
         self.assertNotIn("PRIVATE_SENTINEL", str(error.exception))
+
+    def test_incomplete_redirect_is_not_a_header_finding(self):
+        self.result["status"] = "incomplete"
+        self.result["observations"][0]["status"] = 302
+        self.result["findings"] = []
+        self.result["errors"] = [{"path": "/", "kind": "http", "message": "HTTP 302: redirect not followed."}]
+        document = render(self.result)
+        self.assertIn("Assessment incomplete. Resolve", document)
+        self.assertIn("Not assessed (non-2xx response)", document)
+        self.assertNotIn("<td>Not observed</td>", document)
+
+    def test_completed_report_rejects_gaps_and_errors(self):
+        for change in (
+            lambda r: r.update(observations=[]),
+            lambda r: r["observations"][0].update(status=302),
+            lambda r: r.update(approved_paths=["/", "/missing"]),
+            lambda r: r.update(errors=[{"path": "/", "kind": "transport", "message": "Timeout"}]),
+        ):
+            result = copy.deepcopy(self.result)
+            result["status"] = "completed"
+            change(result)
+            with self.assertRaises(ToolError):
+                validate_result(result)
+
+    def test_head_only_cannot_claim_untested_coverage(self):
+        for profile in ("unauthenticated-head-only", "bearer-head-only"):
+            self.result["profile"] = profile
+            self.result["coverage"]["data_exposure"] = "tested"
+            with self.assertRaises(ToolError):
+                validate_result(self.result)

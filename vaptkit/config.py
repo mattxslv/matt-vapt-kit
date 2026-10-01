@@ -1,4 +1,5 @@
 import json
+import re
 from importlib.resources import files
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -85,4 +86,6 @@ def load_config(path: Path) -> dict:
             raise ConfigError("Scope prefixes must be literal, normalized URL paths.")
     if not set(config["credentials"]).issubset(config["scope"]["roles"]):
         raise ConfigError("Credential roles must appear in scope.roles.")
+    if config.get("access", {}).get("type") == "bearer" and not re.fullmatch(r"[A-Z][A-Z0-9_]*", config["access"]["token_env"]):
+        raise ConfigError("Access token configuration must name an environment variable.")
     return config

@@ -28,6 +28,16 @@ def validate_result(result: dict) -> None:
     schema = json.loads(files("vaptkit").joinpath("schemas/report.json").read_text())
     if next(Draft202012Validator(schema).iter_errors(result), None) is not None:
         raise ToolError("Report input does not match the assessment schema; contents withheld.")
+    if result["status"] == "completed":
+        paths = [item["path"] for item in result["observations"]]
+        if (result["errors"] or not paths or paths != result["approved_paths"]
+                or any(not 200 <= item["status"] < 300 for item in result["observations"])):
+            raise ToolError("A completed report must contain a successful observation for every approved path and no errors.")
+    if result["profile"] in ("unauthenticated-head-only", "bearer-head-only", "iap-browser-head-only") and (
+        result["coverage"]["data_exposure"] != "not_tested"
+        or result["coverage"]["unauthorized_access"] != "not_tested"
+    ):
+        raise ToolError("HEAD-only profiles cannot claim data-exposure or access-control test coverage.")
 
 
 def conclusion(result: dict, category: str) -> str:
@@ -58,8 +68,9 @@ def render(result: dict, screenshots=()) -> str:
         </article>""")
     evidence = []
     for index, observation in enumerate(result["observations"], 1):
+        assessable = 200 <= observation["status"] < 300
         rows = "".join(
-            f"<tr><td>{esc(CHECK_LABELS[key])}</td><td>{'Observed' if value else 'Not observed'}</td></tr>"
+            f"<tr><td>{esc(CHECK_LABELS[key])}</td><td>{('Observed' if value else 'Not observed') if assessable else 'Not assessed (non-2xx response)'}</td></tr>"
             for key, value in observation["checks"].items()
         )
         evidence.append(f"""
@@ -84,6 +95,8 @@ def render(result: dict, screenshots=()) -> str:
     fixture = '<div class="warning"><strong>SYNTHETIC EXAMPLE.</strong> This is not a live assessment.</div>' if result["status"] == "fixture" else ""
     run_state = "Incomplete: review the stopped checks below." if result["status"] == "incomplete" else "Completed within the recorded scope." if result["status"] == "completed" else "Synthetic example only."
     next_action = "Review the observations below, verify impact, then record remediation and a retest." if findings else "No findings were recorded by these checks. Review untested areas before making a security decision."
+    if result["status"] == "incomplete":
+        next_action = "Assessment incomplete. Resolve the access or execution issue below before drawing conclusions about the application."
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">

@@ -72,6 +72,19 @@ class ConfigTests(unittest.TestCase):
         self.config["credentials"] = {"admin": {"token_env": "VAPT_PEMEDES_ADMIN_TOKEN"}}
         self.assertEqual(load_config(self.write())["credentials"], self.config["credentials"])
 
+    def test_access_config_is_explicit_and_environment_only(self):
+        self.config["access"] = {"type": "bearer", "token_env": "VAPT_IAP_TOKEN", "header": "Proxy-Authorization"}
+        self.assertEqual(load_config(self.write())["access"], self.config["access"])
+        for changes in (
+            {"token_env": "VAPT_IAP_TOKEN\n"}, {"header": "Cookie"},
+            {"token": "PRIVATE_SENTINEL"}, {"type": "shell"},
+        ):
+            config = copy.deepcopy(self.config)
+            config["access"].update(changes)
+            with self.assertRaises(ConfigError) as error:
+                load_config(self.write(config))
+            self.assertNotIn("PRIVATE_SENTINEL", str(error.exception))
+
     def test_invalid_paths(self):
         for prefix in ("//elsewhere", "/api/../admin", "/%2e%2e/", "/api?token=x",
                        "/api#fragment", "/api\\admin", "/api\n"):

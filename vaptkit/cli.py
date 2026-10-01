@@ -20,7 +20,10 @@ def main(argv=None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     validate = commands.add_parser("validate", help="Validate staging config offline")
     validate.add_argument("config", type=Path)
-    commands.add_parser("doctor", help="Check installed core tools without running scans")
+    doctor = commands.add_parser("doctor", help="Check core tools or task-specific prerequisites without scans")
+    from .doctor import PROFILES
+    doctor.add_argument("--for", dest="profile", choices=PROFILES, help="Check only prerequisites for this task")
+    doctor.add_argument("--config", type=Path, help="Role project configuration for gateway prerequisite checks")
     checks = commands.add_parser("check", help="Check a committed Git tree")
     checks.add_argument("repo", type=Path)
     checks.add_argument("--revision", default="HEAD")
@@ -48,6 +51,8 @@ def main(argv=None) -> int:
     roles.add_argument("--approval", type=Path, required=True)
     roles.add_argument("--output", type=Path, required=True)
     roles.add_argument("--acknowledge-scope", action="store_true")
+    roles.add_argument("--prompt-passwords", action="store_true",
+                       help="Prompt with hidden input for missing QA passwords; never saved to environment or files")
     scan = commands.add_parser("run", help="Run approved header checks and optional bounded public exposure checks")
     scan.add_argument("config", type=Path)
     scan.add_argument("--approval", type=Path, required=True)
@@ -67,12 +72,20 @@ def main(argv=None) -> int:
     report.add_argument("--cloud-review", type=Path, help="Include sanitized read-only Cloud Armor review")
     args = parser.parse_args(argv)
 
-    if args.command == "doctor":
+    if args.command == "doctor" and args.profile is None and args.config is None:
         tools = {tool: shutil.which(tool) is not None for tool in CORE_TOOLS}
         print(json.dumps({"core_tools": tools}, indent=2))
         return 0 if all(tools.values()) else 1
 
     try:
+        if args.command == "doctor":
+            from .doctor import diagnose
+            if args.config is not None and args.profile != "roles":
+                raise ToolError("doctor --config is supported only with --for roles.")
+            config = load_config(args.config) if args.config else None
+            result = diagnose(args.profile, config)
+            print(json.dumps(result, indent=2))
+            return 0 if result["ready"] else 1
         if args.command == "check":
             from .checks import check
             check(args.repo, args.revision, static=args.static)
@@ -89,6 +102,8 @@ def main(argv=None) -> int:
                 source_review=args.source_review, cloud_review=args.cloud_review,
             )
             print(f"Report written to {path}")
+            if not args.html_only:
+                print(f"PDF written to {path.with_name('report.pdf')}")
             return 0
         config = load_config(args.config)
         if args.command == "review-armor":
@@ -127,8 +142,10 @@ def main(argv=None) -> int:
             from .roles import run
             if not args.acknowledge_scope:
                 raise ToolError("Pass --acknowledge-scope only with explicit owner approval for role login and GET checks.")
-            path, code = run(config, load_json(args.approval), args.output)
+            path, code = run(config, load_json(args.approval), args.output,
+                             prompt_passwords=args.prompt_passwords)
             print(f"Role assessment written to {path}; " + ("incomplete." if code else "scoped matrix completed."))
+            print_assessment_summary(path)
             return code
         if args.command == "run":
             from .assessment import assess, load_json
@@ -137,6 +154,7 @@ def main(argv=None) -> int:
             baseline = load_json(args.baseline) if args.baseline else None
             path, code = assess(config, load_json(args.approval), args.output, baseline)
             print(f"Assessment record written to {path}; " + ("incomplete." if code else "scoped checks completed."))
+            print_assessment_summary(path)
             return code
     except ConfigError as error:
         print(f"Configuration error: {error}", file=sys.stderr)
@@ -156,3 +174,40 @@ def main(argv=None) -> int:
         "notice": "Offline validation only; no target contacted or credentials loaded.",
     }, indent=2))
     return 0
+
+
+def print_assessment_summary(path: Path) -> None:
+    from .assessment import load_json
+    from .report import validate_result
+    from .roles import role_outcome
+    result = load_json(path)
+    validate_result(result)
+    findings = result["findings"]
+    counts = {state: sum(item["verification"] == state for item in findings)
+              for state in ("confirmed", "suspected", "observation")}
+    print(f"Findings: {counts['confirmed']} confirmed, {counts['suspected']} suspected, "
+          f"{counts['observation']} observations. Errors: {len(result['errors'])}.")
+    if result["profile"] == "dtap-role-matrix":
+        records = result.get("role_observations", [])
+        controls = {item["path"] for item in records if role_outcome(item, set()) == "allowed"}
+        outcomes = [role_outcome(item, controls) for item in records]
+        expected = len(result.get("role_accounts", [])) * len(result["approved_paths"])
+        tested = sum(outcome in ("allowed", "denied", "confirmed") for outcome in outcomes)
+        print(f"Role cells: {tested}/{expected} tested, {outcomes.count('blocked')} blocked, "
+              f"{outcomes.count('inconclusive')} inconclusive, {max(0, expected - len(records))} not run.")
+        cleanup = result.get("role_cleanup", [])
+        acknowledged = sum(item["status"] == "acknowledged" for item in cleanup)
+        unconfirmed = sum(item["status"] == "unconfirmed" for item in cleanup)
+        print(f"Sign-out: {acknowledged} acknowledged, {unconfirmed} unconfirmed. "
+              "Acknowledgement does not prove revocation.")
+        if unconfirmed:
+            print("Manual session cleanup may be required; review the assessment record.")
+        print("Ownership, workflows and live XSS: not tested.")
+    else:
+        successful = sum(200 <= item["status"] < 300 for item in result["observations"])
+        print(f"Header paths: {successful}/{len(result['approved_paths'])} successful responses. "
+              "Non-2xx or missing responses are coverage gaps.")
+        print(f"Public data-exposure coverage: {result['coverage']['data_exposure']}. "
+              f"Unauthorized-access coverage: {result['coverage']['unauthorized_access']}.")
+    print("HTML/PDF report: not generated. Review this JSON, then use vapt report.")
+    print("Zero findings is not a security guarantee; blocked and inconclusive checks are not passes.")

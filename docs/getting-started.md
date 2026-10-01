@@ -41,6 +41,7 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -e .
 .venv/bin/vapt --version
 .venv/bin/vapt --help
+.venv/bin/vapt doctor --for html
 ```
 
 The examples use the virtual environment's executables directly, so activating
@@ -100,7 +101,26 @@ Build the core image before the report image: the latter extends
 `matt-vapt-kit:local`. These are local build tags, not a published release.
 Builds download packages; runtime Compose services default to no network access.
 
-`vapt doctor` checks the bundled core-tool list, not every optional dependency.
+`vapt doctor` without flags retains the bundled core-tool check. Use a task profile
+to avoid treating unrelated scanner tools as prerequisites:
+
+```sh
+.venv/bin/vapt doctor --for html
+.venv/bin/vapt doctor --for pdf
+.venv/bin/vapt doctor --for local-tests
+.venv/bin/vapt doctor --for push
+.venv/bin/vapt doctor --for roles --config .private/project.yml
+```
+
+Other profiles are `iap-browser` and `iap-keyless`. Role checks with `--config`
+select the relevant gateway dependencies. Without it, gateway checks are explicitly
+omitted. Browser profiles launch and close a local Chromium process without opening
+a target or signing in; interactive IAP also checks desktop availability. Missing
+browser packages, libraries or display access are reported as unmet prerequisites.
+
+These are prerequisite checks, **not full operational readiness**. Doctor does not
+authenticate to Google, read QA credentials, contact targets, verify IAM, probe the
+Docker daemon, pull images or validate a project's exact pnpm version.
 Missing `nmap` or `whatweb` on your host does not prevent offline HTML reporting.
 Use the local CLI for Git/Docker orchestration; the core container intentionally
 does not mount the Docker socket.
@@ -136,6 +156,7 @@ complete.
 | Approval digest/window rejected | Reconfirm the exact config and obtain a fresh, active approval |
 | Google/IAP returns 401/403 | Check the approved gateway identity; Cloud Run management access alone is insufficient |
 | QA login fails | Stop and verify the test account privately; do not retry passwords in a loop |
+| Hidden password prompt is unavailable | Run `--prompt-passwords` in an interactive terminal, or use the configured environment variables in automation |
 | A run is incomplete | Read the recorded errors and cleanup status; do not treat zero findings as an all-clear |
 
 For support, share the toolkit commit, operating system, command name, exit code

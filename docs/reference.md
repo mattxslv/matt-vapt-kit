@@ -226,8 +226,17 @@ mkdir -m 700 .private
 # Load account emails and passwords into the configured environment variables locally.
 # Never put their values in Git, CLI arguments, report notes, or shell history.
 .venv/bin/vapt roles projects/dtap.vapt.yml \
-  --approval .private/role-approval.json --acknowledge-scope --output .private/dtap-roles-001
+  --approval .private/role-approval.json --acknowledge-scope \
+  --prompt-passwords --output .private/dtap-roles-001
 ```
+
+`--prompt-passwords` is optional. It requests missing QA passwords in an
+interactive terminal without echo, once per distinct configured password variable.
+Email variables must already be set. Existing password environment values are used
+unchanged, so automation remains compatible without the flag. Prompted values stay
+in memory and are never exported to the process environment or written to files.
+The runner checks scope before and after prompting and rejects cancelled input,
+noninteractive input or an unsafe echo fallback without assessment traffic.
 
 For DTAP staging behind Google IAP, make a private copy of the toolkit project
 configuration and add `access: {type: iap-browser, remember_login: true}`.
@@ -624,7 +633,14 @@ checks can be appropriate; internal diagnostics need separate controls.
 ```sh
 .venv/bin/python -m unittest discover -s tests -v
 docker compose run --rm kit doctor
+.venv/bin/vapt doctor --for roles --config .private/project.yml
 ```
+
+Task-specific doctor profiles are documented in [setup](getting-started.md).
+Assessment commands now print a compact coverage/cleanup summary after saving
+JSON. Exit codes are unchanged: zero means the scoped run completed, **not that
+there were no findings**; one indicates an incomplete run and two a command/setup
+error. Report generation remains explicit and requires `--reviewed`.
 
 `tests/fixtures/assessment.json` is synthetic and labeled as such in exports.
 The suite includes a local HTTPS server with a temporary certificate to exercise

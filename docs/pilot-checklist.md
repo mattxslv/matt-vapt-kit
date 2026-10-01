@@ -63,13 +63,30 @@ does not configure application login:
 # Supply the configured QA environment variables through an approved private method.
 .venv/bin/vapt roles .private/project.yml \
   --approval .private/role-approval.json --acknowledge-scope \
-  --output .private/role-run-001
+  --prompt-passwords --output .private/role-run-001
 ```
+
+Set the configured QA **email** environment variables before the run.
+`--prompt-passwords` asks for missing passwords using hidden terminal input.
+Accounts sharing a password-variable name share one prompt. Existing password
+environment variables take precedence; the prompt does not overwrite them or
+save new values to files or environment variables. For unattended use, omit the
+flag and supply all configured variables through your approved secret mechanism.
+Do not pipe passwords into the command or put them in shell arguments.
+
+The prompt requires an interactive terminal and refuses an echo-enabled fallback.
+Cancellation, invalid input and scope expiry abort before gateway login or
+assessment traffic. Time spent at the prompt consumes the approval window.
 
 Do not run either command with an unreviewed template. Redirects, rate limits,
 server errors, transport failures and expired scope stop the runner. Do not keep
 retrying to obtain a passing result. Stopped runs can leave sessions requiring
 manual cleanup.
+
+After each assessment, the terminal summary shows finding counts, coverage gaps
+and, for roles, tested/blocked/inconclusive/unattempted cells and sign-out status.
+The summary does not generate a report automatically. It points to the JSON for
+review; export HTML/PDF separately as described below.
 
 ## Review before sharing
 

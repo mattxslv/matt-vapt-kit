@@ -168,7 +168,7 @@ class RoleTests(unittest.TestCase):
         def validate_until_login(config, approval):
             nonlocal calls
             calls += 1
-            if calls == 4:
+            if calls == 5:
                 raise ToolError("Approval expired.")
             validate(config, approval)
         with patch("vaptkit.roles.validate", side_effect=validate_until_login):
@@ -177,7 +177,7 @@ class RoleTests(unittest.TestCase):
         self.assertEqual([method for method, _, _ in app.calls], ["GET", "POST"])
         self.assertEqual(app.calls[-1][1], LOGIN)
         self.assertEqual(result["role_cleanup"][0]["status"], "unconfirmed")
-        self.assertEqual(calls, 4)
+        self.assertEqual(calls, 5)
 
     def test_generic_success_is_inconclusive_not_a_finding(self):
         result, code = self.execute(Application(catchall=True))

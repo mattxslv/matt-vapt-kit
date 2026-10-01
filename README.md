@@ -56,6 +56,7 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -e .
 
 .venv/bin/vapt --version
+.venv/bin/vapt doctor --for html
 .venv/bin/vapt validate templates/project.example.yml
 
 mkdir -m 700 .private
@@ -70,6 +71,12 @@ existing evidence is never overwritten.
 
 See [getting started](docs/getting-started.md) for PDF export, optional Docker tools,
 environment requirements and troubleshooting.
+
+For a configured pilot, `vapt doctor --for roles --config .private/project.yml`
+checks the relevant local dependencies. `vapt roles --prompt-passwords` supports
+hidden entry of missing QA passwords; approvals and QA email configuration are
+still required. Saved assessment summaries clearly separate findings from coverage
+gaps and unconfirmed cleanup.
 
 ## Move from local practice to staging
 

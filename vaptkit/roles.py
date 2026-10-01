@@ -1,9 +1,12 @@
 """Bounded DTAP cookie-session role checks using explicitly approved staging accounts."""
 import http.client
+import getpass
 import json
 import os
 import re
 import time
+import sys
+import warnings
 from datetime import datetime, timezone
 from http.cookies import CookieError, SimpleCookie
 from pathlib import Path
@@ -61,23 +64,42 @@ def validate(config: dict, approval: dict) -> None:
             raise ToolError("Role sign-in or sign-out is excluded by project scope.")
 
 
-def credentials(config: dict, approval: dict) -> dict:
+def credentials(config: dict, approval: dict, *, prompt_passwords=False) -> dict:
     selected = set(approval["role_accounts"])
-    result, emails = {}, set()
-    for account in config["role_testing"]["accounts"]:
-        if account["id"] not in selected:
-            continue
-        email = os.environ.get(account["email_env"], "")
-        password = os.environ.get(account["password_env"], "")
-        if (not email or len(email) > 254 or email.strip() != email or "@" not in email
-                or any(ord(char) < 33 for char in email)
-                or not password or len(password) > 1024 or password.strip() != password):
-            raise ToolError("A role credential environment variable is missing or invalid; values withheld.")
-        if email.lower() in emails:
-            raise ToolError("Each configured account must use a distinct email address; values withheld.")
-        emails.add(email.lower())
-        result[account["id"]] = {"email": email, "password": password}
-    return result
+    result, emails, passwords = {}, set(), {}
+    accounts = [account for account in config["role_testing"]["accounts"] if account["id"] in selected]
+    try:
+        for account in accounts:
+            email = os.environ.get(account["email_env"], "")
+            if (not email or len(email) > 254 or email.strip() != email or "@" not in email
+                    or any(ord(char) < 33 for char in email)):
+                raise ToolError("A role email environment variable is missing or invalid; values withheld.")
+            if email.lower() in emails:
+                raise ToolError("Each configured account must use a distinct email address; values withheld.")
+            emails.add(email.lower())
+            result[account["id"]] = {"email": email}
+        for account in accounts:
+            name = account["password_env"]
+            if name not in passwords:
+                password = os.environ.get(name, "")
+                if not password and prompt_passwords:
+                    validate(config, approval)
+                    if not sys.stdin.isatty():
+                        raise ToolError("Hidden password entry requires an interactive terminal; use the configured environment variables for automation.")
+                    try:
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("error", getpass.GetPassWarning)
+                            password = getpass.getpass(f"DTAP QA password ({name}, input hidden): ")
+                    except (getpass.GetPassWarning, EOFError, KeyboardInterrupt):
+                        raise ToolError("Hidden password entry unavailable or cancelled; no assessment started.") from None
+                    validate(config, approval)
+                if not password or len(password) > 1024 or password.strip() != password:
+                    raise ToolError("A role password is missing or invalid; values withheld.")
+                passwords[name] = password
+            result[account["id"]]["password"] = passwords[name]
+        return result
+    finally:
+        passwords.clear()
 
 
 def json_object(body: bytes) -> dict | None:
@@ -156,9 +178,12 @@ def collect_cookies(headers: dict, host: str) -> dict[str, str]:
     return result
 
 
-def run(config: dict, approval: dict, output: Path) -> tuple[Path, int]:
+def run(config: dict, approval: dict, output: Path, *, prompt_passwords=False) -> tuple[Path, int]:
     validate(config, approval)
-    secrets = credentials(config, approval)
+    if output.exists() or not output.parent.is_dir():
+        raise ToolError("Output must be a new directory inside an existing private parent.")
+    secrets = credentials(config, approval, prompt_passwords=prompt_passwords)
+    validate(config, approval)
     create_output(output)
     started = datetime.now(timezone.utc).isoformat()
     host = urlsplit(config["target"]["url"]).hostname

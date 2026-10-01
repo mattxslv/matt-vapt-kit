@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from vaptkit.checks import audit_commit, checked_revision, pushed_commits
+from vaptkit.checks import audit_commit, check, checked_revision, pushed_commits
 from vaptkit.hooks import install, uninstall
 from vaptkit.process import ToolError, git
 
@@ -74,6 +74,20 @@ class PushTests(unittest.TestCase):
         with patch("vaptkit.checks.run") as run:
             audit_commit(self.repo, git(self.repo, "rev-parse", "HEAD"))
             run.assert_not_called()
+
+    def test_static_scanner_can_read_private_export_without_root_capabilities(self):
+        def process(command, **kwargs):
+            if command[-1] == "/src":
+                self.assertIn("--user", command)
+                self.assertIn(f"{os.getuid()}:{os.getgid()}", command)
+                self.assertIn("HOME=/tmp", command)
+                mounts = [command[index + 1] for index, value in enumerate(command) if value == "-v"]
+                source = next(mount.split(":/src:ro")[0] for mount in mounts if mount.endswith(":/src:ro"))
+                self.assertTrue((Path(source) / "file.txt").is_file())
+                self.assertEqual(Path(source).stat().st_mode & 0o777, 0o700)
+
+        with patch("vaptkit.checks.run", side_effect=process):
+            check(self.repo, "HEAD", static=True)
 
     def test_audit_uses_pushed_lockfile_not_working_tree(self):
         (self.repo / "package.json").write_text(json.dumps({"packageManager": "pnpm@10.27.0"}))

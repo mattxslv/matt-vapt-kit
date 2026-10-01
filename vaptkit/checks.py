@@ -107,6 +107,7 @@ def check(repo: Path, revision: str, *, static: bool = False) -> None:
             run([
                 "docker", "run", "--rm", "--network=none", "--cap-drop=ALL",
                 "--security-opt=no-new-privileges",
+                "--user", f"{os.getuid()}:{os.getgid()}", "-e", "HOME=/tmp",
                 "-e", "SEMGREP_SEND_METRICS=off", "-e", "SEMGREP_ENABLE_VERSION_CHECK=0",
                 "-v", f"{source}:/src:ro", "-v", f"{rules}:/rules:ro",
                 "--entrypoint=semgrep", SEMGREP, "scan", "--config=/rules",

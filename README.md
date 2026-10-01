@@ -16,6 +16,7 @@ self-assessments, not CERT-PH reports or certifications.
 | Retest | Compare an earlier assessment using equivalent check evidence, never URL reachability alone |
 | Role matrix | Explicitly approved DTAP logins plus read-only endpoint checks, repeated JSON-shape evidence and allowed-role controls |
 | Accuracy regression corpus | Local verified-TLS fixtures with weak/safe controls, plus committed source-review fixtures |
+| Local ownership/workflow lab | Synthetic multi-user documents, independent state readback, approval ordering and replay controls; not enabled for live projects |
 | Report generator | CERT-PH-style HTML/PDF report, clearly marked as an MVK self-assessment, with PNG evidence figures |
 | Docker tools | Core tools plus separate pinned ZAP, Nuclei, Gitleaks, Semgrep, Subfinder and testssl images |
 
@@ -276,6 +277,91 @@ vulnerabilities. Source tracing, cookie-name classification, CSP policy interact
 small exposure signatures and configured JSON response shapes remain heuristic.
 Human review and authorized real-application testing are still required before
 sharing the toolkit as a trusted assessment tool.
+
+### Local ownership and approval-workflow lab
+
+```sh
+.venv/bin/python -m unittest discover -s tests -p 'test_authorization*.py'
+```
+
+This local-only lab starts a temporary loopback HTTPS server. Four synthetic users
+exercise private and shared documents, peer access, edits, draft submission, lead
+review and director approval. The safe application enforces ownership, separation
+of duties and `draft -> submitted -> reviewed -> approved` ordering. Deliberately
+flawed modes omit individual controls. No live app configuration is accepted,
+no real credentials are loaded and all sessions and records disappear at teardown.
+
+`vaptkit.authorization` evaluates derived evidence without sending requests.
+Reads require an owner positive control and two matching object IDs, owners and
+private synthetic markers, not just matching JSON shape. Writes need independent
+before/after reads showing the expected object, phase, one revision increment,
+actor and action. Repetitions use fresh synthetic records. Even an HTTP error is
+flagged when its body discloses the protected object or readback proves a forbidden
+state change. Generic successes, missing controls, wrong objects, uncertain
+attribution and unreadable bodies remain **inconclusive**, not passing controls.
+
+The 34-case outcome manifest is maintained separately from the application and
+detector. It currently yields 10 detected violations, 15 correct allowed/denied
+controls and 9 explicitly inconclusive cases. The fixture also exercises the full
+valid workflow and verifies revoked sessions actually stop working.
+The scenarios follow [OWASP WSTG IDOR guidance](https://owasp.org/www-project-web-security-testing-guide/v42/4-Web_Application_Security_Testing/05-Authorization_Testing/04-Testing_for_Insecure_Direct_Object_References)
+and [workflow-circumvention guidance](https://owasp.org/www-project-web-security-testing-guide/v42/4-Web_Application_Security_Testing/10-Business_Logic_Testing/06-Testing_for_the_Circumvention_of_Work_Flows).
+This is reference-backed, locally authored coverage, not independent certification.
+
+**These ownership/workflow checks are not wired into `vapt roles` or live reports.**
+Live ownership mapping, permitted state changes and independent readback would need
+separate project-specific adapters and explicit approval. Current live reports still
+correctly say that ownership and workflows were not tested.
+
+### Independent application cross-check
+
+An optional test uses unmodified **OWASP Juice Shop v19.0.0**, pinned by image digest.
+It creates two synthetic accounts and a basket, establishes the owner's control,
+then repeats access with the other account. The application and known basket-access
+flaw are independently maintained; our evidence adapter and assertions are ours.
+
+```sh
+docker pull bkimminich/juice-shop@sha256:2765a26de7647609099a338d5b7f61085d95903c8703bb70f03fcc4b12f0818d
+MVK_RUN_JUICE_SHOP=1 .venv/bin/python -m unittest discover -s tests -p test_juice_shop_benchmark.py
+```
+
+Pulling the public image requires internet access. The test itself uses
+`--pull=never --network none`, no published ports, no host mounts, no extra capabilities,
+and CPU/memory/PID limits. HTTP requests run inside the container against its own
+loopback interface. The test stops and removes only the container it created.
+It does not run automatically with the default suite.
+
+The observed external control is correct owner access and a confirmed cross-account
+basket read. Anonymous requests return 401, but their non-JSON bodies are deliberately
+**inconclusive** for our object-evidence adapter. That limitation is not counted as a
+successful assessed denial. This is one externally maintained application and one
+vulnerability class, not an independent evaluation of every toolkit feature or workflow.
+The local HTTPS lab, rather than this container, exercises the toolkit's TLS transport.
+
+### Fresh-install walkthrough (local only)
+
+From a clean checkout of a reviewed toolkit commit:
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install '.[report]'
+.venv/bin/vapt --version
+.venv/bin/vapt validate projects/dtap.vapt.yml
+.venv/bin/python -m unittest discover -s tests
+.venv/bin/python -m playwright install chromium
+mkdir -m 700 private-output
+.venv/bin/vapt report tests/fixtures/assessment.json --reviewed \
+  --output private-output/synthetic-report
+```
+
+Requirements: Python 3.11+, Git, OpenSSL, and Chromium's system libraries for PDF
+export. Missing OpenSSL skips local HTTPS tests, so review skip messages rather than
+treating a reduced suite as full coverage. Docker is needed only for the optional
+external-app benchmark and existing container tools. Installation and browser download
+contact package publishers; tests do not contact application staging hosts.
+If Chromium or its libraries are unavailable, `--html-only` supports offline HTML
+export but does not validate PDF export. Never reuse an existing output directory.
+The included report fixture is synthetic and cannot establish any project's security.
 
 ### Access through Google IAP
 

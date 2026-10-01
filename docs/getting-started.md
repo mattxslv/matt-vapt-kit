@@ -14,6 +14,8 @@ you plan to use. None of the steps in the first-run walkthrough scans a live tar
 | PDF export and IAP browser login | The `report` extra, Playwright Chromium and browser system libraries |
 | Push checks and optional scanner containers | Docker Engine with Compose; exact project pnpm version for Node audits |
 | Keyless IAP access | gcloud signed into an approved identity; administrator-provisioned staging permissions |
+| Read-only Cloud Armor review | gcloud and approved Cloud Run/Compute metadata read permissions |
+| Local XSS browser lab | The `report` extra and Playwright Chromium; no cloud credentials or live target |
 | DTAP endpoint-role checks | Owner-approved scope, verified role policy and private QA credentials |
 
 The examples use Linux shell commands. Linux is the CI environment. Native

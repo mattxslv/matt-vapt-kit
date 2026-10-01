@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "kind", "project", "target", "cloud_project", "service", "region", "started_at", "finished_at", "status", "ingress", "default_url", "backends", "findings", "gaps", "note"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "kind": {"const": "cloud-armor-review"},
+    "project": {"type": "string", "maxLength": 64},
+    "target": {"type": "string", "maxLength": 2048},
+    "cloud_project": {"type": "string", "pattern": "^[a-z][a-z0-9-]{4,28}[a-z0-9]$"},
+    "service": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,62}$"},
+    "region": {"type": "string", "pattern": "^[a-z]+-[a-z]+[0-9]+$"},
+    "started_at": {"type": "string", "maxLength": 64},
+    "finished_at": {"type": "string", "maxLength": 64},
+    "status": {"enum": ["completed", "incomplete"]},
+    "ingress": {"enum": ["all", "internal", "internal-and-cloud-load-balancing", "unknown"]},
+    "default_url": {"enum": ["enabled", "disabled", "unknown"]},
+    "note": {"type": "string", "maxLength": 2000},
+    "gaps": {"type": "array", "maxItems": 300, "items": {"type": "string", "maxLength": 300}},
+    "backends": {
+      "type": "array", "maxItems": 100,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["backend", "policy_state", "logging", "logging_sample_rate", "xss_enforced_references", "xss_preview_references", "sqli_enforced_references", "sqli_preview_references", "rate_limit_rules", "unparsed_expressions", "shadowed_waf_rules"],
+        "properties": {
+          "backend": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,62}$"},
+          "policy_state": {"enum": ["observed", "not_attached", "unresolved"]},
+          "logging": {"enum": ["enabled", "disabled", "unknown"]},
+          "logging_sample_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+          "xss_enforced_references": {"$ref": "#/$defs/count"},
+          "xss_preview_references": {"$ref": "#/$defs/count"},
+          "sqli_enforced_references": {"$ref": "#/$defs/count"},
+          "sqli_preview_references": {"$ref": "#/$defs/count"},
+          "rate_limit_rules": {"$ref": "#/$defs/count"},
+          "unparsed_expressions": {"$ref": "#/$defs/count"},
+          "shadowed_waf_rules": {"$ref": "#/$defs/count"}
+        }
+      }
+    },
+    "findings": {
+      "type": "array", "maxItems": 200,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["title", "severity", "verification", "category", "owasp", "path", "evidence", "impact", "remediation"],
+        "properties": {
+          "title": {"type": "string", "maxLength": 200},
+          "severity": {"const": "low"},
+          "verification": {"const": "observation"},
+          "category": {"const": "configuration"},
+          "owasp": {"const": "A02"},
+          "path": {"const": "/"},
+          "evidence": {"type": "string", "maxLength": 300},
+          "impact": {"type": "string", "maxLength": 2000},
+          "remediation": {"type": "string", "maxLength": 2000}
+        }
+      }
+    }
+  },
+  "$defs": {"count": {"type": "integer", "minimum": 0, "maximum": 1000}}
+}

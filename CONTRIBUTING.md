@@ -54,6 +54,17 @@ docker compose --profile report build report
 The report image depends on the local core image. Neither runtime container gets
 network access by default. Dependencies download during builds.
 
+For browser-evidence changes, also run the local XSS lab:
+
+```sh
+MVK_RUN_XSS_LAB=1 .venv/bin/python -m unittest discover -s tests -p test_xss_lab.py -v
+```
+
+This requires the optional browser dependencies. An explicitly enabled lab fails
+if those dependencies are missing; it does not silently skip. Toolkit CI runs the
+same lab inside the network-disabled report container. See
+[Cloud Armor and XSS](docs/cloud-armor-and-xss.md) for the evidence model.
+
 ## Boundaries
 
 Do not run live assessments, enable cloud permissions, deploy applications or

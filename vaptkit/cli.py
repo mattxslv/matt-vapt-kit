@@ -33,6 +33,13 @@ def main(argv=None) -> int:
     routes.add_argument("repo", type=Path)
     routes.add_argument("--revision", default="HEAD")
     routes.add_argument("--output", type=Path, required=True, help="New private JSON file")
+    armor = commands.add_parser("review-armor", help="Read-only Cloud Armor metadata review for a declared staging service")
+    armor.add_argument("config", type=Path)
+    armor.add_argument("--gcp-project", required=True)
+    armor.add_argument("--service", required=True)
+    armor.add_argument("--region", required=True)
+    armor.add_argument("--acknowledge-scope", action="store_true")
+    armor.add_argument("--output", type=Path, required=True, help="New sanitized private JSON file")
     scope = commands.add_parser("scope-template", help="Print an unapproved HEAD-only scope template")
     scope.add_argument("config", type=Path)
     scope.add_argument("--roles", action="store_true", help="Print an unapproved role-login and GET matrix scope")
@@ -57,6 +64,7 @@ def main(argv=None) -> int:
     report.add_argument("--prepared-by", default="", help="Name shown on the sign-off block")
     report.add_argument("--agency", default="", help="Agency/Office shown in the report details")
     report.add_argument("--source-review", type=Path, help="Merge suspected findings from vapt review-routes")
+    report.add_argument("--cloud-review", type=Path, help="Include sanitized read-only Cloud Armor review")
     args = parser.parse_args(argv)
 
     if args.command == "doctor":
@@ -78,11 +86,24 @@ def main(argv=None) -> int:
             path = generate(
                 args.input, args.output, reviewed=args.reviewed, html_only=args.html_only,
                 tlp=args.tlp, prepared_by=args.prepared_by, agency=args.agency,
-                source_review=args.source_review,
+                source_review=args.source_review, cloud_review=args.cloud_review,
             )
             print(f"Report written to {path}")
             return 0
         config = load_config(args.config)
+        if args.command == "review-armor":
+            from .armor import collect
+            from .assessment import write_private
+            if not args.acknowledge_scope:
+                raise ToolError("Acknowledge owner permission for read-only metadata in this exact staging project and service.")
+            if args.output.exists() or not args.output.parent.is_dir():
+                raise ToolError("Cloud review needs a new JSON file inside an existing private directory.")
+            result = collect(config, args.gcp_project, args.service, args.region)
+            write_private(args.output, json.dumps(result, indent=2))
+            print(f"Cloud review written to {args.output}: {len(result['backends'])} linked backends, "
+                  f"{len(result['findings'])} configuration observations, {len(result['gaps'])} coverage gaps.")
+            print("Metadata only. Application XSS and runtime Cloud Armor enforcement were not tested.")
+            return 1 if result["status"] == "incomplete" else 0
         if args.command == "review-routes":
             from .assessment import write_private
             from .routes import review

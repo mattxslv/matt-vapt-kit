@@ -32,6 +32,11 @@ jobs:
             semgrep/semgrep@sha256:acaac22ffc7b7cc5926de0751b223bce0b2491c33d18422fa72f632c78d81198 \
             --test --config=/rules /src/tests/semgrep --metrics=off --disable-version-check
       - run: docker compose --profile report build report
+      - name: Exercise XSS evidence in the isolated local browser lab
+        run: |
+          docker compose run --rm --entrypoint python \
+            -v "$PWD/tests:/tests:ro" -e MVK_RUN_XSS_LAB=1 \
+            report -m unittest discover -s /tests -p test_xss_lab.py -v
       - name: Export synthetic report offline
         run: |
           docker compose run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \

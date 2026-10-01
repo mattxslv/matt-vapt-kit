@@ -13,6 +13,7 @@ with existing private directories. Project configurations are not authorization.
 - [Project scope and approvals](#project-scope)
 - [Exposure checks and retests](#optional-public-exposure-checks-and-retest)
 - [Offline API review](#offline-api-authentication-review)
+- [Cloud Armor metadata and local XSS lab](cloud-armor-and-xss.md)
 - [DTAP role matrix](#approved-dtap-role-matrix)
 - [Accuracy benchmarks](#accuracy-benchmark-and-limitations)
 - [Release challenge](#separate-release-challenge)

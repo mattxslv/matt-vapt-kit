@@ -18,6 +18,7 @@
     "coverage"
   ],
   "properties": {
+    "cloud_review": {"type": "object"},
     "schema_version": {
       "const": 1
     },

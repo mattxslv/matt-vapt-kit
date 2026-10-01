@@ -106,6 +106,12 @@ def validate_result(result: dict) -> None:
     schema = json.loads(files("vaptkit").joinpath("schemas/report.json").read_text())
     if next(Draft202012Validator(schema).iter_errors(result), None) is not None:
         raise ToolError("Report input does not match the assessment schema; contents withheld.")
+    if "cloud_review" in result:
+        from .armor import validate_review
+        validate_review(result["cloud_review"])
+        if (result["cloud_review"]["project"] != result["project"]
+                or result["cloud_review"]["target"] != result["target"]):
+            raise ToolError("Cloud review must match the report project and exact target.")
     if result["status"] == "completed":
         paths = [item["path"] for item in result["observations"]]
         if result["profile"] == "dtap-role-matrix":
@@ -443,19 +449,51 @@ def render(result: dict, screenshots=(), *, tlp="AMBER+STRICT", prepared_by="", 
         "Tested: bounded path list only" if result["coverage"]["data_exposure"] == "tested"
         and result["status"] == "completed" else "Incomplete: blocked or inconclusive; see recorded checks"
     ) if result["profile"] == "unauthenticated-exposure" else "Not run (not enabled in this profile)"
+    cloud_coverage = (
+        result["cloud_review"]["status"].capitalize() + " metadata snapshot; runtime WAF enforcement not tested"
+    ) if result.get("cloud_review") else "Not run (no metadata snapshot attached)"
     coverage_details = (
         "<table><thead><tr><th>Test area</th><th>Coverage boundary</th></tr></thead><tbody>"
         f"<tr><td>Header policy</td><td>{esc(header_summary)}</td></tr>"
         f"<tr><td>Public exposure</td><td>{esc(exposure_summary)}</td></tr>"
         f"<tr><td>Endpoint role policy</td><td>{esc(role_summary)}</td></tr>"
+        f"<tr><td>Cloud Armor configuration</td><td>{esc(cloud_coverage)}</td></tr>"
         "<tr><td>Record ownership</td><td>Unsupported in live assessments; local lab only</td></tr>"
         "<tr><td>Approval workflows</td><td>Unsupported in live assessments; local lab only</td></tr>"
+        "<tr><td>Script injection / XSS</td><td>Unsupported in live assessments; local browser lab only</td></tr>"
         "<tr><td>Unlisted routes and additional pages</td><td>Not tested</td></tr>"
         "</tbody></table><p>Tested means the stated evidence criteria were met, not that the application "
         "is secure. Blocked means access, transport or scope prevented a check. Inconclusive means a "
         "response was observed but could not establish the expected behavior. Not run means no matrix "
         "attempt was recorded. Cleanup failures can still make an otherwise tested matrix incomplete.</p>"
     )
+    cloud_html = ""
+    if result.get("cloud_review"):
+        cloud = result["cloud_review"]
+        cloud_rows = "".join(
+            f"<tr><td>{esc(item['backend'])}</td><td>{esc(item['policy_state'].replace('_', ' ').capitalize())}</td>"
+            f"<td>{esc(item['logging'])}; sample {esc(item['logging_sample_rate'] if item['logging_sample_rate'] is not None else 'unknown')}</td>"
+            f"<td>{item['xss_enforced_references']} / {item['xss_preview_references']}</td>"
+            f"<td>{item['sqli_enforced_references']} / {item['sqli_preview_references']}</td>"
+            f"<td>{item['rate_limit_rules']}</td><td>{item['unparsed_expressions']}</td></tr>"
+            for item in cloud["backends"]
+        ) or '<tr><td colspan="7">No explicit backend association observed.</td></tr>'
+        cloud_gaps = "".join(f"<li>{esc(gap)}</li>" for gap in cloud["gaps"])
+        cloud_html = (
+            "<h4>Cloud Armor Configuration Review</h4>"
+            f"<p>Read-only metadata snapshot: {esc(cloud['status'])}. "
+            f"Recorded {esc(cloud['finished_at'])}. "
+            f"Declared service: <code>{esc(cloud['cloud_project'])}/{esc(cloud['region'])}/{esc(cloud['service'])}</code>. "
+            f"Ingress: {esc(cloud['ingress'])}; default URL: {esc(cloud['default_url'])}.</p>"
+            f"<p>{esc(cloud['note'])}</p>"
+            "<p>WAF counts below are recognized function references in non-preview / preview rules, "
+            "not verified blocking. Actions, sensitivity, exclusions and other policy layers still need review. "
+            "Completion describes metadata inventory only, not end-to-end protection.</p>"
+            "<table><thead><tr><th>Backend</th><th>Policy</th><th>Logging</th>"
+            "<th>XSS refs</th><th>SQLi refs</th><th>Rate rules</th><th>Unparsed expressions</th></tr></thead>"
+            f"<tbody>{cloud_rows}</tbody></table>"
+            + (f"<p>Cloud review coverage gaps:</p><ul>{cloud_gaps}</ul>" if cloud_gaps else "")
+        )
     vulnerabilities = "".join(vulnerability_blocks) or (
         "<p>No vulnerabilities were identified within the tested scope. "
         "Untested areas are listed in Section 2.</p>"
@@ -608,6 +646,7 @@ def render(result: dict, screenshots=(), *, tlp="AMBER+STRICT", prepared_by="", 
     <tr><td>HTTP response header inspection (HEAD requests)</td><td>{header_status}</td></tr>
     <tr><td>Bounded public exposure checks</td><td>{'Enabled; see recorded coverage' if result['profile'] == 'unauthenticated-exposure' else 'Not performed'}</td></tr>
     <tr><td>Endpoint role-policy matrix</td><td>{'Enabled; see recorded coverage' if result['profile'] == 'dtap-role-matrix' else 'Not performed'}</td></tr>
+    <tr><td>Read-only Cloud Armor configuration review</td><td>{'Separate snapshot attached; see coverage gaps' if result.get('cloud_review') else 'Not performed'}</td></tr>
     <tr><td>Unbounded crawling / external reconnaissance</td><td>Not performed</td></tr>
     <tr><td>Privilege escalation / lateral movement</td><td>Not performed</td></tr>
     <tr><td>Denial of service checks</td><td>Not performed</td></tr>
@@ -663,6 +702,7 @@ def render(result: dict, screenshots=(), *, tlp="AMBER+STRICT", prepared_by="", 
   <h4>Public Exposure Checks</h4>
   {exposure_html}
   {role_html}
+  {cloud_html}
   <h4>Service Enumeration and Fingerprinting</h4>
   <p class="muted">Not performed in this profile.</p>
   <h3>4.2 Vulnerability Identification</h3>
@@ -733,14 +773,36 @@ def merge_source_review(result: dict, review: dict) -> dict:
     return merged
 
 
+def merge_cloud_review(result: dict, review: dict) -> dict:
+    from .armor import validate_review
+    validate_review(review)
+    if review["project"] != result["project"] or review["target"] != result["target"]:
+        raise ToolError("Cloud review must match the report project and exact target.")
+    if "cloud_review" in result:
+        raise ToolError("A cloud review is already attached; refusing to duplicate its observations.")
+    findings = result["findings"] + review["findings"]
+    if len(findings) > 200:
+        raise ToolError("Too many findings for one report; narrow the cloud review first.")
+    coverage = dict(result["coverage"])
+    coverage["note"] = (
+        coverage["note"] + " A separate read-only Cloud Armor metadata snapshot is attached; "
+        "it does not extend application vulnerability-test coverage."
+    )[:2000]
+    return dict(result, findings=findings, cloud_review=review, coverage=coverage)
+
+
 def generate(source: Path, output: Path, *, reviewed: bool, html_only=False,
-             tlp="AMBER+STRICT", prepared_by="", agency="", source_review: Path | None = None) -> Path:
+             tlp="AMBER+STRICT", prepared_by="", agency="", source_review: Path | None = None,
+             cloud_review: Path | None = None) -> Path:
     if not reviewed:
         raise ToolError("Review and redact the JSON first, then pass --reviewed. Automatic redaction cannot guarantee safety.")
     result = load_json(source)
     if source_review is not None:
         validate_result(result)
         result = merge_source_review(result, load_json(source_review, limit=5_000_000))
+    if cloud_review is not None:
+        validate_result(result)
+        result = merge_cloud_review(result, load_json(cloud_review, limit=1_000_000))
     options = {"tlp": tlp, "prepared_by": prepared_by, "agency": agency}
     document = render(result, **options)
     if not html_only:

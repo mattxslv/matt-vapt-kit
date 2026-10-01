@@ -28,13 +28,17 @@ an external vulnerability assessment and penetration test.
 | Compare endpoint permissions | Isolated DTAP test-account sessions, allowed-role controls and conservative response evidence |
 | Access IAP-protected staging | Interactive browser login or an explicitly provisioned keyless service account |
 | Review API authentication | Offline, heuristic review of committed Next.js route handlers |
+| Review Cloud Armor configuration | Read-only Cloud Run/backend/policy metadata, with explicit association and coverage gaps |
 | Produce private reports | Self-contained HTML, optional PDF and sanitized evidence figures |
-| Exercise the detector locally | HTTPS fixtures, ownership/workflow lab and a separate release challenge |
+| Exercise the detector locally | HTTPS fixtures, ownership/workflow and browser XSS labs, plus a separate release challenge |
 
 Live role testing currently supports **DTAP's cookie-login contract only**.
-Record ownership and workflow checks are local-lab capabilities, not live
+Record ownership, workflow and XSS checks are local-lab capabilities, not live
 assessment features. Bundled ZAP/Nuclei containers are dormant tools, not integrated
 scan runners or scheduled jobs.
+
+See [Cloud Armor and XSS](docs/cloud-armor-and-xss.md) for the new modules' commands,
+evidence requirements and limits. WAF configuration is not proof of application safety.
 
 ## First run: no live target required
 

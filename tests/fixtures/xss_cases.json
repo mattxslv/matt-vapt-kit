@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "cases": [
+    {"id": "reflected-execution", "kind": "reflected", "mode": "unsafe", "expected": "confirmed"},
+    {"id": "reflected-escaped-text", "kind": "reflected", "mode": "escaped", "expected": "not_reproduced"},
+    {"id": "dom-execution", "kind": "dom", "mode": "unsafe", "expected": "confirmed"},
+    {"id": "dom-text-content", "kind": "dom", "mode": "escaped", "expected": "not_reproduced"},
+    {"id": "stored-execution", "kind": "stored", "mode": "unsafe", "expected": "confirmed"},
+    {"id": "stored-escaped-text", "kind": "stored", "mode": "escaped", "expected": "not_reproduced"},
+    {"id": "reflected-csp-block", "kind": "reflected", "mode": "csp", "expected": "inconclusive"},
+    {"id": "dom-csp-block", "kind": "dom", "mode": "csp", "expected": "inconclusive"},
+    {"id": "stored-csp-block", "kind": "stored", "mode": "csp", "expected": "inconclusive"},
+    {"id": "missing-browser-control", "kind": "reflected", "mode": "unsafe", "broken_control": true, "expected": "inconclusive"},
+    {"id": "unauthenticated-page", "kind": "reflected", "mode": "denied", "expected": "inconclusive"},
+    {"id": "json-reflection", "kind": "reflected", "mode": "json", "expected": "inconclusive"}
+  ]
+}

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "matt-vapt-kit"
-version = "0.4.0"
+version = "0.5.0"
 description = "Private, staging-first security checks and assessment reports"
 requires-python = ">=3.11"
 dependencies = ["PyYAML==6.0.2", "jsonschema==4.23.0"]

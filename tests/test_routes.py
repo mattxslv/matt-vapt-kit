@@ -154,6 +154,21 @@ class RouteReviewTests(unittest.TestCase):
         self.assertIn(("/api/admin/stats", "Privileged API handler has no visible role check"), titles)
         self.assertEqual(len(self.result["findings"]), 5)
 
+    def test_source_review_accuracy_corpus(self):
+        expected = {
+            ("/api/open", "API handler has no authentication check in code", "GET"),
+            ("/api/open", "API handler has no authentication check in code", "POST"),
+            ("/api/class", "API handler has no authentication check in code", "GET"),
+            ("/api/logs", "API handler has no authentication check in code", "GET"),
+            ("/api/admin/stats", "Privileged API handler has no visible role check", "GET"),
+        }
+        detected = {(item["path"], item["title"], item["impact"].split(" ")[0])
+                    for item in self.result["findings"]}
+        counts = {"tp": len(expected & detected), "fp": len(detected - expected),
+                  "fn": len(expected - detected)}
+        print("\nSynthetic source-review benchmark: " + json.dumps(counts, sort_keys=True))
+        self.assertEqual(counts, {"tp": 5, "fp": 0, "fn": 0})
+
     def test_privileged_route_without_role_check(self):
         config = {"project": "fixture", "review": {"privileged_prefixes": ["/api/admin/stats"]}}
         titles = {(f["path"], f["title"]) for f in review(self.repo, config)["findings"]}

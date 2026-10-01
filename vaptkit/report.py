@@ -383,7 +383,11 @@ def render(result: dict, screenshots=(), *, tlp="AMBER+STRICT", prepared_by="", 
         "No matching signature does not prove that a resource is safe.</p>"
         "<table><thead><tr><th>Path</th><th>Check</th><th>Status</th><th>Result</th></tr></thead>"
         f"<tbody>{exposure_rows}</tbody></table><p class=\"caption\">Table 4.2: Public exposure checks</p>"
-    ) if exposure_rows else '<p class="muted">Not performed in this profile.</p>'
+    ) if exposure_rows else (
+        '<p class="muted">Enabled, but no completed exposure observations were recorded.</p>'
+        if result["profile"] == "unauthenticated-exposure"
+        else '<p class="muted">Not performed in this profile.</p>'
+    )
     retest_labels = {"still_present": "Still present", "resolved": "Resolved", "not_rechecked": "Not rechecked"}
     retest_html = (
         "<h3>4.4 Retest Results</h3><p>Comparison with the previous assessment. "
@@ -416,6 +420,16 @@ def render(result: dict, screenshots=(), *, tlp="AMBER+STRICT", prepared_by="", 
         "Untested areas are listed in Section 2.</p>"
     )
 
+    header_status = "Observed" if observations else "No observations recorded"
+    header_note = (
+        "The kit graded approved HEAD responses against fixed rules. Repeated header observations "
+        "can be marked Confirmed; this is not proof of exploitation. Stopped checks and unverified findings "
+        "are identified separately."
+    ) if observations else "No HEAD response observations were recorded in this assessment."
+    gap_note = (
+        "For role-matrix GET checks, 401/403 means explicit denial as expected for disallowed roles. "
+        "Other failed responses remain coverage gaps."
+    ) if result["profile"] == "dtap-role-matrix" else "Non-2xx header responses are coverage gaps, not passing checks."
     cleanup = (("This profile sent HTTP HEAD and bounded GET requests. " if result["profile"] == "unauthenticated-exposure"
                 else "This profile sent only HTTP HEAD requests. ") + "No accounts, files, records or "
                "configuration were created or modified on the target.")
@@ -549,8 +563,10 @@ def render(result: dict, screenshots=(), *, tlp="AMBER+STRICT", prepared_by="", 
   <p class="caption">Table 1.1: Target asset for the self-assessment</p>
   <h4>Testing Methodologies</h4>
   <table><thead><tr><th>Methods/Techniques</th><th>Status</th></tr></thead><tbody>
-    <tr><td>HTTP response header inspection (HEAD requests)</td><td>Performed</td></tr>
-    <tr><td>Reconnaissance and directory discovery</td><td>Not performed</td></tr>
+    <tr><td>HTTP response header inspection (HEAD requests)</td><td>{header_status}</td></tr>
+    <tr><td>Bounded public exposure checks</td><td>{'Enabled; see recorded coverage' if result['profile'] == 'unauthenticated-exposure' else 'Not performed'}</td></tr>
+    <tr><td>Endpoint role-policy matrix</td><td>{'Enabled; see recorded coverage' if result['profile'] == 'dtap-role-matrix' else 'Not performed'}</td></tr>
+    <tr><td>Unbounded crawling / external reconnaissance</td><td>Not performed</td></tr>
     <tr><td>Privilege escalation / lateral movement</td><td>Not performed</td></tr>
     <tr><td>Denial of service checks</td><td>Not performed</td></tr>
     <tr><td>Viewing/using sensitive data for further checking</td><td>Not performed</td></tr>
@@ -575,7 +591,7 @@ def render(result: dict, screenshots=(), *, tlp="AMBER+STRICT", prepared_by="", 
   <p class="caption">Table 2.2: Coverage of the two primary risk questions</p>
   <p>{esc(result['coverage']['note'])}</p>
   <p class="muted">A clean result cannot establish that no historical data leak occurred.
-  Redirects are not followed. Non-2xx responses are coverage gaps, not passing checks.</p>
+  Redirects are not followed. {gap_note}</p>
   {stopped}
   <h3>OWASP Top 10 (2025) Mapping</h3>
   <table><thead><tr><th>OWASP Top 10 (2025)</th><th>Vulnerability Count</th></tr></thead>
@@ -585,7 +601,7 @@ def render(result: dict, screenshots=(), *, tlp="AMBER+STRICT", prepared_by="", 
 
 <section id="s3" class="chapter">
   <h2>3 RECOMMENDATION</h2>
-  <p>Prioritize higher-severity findings, but fix every finding recorded in this report.</p>
+  <p>Review suspected findings before remediation. Prioritize confirmed higher-severity issues.</p>
   <ul>{recommendation_items}</ul>
 </section>
 
@@ -595,8 +611,7 @@ def render(result: dict, screenshots=(), *, tlp="AMBER+STRICT", prepared_by="", 
   <h4>External Footprinting</h4>
   <p class="muted">Not performed in this profile.</p>
   <h4>HTTP Response Header Inspection</h4>
-  <p>The kit graded approved HEAD responses against fixed rules. Findings marked Confirmed were
-  reproduced on a second request. Stopped checks and unverified findings are identified separately.</p>
+  <p>{header_note}</p>
   <table><thead><tr><th>Request</th><th>Status</th><th>HSTS</th><th>CSP</th><th>nosniff</th><th>Frame policy</th></tr></thead>
   <tbody>{observation_rows}</tbody></table>
   <p class="caption">Table 4.1: HTTP response header observations</p>
@@ -610,7 +625,8 @@ def render(result: dict, screenshots=(), *, tlp="AMBER+STRICT", prepared_by="", 
   <h3>4.2 Vulnerability Identification</h3>
   {vulnerabilities}
   <h3>4.3 Attack and Exploitation</h3>
-  <p>No exploitation was attempted. This profile is non-intrusive.</p>
+  <p>No exploit payloads or destructive business operations were submitted. Approved requests may
+  still create server logs, sessions or other application-side effects described in the scope.</p>
   {retest_html}
 </section>
 
@@ -663,7 +679,7 @@ def merge_source_review(result: dict, review: dict) -> dict:
     if not isinstance(review, dict) or review.get("kind") != "route-review" or review.get("project") != result.get("project"):
         raise ToolError("Source review must be a route review for the same project.")
     findings = review.get("findings", [])
-    if len(result["findings"]) + len(findings) > 100:
+    if len(result["findings"]) + len(findings) > 200:
         raise ToolError("Too many findings for one report; fix or scope the route review first.")
     merged = dict(result, findings=result["findings"] + findings, coverage=dict(result["coverage"]))
     summary = review.get("summary", {})

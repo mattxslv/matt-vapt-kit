@@ -3,7 +3,7 @@
 Private, staging-first security tooling for Matthew's team. Reports are internal
 self-assessments, not CERT-PH reports or certifications.
 
-## Available in 0.4
+## Available in 0.5
 
 | Component | What it actually does |
 |---|---|
@@ -15,6 +15,7 @@ self-assessments, not CERT-PH reports or certifications.
 | Offline route review | Trace authentication helpers in committed Next.js API handlers and flag suspected gaps |
 | Retest | Compare an earlier assessment using equivalent check evidence, never URL reachability alone |
 | Role matrix | Explicitly approved DTAP logins plus read-only endpoint checks, repeated JSON-shape evidence and allowed-role controls |
+| Accuracy regression corpus | Local verified-TLS fixtures with weak/safe controls, plus committed source-review fixtures |
 | Report generator | CERT-PH-style HTML/PDF report, clearly marked as an MVK self-assessment, with PNG evidence figures |
 | Docker tools | Core tools plus separate pinned ZAP, Nuclei, Gitleaks, Semgrep, Subfinder and testssl images |
 
@@ -250,6 +251,31 @@ acknowledgement, not independently proven revocation. The maximum is 196 request
 for eight accounts and ten routes, all serial and inside the approved interval/window.
 Do not run against production or change application/infrastructure configuration
 to force the checks to pass.
+
+### Accuracy benchmark and limitations
+
+```sh
+.venv/bin/python -m unittest discover -s tests -p test_accuracy_benchmark.py
+.venv/bin/python -m unittest discover -s tests -p test_routes.py
+.venv/bin/python -m unittest discover -s tests
+```
+
+The benchmark requires local `openssl`. It starts a temporary loopback HTTPS server
+with a test certificate, uses the real pinned request transport and report pipeline,
+and replaces public DNS/socket destinations only inside the test process. It never
+contacts DTAP or PEMEDES. The fixtures include header-value boundary cases, duplicate
+CSP policies, script directive overrides, malformed HSTS, soft-404 pages, exposed
+files, minimal health responses, ignored Range headers, isolated role sessions,
+intentional role-policy bypasses and misleading 200 responses.
+
+Each run prints true positives, false positives, true negatives and false negatives
+for the HTTP corpus. The synthetic source review prints finding-level TP/FP/FN.
+The regression gate requires zero false positives and misses **on this finite corpus**.
+That is not a measured production accuracy percentage or a guarantee of no
+vulnerabilities. Source tracing, cookie-name classification, CSP policy interactions,
+small exposure signatures and configured JSON response shapes remain heuristic.
+Human review and authorized real-application testing are still required before
+sharing the toolkit as a trusted assessment tool.
 
 ### Access through Google IAP
 

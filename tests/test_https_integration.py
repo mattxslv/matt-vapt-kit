@@ -46,6 +46,7 @@ class Handler(BaseHTTPRequestHandler):
 
 @unittest.skipUnless(shutil.which("openssl"), "openssl is required for local TLS integration tests")
 class HTTPSIntegrationTests(unittest.TestCase):
+    handler = Handler
     @classmethod
     def setUpClass(cls):
         cls.directory = tempfile.TemporaryDirectory()
@@ -62,7 +63,7 @@ class HTTPSIntegrationTests(unittest.TestCase):
         server_tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         server_tls.load_cert_chain(certificate, key)
         cls.client_tls = ssl.create_default_context(cafile=str(certificate))
-        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), cls.handler)
         cls.server.socket = server_tls.wrap_socket(cls.server.socket, server_side=True)
         cls.server.seen = []
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)

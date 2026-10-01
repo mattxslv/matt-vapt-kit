@@ -181,6 +181,8 @@ def request(host: str, method: str, path: str, *, headers=None, expires_at=None,
         data = bytearray()
         if method != "HEAD":
             while len(data) < body_limit:
+                if response.isclosed():
+                    break
                 transport.settimeout(remaining_timeout(expires_at, timeout_seconds))
                 chunk = response.read1(min(16384, body_limit - len(data)))
                 remaining_timeout(expires_at)
@@ -264,8 +266,8 @@ def findings_for(observation: dict) -> list[dict]:
              "Review framing requirements and set frame-ancestors or X-Frame-Options."),
         ]
     graded = [
-        ("hsts_strong", "hsts_present", "HSTS max-age is shorter than 180 days",
-         "Browsers forget the HTTPS-only rule quickly, leaving a window for downgrade on later visits.",
+        ("hsts_strong", "hsts_present", "HSTS max-age is invalid or shorter than 180 days",
+         "Browsers may reject the HTTPS-only rule or forget it early, leaving later visits less protected.",
          "Set Strict-Transport-Security max-age to at least 15552000 (31536000 recommended)."),
         ("referrer_policy_safe", None, "Referrer policy can leak full URLs",
          "Full page URLs, including any tokens in query strings, may be sent to other sites.",

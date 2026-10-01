@@ -62,7 +62,7 @@ class GradeTests(unittest.TestCase):
         titles = [f["title"] for f in findings_for({"path": "/", "method": "HEAD", "status": 200, "checks": checks})]
         self.assertIn("Content Security Policy not observed", titles)
         self.assertNotIn("Content Security Policy allows unsafe scripts", titles)
-        self.assertNotIn("HSTS max-age is shorter than 180 days", titles)
+        self.assertNotIn("HSTS max-age is invalid or shorter than 180 days", titles)
 
     def test_legacy_records_without_graded_keys(self):
         legacy = {"html_response": True, "hsts_present": True, "csp_present": True, "nosniff": True,

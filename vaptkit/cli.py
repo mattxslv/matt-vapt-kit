@@ -40,6 +40,10 @@ def main(argv=None) -> int:
     report.add_argument("--output", type=Path, required=True)
     report.add_argument("--reviewed", action="store_true")
     report.add_argument("--html-only", action="store_true")
+    report.add_argument("--tlp", default="AMBER+STRICT",
+                        choices=["RED", "AMBER+STRICT", "AMBER", "GREEN", "CLEAR"])
+    report.add_argument("--prepared-by", default="", help="Name shown on the sign-off block")
+    report.add_argument("--agency", default="", help="Agency/Office shown in the report details")
     args = parser.parse_args(argv)
 
     if args.command == "doctor":
@@ -58,7 +62,10 @@ def main(argv=None) -> int:
             return 0
         if args.command == "report":
             from .report import generate
-            path = generate(args.input, args.output, reviewed=args.reviewed, html_only=args.html_only)
+            path = generate(
+                args.input, args.output, reviewed=args.reviewed, html_only=args.html_only,
+                tlp=args.tlp, prepared_by=args.prepared_by, agency=args.agency,
+            )
             print(f"Report written to {path}")
             return 0
         config = load_config(args.config)

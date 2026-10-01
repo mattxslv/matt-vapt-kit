@@ -1,7 +1,7 @@
 services:
   kit:
     build: .
-    image: matt-vapt-kit:0.3.0
+    image: matt-vapt-kit:0.4.0
     network_mode: none
     read_only: true
     cap_drop: [ALL]
@@ -16,7 +16,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.report
-    image: matt-vapt-kit-report:0.3.0
+    image: matt-vapt-kit-report:0.4.0
     network_mode: none
     read_only: true
     cap_drop: [ALL]

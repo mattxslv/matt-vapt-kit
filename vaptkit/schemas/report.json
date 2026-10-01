@@ -48,7 +48,17 @@
           "category": {"enum": ["data_exposure", "unauthorized_access", "configuration"]},
           "path": {"$ref": "#/$defs/path"},
           "impact": {"type": "string", "maxLength": 2000},
-          "remediation": {"type": "string", "maxLength": 2000}
+          "remediation": {"type": "string", "maxLength": 2000},
+          "owasp": {"enum": ["A01", "A02", "A03", "A04", "A05", "A06", "A07", "A08", "A09", "A10"]},
+          "cvss": {
+            "type": "object", "additionalProperties": false,
+            "required": ["version", "score", "vector"],
+            "properties": {
+              "version": {"enum": ["3.1", "4.0"]},
+              "score": {"type": "number", "minimum": 0, "maximum": 10},
+              "vector": {"type": "string", "pattern": "^CVSS:(3\\.1|4\\.0)/[A-Za-z0-9:/.]{1,200}$"}
+            }
+          }
         }
       }
     },

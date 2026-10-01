@@ -3,7 +3,7 @@
 Private, staging-first security tooling for Matthew's team. Reports are internal
 self-assessments, not CERT-PH reports or certifications.
 
-## Available in 0.3
+## Available in 0.4
 
 | Component | What it actually does |
 |---|---|
@@ -11,7 +11,7 @@ self-assessments, not CERT-PH reports or certifications.
 | Git integration | Install/remove local pre-push hooks without replacing existing hook behavior |
 | CI integration | Reusable composite action and push-to-main/staging workflow template, no PR required |
 | Scoped runner | Up to ten approved HTTPS HEAD requests; optional bearer/IAP login, no assessment redirects, bodies or crawling |
-| Report generator | Original light HTML/PDF briefing and PNG screenshots of sanitized observations |
+| Report generator | CERT-PH-style HTML/PDF report, clearly marked as an MVK self-assessment, with PNG evidence figures |
 | Docker tools | Core tools plus separate pinned ZAP, Nuclei, Gitleaks, Semgrep, Subfinder and testssl images |
 
 This is **not a complete VAPT scanner**. ZAP/Nuclei discovery adapters, authenticated
@@ -226,8 +226,38 @@ retains only selected metadata, but manual input can still contain sensitive tex
 docker compose run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
   -v /private/assessment-001:/input:ro \
   -v /private/reports:/output \
-  report report /input/assessment.json --output /output/report-001 --reviewed
+  report report /input/assessment.json --output /output/report-001 --reviewed \
+  --agency "DICT" --prepared-by "Your Name" --tlp AMBER+STRICT
 ```
+
+### Report format (MVK-SAR)
+
+The layout follows the structure of a CERT-PH penetration testing report so results
+read the same way as the external VAPT: cover page, report details and sign-off,
+1 Executive Summary (synopsis, scope, methodologies), 2 Key Findings (findings table,
+severity chart, coverage, OWASP Top 10 2025 mapping), 3 Recommendation,
+4 Vulnerability Findings (4.1 reconnaissance with evidence figures, 4.2 findings by
+severity with Solution and Affected Links/Assets, 4.3 attack and exploitation),
+5 Clean-up, 6 Disclaimer, and Appendices A (severity), B (OWASP), C (TLP),
+D (searchable evidence record).
+
+Every file is marked as ours so it can never be mistaken for a CERT-PH report:
+
+- `MVK` badge and amber **"MATT VAPT KIT | INTERNAL SELF-ASSESSMENT | NOT ISSUED BY CERT-PH"** cover ribbon.
+- Diagonal **"MATT VAPT KIT | SELF-ASSESSMENT"** watermark on every page.
+- Report ID `MVK-<PROJECT>-<YYYYMMDD>-<scope hash>` on the cover, details table and footer.
+- PDF footer: `MVK-SAR v<version> | <report ID> | Matt VAPT Kit self-assessment, not a CERT-PH report`.
+
+No CERT-PH logos, signatures, ticket numbers, analyst names or verbatim boilerplate
+are reproduced. `--tlp` (default `AMBER+STRICT`), `--prepared-by` and `--agency`
+fill the classification and details table; labels are limited to 120 printable
+characters and HTML-escaped. Dates are shown in PHT (UTC+08:00).
+
+Findings may carry optional `owasp` (`A01`-`A10`) and `cvss` (`version`, `score`,
+`vector`) fields. A CVSS score must match its severity band and vector version or
+the report is rejected. Unscored findings show "(not scored)". Configuration
+findings default to A02 and unauthorized-access findings to A01; data-exposure
+findings without an explicit category are counted as "Not mapped".
 
 Outputs: `report.html`, `report.pdf`, and `evidence-01.png` (one PNG per observation).
 The PNGs are real Chromium screenshots of **rendered, sanitized HTTP evidence**,
@@ -250,10 +280,12 @@ For HTML without browser dependencies:
 For local PDF/PNG export instead of Docker, install `.[report]`, then
 `.venv/bin/playwright install --with-deps --only-shell chromium`.
 
-The first page distinguishes **Confirmed**, **Suspected**, **Not observed in tested
-scope**, and **Not tested**. A clean vulnerability scan does not prove that a historical
-leak never occurred. No CVSS score is invented. Manual findings can use the same strict
-JSON schema; arbitrary raw scanner reports are rejected.
+Section 2 answers **"Was data exposure found?"** and **"Was unauthorized access found?"**
+with **Confirmed**, **Suspected**, **Not observed in tested scope**, or **Not tested**.
+A clean vulnerability scan does not prove that a historical leak never occurred.
+Methodologies not run are listed as "Not performed". No CVSS score is invented.
+Manual findings can use the same strict JSON schema; arbitrary raw scanner reports
+are rejected.
 
 ## Private evidence and interpretation
 

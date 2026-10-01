@@ -89,6 +89,46 @@ class ReportTests(unittest.TestCase):
             with self.assertRaises(ToolError):
                 validate_result(result)
 
+    def test_cert_style_structure_and_ownership_markers(self):
+        document = render(self.result)
+        for heading in ("1 EXECUTIVE SUMMARY", "1.2 Scope", "2 KEY FINDINGS", "3 RECOMMENDATION",
+                        "4 VULNERABILITY FINDINGS", "4.1 Reconnaissance", "4.2 Vulnerability Identification",
+                        "4.3 Attack and Exploitation", "5 CLEAN-UP", "6 DISCLAIMER",
+                        "APPENDIX A", "APPENDIX B", "APPENDIX C", "APPENDIX D"):
+            self.assertIn(heading, document)
+        self.assertIn("MVK-DEMONSTRATION-20261001-000000", document)
+        self.assertIn("MATT VAPT KIT | SELF-ASSESSMENT", document)
+        self.assertIn("NOT ISSUED BY CERT-PH", document)
+        self.assertIn("TLP:AMBER+STRICT", document)
+        self.assertIn("Low (not scored)", document)
+        self.assertIn('A02: Security Misconfiguration</td><td class="num">1', document)
+        self.assertNotIn("\u2014", document)
+
+    def test_cvss_must_match_severity_and_version(self):
+        finding = self.result["findings"][0]
+        finding["cvss"] = {"version": "3.1", "score": 3.1, "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:N/A:N"}
+        self.assertIn("Low (3.1)", render(self.result))
+        for change in ({"score": 7.5}, {"score": 3.15}, {"vector": "CVSS:4.0/AV:N"}):
+            bad = copy.deepcopy(self.result)
+            bad["findings"][0]["cvss"].update(change)
+            with self.assertRaises(ToolError):
+                validate_result(bad)
+
+    def test_unmapped_data_exposure_is_counted_honestly(self):
+        self.result["findings"][0]["category"] = "data_exposure"
+        self.assertIn("Not mapped to a category</td><td class=\"num\">1", render(self.result))
+        self.result["findings"][0]["owasp"] = "A06"
+        self.assertIn('A06: Insecure Design</td><td class="num">1', render(self.result))
+
+    def test_labels_are_escaped_and_bounded(self):
+        document = render(self.result, prepared_by="<b>Matt</b>", agency="DICT & MISS", tlp="RED")
+        self.assertIn("&lt;b&gt;Matt&lt;/b&gt;", document)
+        self.assertIn("DICT &amp; MISS", document)
+        self.assertIn("TLP:RED", document)
+        for kwargs in ({"prepared_by": "x\nInjected"}, {"agency": "a" * 121}, {"tlp": "PURPLE"}):
+            with self.assertRaises(ToolError):
+                render(self.result, **kwargs)
+
     def test_head_only_cannot_claim_untested_coverage(self):
         for profile in ("unauthenticated-head-only", "bearer-head-only"):
             self.result["profile"] = profile

@@ -12,7 +12,10 @@ from pathlib import Path
 from collections import Counter
 from contextlib import nullcontext
 
-from rich.console import Console
+from pyfiglet import Figlet
+from rich import box
+from rich.align import Align
+from rich.console import Console, Group
 from rich.panel import Panel
 from rich.style import Style
 from rich.table import Table
@@ -103,6 +106,25 @@ class LoadingMessage:
         yield message
 
 
+def print_header(console: Console) -> None:
+    width = min(console.width, 68)
+    if width < 42:
+        content = Group(
+            Text("MVK | Matt VAPT Kit", style=f"bold {ACCENT}", justify="center"),
+            Text("anti vince vulnerability", style="dim", justify="center"),
+        )
+    else:
+        wordmark = Figlet(font="small", width=60).renderText("MVK").rstrip("\n")
+        content = Group(
+            Align.center(Text(wordmark, style=ACCENT)),
+            Text("MATT VAPT KIT", style="bold", justify="center"),
+            Text("anti vince vulnerability", style="dim italic", justify="center"),
+        )
+    console.print()
+    console.print(Align.center(Panel(content, width=width, border_style=ACCENT, padding=(1, 2))))
+    console.print()
+
+
 def path_link(path: Path, label: str | None = None, *, enabled=True) -> Text:
     resolved = path.resolve()
     display = label if label is not None else str(resolved)
@@ -164,11 +186,7 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
         parent.chmod(0o700)
         output = parent / ("scan-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6])
     create_output(output)
-    title = Text("   / MVK \\     Matt VAPT Kit\n", style=f"bold {ACCENT}")
-    title.append("  |  >_   |    ", style=ACCENT)
-    title.append("anti vince vulnerability\n", style="dim")
-    title.append("   \\_____/", style=ACCENT)
-    console.print(Panel(title, border_style=ACCENT, expand=False, padding=(1, 2)))
+    print_header(console)
     links = console.is_terminal and not plain
     console.print(Text("Repository  ") + path_link(repo, enabled=links))
     console.print(Text(f"Revision    {sha[:12]}"))
@@ -200,7 +218,7 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
             row = {"check": name, "status": "NOT RUN", "detail": missing}
         else:
             try:
-                with (console.status(LoadingMessage(name), spinner="dots12", spinner_style=ACCENT,
+                with (console.status(LoadingMessage(name), spinner="dots", spinner_style=ACCENT,
                                      refresh_per_second=4) if animate else nullcontext()):
                     detail = action()
                 row = {"check": name, "status": "DONE", "detail": detail or "No issue reported by this check."}
@@ -223,7 +241,7 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
     docker_ready = False
     if shutil.which("docker"):
         try:
-            with (console.status(LoadingMessage("Checking Docker"), spinner="dots12", spinner_style=ACCENT,
+            with (console.status(LoadingMessage("Checking Docker"), spinner="dots", spinner_style=ACCENT,
                                  refresh_per_second=4) if animate else nullcontext()):
                 result = subprocess.run(["docker", "info", "--format={{.ServerVersion}}"],
                                         capture_output=True, timeout=15)
@@ -278,8 +296,11 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
             return "No supported Next.js API handlers found; route review is not applicable."
         return f"{summary['handlers']} handlers reviewed; no suspected authentication gaps reported."
     stage("4 / 4  API authentication review", routes)
-    table = Table(title="Assessment summary", header_style="bold", box=None, padding=(0, 2))
-    table.add_column("Check"); table.add_column("Status"); table.add_column("Detail", overflow="fold")
+    table = Table(title="Assessment summary", title_style="bold", header_style="bold",
+                  box=box.ROUNDED, border_style=ACCENT, show_lines=True, padding=(0, 1))
+    table.add_column("Check", ratio=2)
+    table.add_column("Status", no_wrap=True)
+    table.add_column("Detail", ratio=4, overflow="fold")
     for row in rows:
         color = "green" if row["status"] == "DONE" else "yellow"
         table.add_row(Text(row["check"]), Text(row["status"], style=color), Text(row["detail"]))

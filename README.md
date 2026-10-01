@@ -69,11 +69,14 @@ with explicit [scope approval](docs/pilot-checklist.md).
 If the CLI is already installed, `vapt scan /path/to/your-project` does the same work.
 Use `NO_COLOR=1 ./scan /path/to/your-project` for uncolored output. Redirected output
 has no animated spinner.
-The terminal uses an MVK shield mark, the tagline **"anti vince vulnerability"**,
+The terminal uses a centered PyFiglet MVK wordmark, the tagline **"anti vince vulnerability"**,
 and 60 original shuffled loading captions, including "Consulting the rubber duck
 council..." and "Turning paranoia into paperwork...". A spinner accompanies
 the actual task and elapsed time, without a loading bar or invented percentages.
 There are no artificial delays.
+The header switches to a compact wordmark in narrow terminals. Scan details stay
+left-aligned for readability, and the final summary has rounded borders and row
+separators. Loading uses the simple dot spinner with the shuffled captions, no bar.
 Use `./scan /path/to/your-project --plain` for no colors or motion, or set
 `MVK_REDUCED_MOTION=1` to disable animation while keeping colors.
 Repository/evidence directories and generated result files are clickable OSC 8

@@ -10,10 +10,22 @@ from unittest.mock import patch
 from rich.console import Console
 
 from vaptkit.process import ToolError, git
-from vaptkit.scan import LOADING_LINES, LoadingMessage, path_link, scan, static_summary
+from vaptkit.scan import LOADING_LINES, LoadingMessage, path_link, print_header, scan, static_summary
 
 
 class ScanTests(unittest.TestCase):
+    def test_header_centers_and_fits_wide_and_narrow_terminals(self):
+        for width in (30, 40, 80, 120):
+            stream = io.StringIO()
+            console = Console(file=stream, force_terminal=False, width=width)
+            print_header(console)
+            lines = stream.getvalue().splitlines()
+            self.assertTrue(all(len(line) <= width for line in lines))
+            self.assertIn("anti vince vulnerability", stream.getvalue())
+            top = next(line for line in lines if "╭" in line)
+            self.assertEqual(top.index("╭"), (width - min(width, 68)) // 2)
+            self.assertNotIn("\x1b", stream.getvalue())
+
     def test_loading_messages_rotate_without_fake_progress(self):
         with patch("vaptkit.scan.time.monotonic", return_value=10), patch(
             "vaptkit.scan.random.sample", return_value=list(LOADING_LINES)

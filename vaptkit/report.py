@@ -142,7 +142,17 @@ def generate(source: Path, output: Path, *, reviewed: bool, html_only=False) -> 
                         images.append((index, base64.b64encode(image).decode(), hashlib.sha256(image).hexdigest()))
                     document = render(result, images)
                     page.set_content(document, wait_until="load")
-                    pdf = page.pdf(format="A4", print_background=True, prefer_css_page_size=True, tagged=True, outline=True)
+                    pdf = page.pdf(
+                        format="A4", print_background=True, prefer_css_page_size=True,
+                        tagged=True, outline=True, display_header_footer=True,
+                        header_template="<span></span>",
+                        footer_template=(
+                            '<div style="font-size:8px;width:100%;padding:0 16mm;color:#526374">'
+                            'Matt VAPT Kit | Internal use only'
+                            '<span style="float:right">Page <span class="pageNumber"></span>'
+                            ' of <span class="totalPages"></span></span></div>'
+                        ),
+                    )
                     write_private(output / "report.pdf", pdf)
                 finally:
                     browser.close()

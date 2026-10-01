@@ -69,5 +69,5 @@ footer { border-top: 2px solid var(--ink); padding-top: 16px; margin-top: 48px; 
   .evidence { padding: 18px; }
   .meta { gap: 12px 24px; }
   figure { margin: 16px 0; }
-  footer { margin-top: 12px; padding-top: 10px; font-size: 8pt; }
+  footer { display: none; }
 }

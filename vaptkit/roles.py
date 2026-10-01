@@ -16,6 +16,7 @@ from .assessment import (
 from .browser_login import login as browser_login
 from .exposure import content_class
 from .process import ToolError
+from .service_login import ServiceAccountAccess
 
 LOGIN = "/api/auth/signin"
 LOGOUT = "/api/auth/signout"
@@ -35,8 +36,8 @@ def validate(config: dict, approval: dict) -> None:
     settings = config.get("role_testing")
     if not settings or settings["adapter"] != "dtap-cookie-v1":
         raise ToolError("Role checks require the DTAP cookie adapter.")
-    if config.get("access") and config["access"]["type"] != "iap-browser":
-        raise ToolError("Role checks support only browser IAP gateway access, not bearer access.")
+    if config.get("access") and config["access"]["type"] not in ("iap-browser", "iap-service-account"):
+        raise ToolError("Role checks support browser or keyless IAP gateway access, not bearer access.")
     if not isinstance(approval, dict) or approval.get("role_login") is not True or approval.get("method") != "GET":
         raise ToolError("Role checks require explicit role_login approval and GET paths.")
     head_scope = {key: value for key, value in approval.items() if key not in ("role_login", "role_accounts")}
@@ -171,6 +172,7 @@ def run(config: dict, approval: dict, output: Path) -> tuple[Path, int]:
     first = True
     stop_cleanup = False
     gateway_headers = {}
+    gateway_session = None
 
     def call(method, path, cookies=None, body=None):
         nonlocal active_path, first, stop_cleanup
@@ -178,16 +180,17 @@ def run(config: dict, approval: dict, output: Path) -> tuple[Path, int]:
         if not first:
             time.sleep(approval["interval_seconds"])
         first = False
-        headers = {"Accept": "application/json", "Cache-Control": "no-cache", **gateway_headers}
-        if cookies:
-            headers["Cookie"] = "; ".join(
-                ([gateway_headers["Cookie"]] if gateway_headers.get("Cookie") else [])
-                + [f"{name}={value}" for name, value in cookies.items()]
-            )
-        if body is not None:
-            headers["Content-Type"] = "application/json"
         try:
             validate(config, approval)
+            access = gateway_session.headers() if gateway_session else gateway_headers
+            headers = {"Accept": "application/json", "Cache-Control": "no-cache", **access}
+            if cookies:
+                headers["Cookie"] = "; ".join(
+                    ([access["Cookie"]] if access.get("Cookie") else [])
+                    + [f"{name}={value}" for name, value in cookies.items()]
+                )
+            if body is not None:
+                headers["Content-Type"] = "application/json"
             status, received, data = request(
                 host, method, path, headers=headers, body=body, body_limit=BODY_LIMIT + 1,
                 expires_at=expires, timeout_seconds=timeout,
@@ -235,7 +238,9 @@ def run(config: dict, approval: dict, output: Path) -> tuple[Path, int]:
                        "kind": kind, "message": message[:256]})
 
     try:
-        if config.get("access"):
+        if config.get("access", {}).get("type") == "iap-service-account":
+            gateway_session = ServiceAccountAccess(config, approval, validate_scope=validate)
+        elif config.get("access"):
             gateway_headers = browser_login(config, approval, validate_scope=validate)
         inspect("anonymous", "anonymous")
         for account_id in approval["role_accounts"]:
@@ -277,6 +282,8 @@ def run(config: dict, approval: dict, output: Path) -> tuple[Path, int]:
     except (ToolError, OSError, http.client.HTTPException) as error:
         error_record(error)
     finally:
+        if gateway_session:
+            gateway_session.clear()
         gateway_headers.clear()
         secrets.clear()
 
@@ -332,8 +339,11 @@ def run(config: dict, approval: dict, output: Path) -> tuple[Path, int]:
                              "Sign-out acknowledgement is not proof of server-side session revocation."
                              + (" Google IAP access was configured for every matrix request, including the "
                                 "application-anonymous control. Public access outside IAP was not tested. "
-                                "DTAP sign-out does not revoke the IAP browser session."
-                                if config.get("access") else "")},
+                                "DTAP sign-out does not revoke gateway credentials."
+                                if config.get("access") else "")
+                             + (" Keyless IAP signing was configured through Google IAM Credentials; those requests are outside "
+                                "the application matrix request count."
+                                if config.get("access", {}).get("type") == "iap-service-account" else "")},
     }
     destination = output / "assessment.json"
     write_private(destination, json.dumps(result, indent=2))

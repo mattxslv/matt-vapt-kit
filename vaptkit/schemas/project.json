@@ -23,6 +23,19 @@
         {
           "type": "object",
           "additionalProperties": false,
+          "required": ["type", "service_account"],
+          "properties": {
+            "type": {"const": "iap-service-account"},
+            "service_account": {
+              "type": "string",
+              "not": {"pattern": "\\s"},
+              "pattern": "^[a-z][a-z0-9-]{4,28}[a-z0-9]@[a-z][a-z0-9-]{4,28}[a-z0-9]\\.iam\\.gserviceaccount\\.com$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
           "required": [
             "type",
             "token_env",

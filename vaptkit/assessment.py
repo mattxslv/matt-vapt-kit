@@ -368,10 +368,16 @@ def assess(config: dict, approval: dict, output: Path, baseline: dict | None = N
     access = config.get("access", {}).get("type")
     profile = ("unauthenticated-exposure" if approval.get("exposure_checks") else
                "iap-browser-head-only" if access == "iap-browser" else
+               "iap-service-account-head-only" if access == "iap-service-account" else
                "bearer-head-only" if access else "unauthenticated-head-only")
     if baseline is not None and baseline["profile"] != profile:
         raise ToolError("Retest requires the same access and assessment profile as the baseline.")
-    if config.get("access", {}).get("type") == "iap-browser":
+    gateway_session = None
+    if access == "iap-service-account":
+        from .service_login import ServiceAccountAccess
+        gateway_session = ServiceAccountAccess(config, approval)
+        headers = {}
+    elif access == "iap-browser":
         from .browser_login import login
         headers = login(config, approval)
     else:
@@ -384,6 +390,9 @@ def assess(config: dict, approval: dict, output: Path, baseline: dict | None = N
     expires_at = utc(approval["expires_at"])
     timeout = approval.get("request_timeout_seconds", 10)
 
+    def request_headers():
+        return gateway_session.headers() if gateway_session else headers
+
     def recorded_request(host, method, path, **kwargs):
         status, received, body = request(host, method, path, **kwargs)
         requests.append({"method": method, "path": path, "status": status})
@@ -393,7 +402,7 @@ def assess(config: dict, approval: dict, output: Path, baseline: dict | None = N
     def reobserve(path):
         time.sleep(approval["interval_seconds"])
         validate_approval(config, approval)
-        item = observe(host, path, headers=headers, expires_at=expires_at, timeout_seconds=timeout)
+        item = observe(host, path, headers=request_headers(), expires_at=expires_at, timeout_seconds=timeout)
         requests.append({"method": "HEAD", "path": path, "status": item["status"]})
         return item
 
@@ -402,7 +411,7 @@ def assess(config: dict, approval: dict, output: Path, baseline: dict | None = N
             if index:
                 time.sleep(approval["interval_seconds"])
             validate_approval(config, approval)
-            observation = observe(host, path, headers=headers, expires_at=expires_at, timeout_seconds=timeout)
+            observation = observe(host, path, headers=request_headers(), expires_at=expires_at, timeout_seconds=timeout)
         except (ToolError, OSError, http.client.HTTPException) as error:
             kind, message = failure_detail(error)
             errors.append({"path": path, "kind": kind, "message": message})
@@ -412,7 +421,7 @@ def assess(config: dict, approval: dict, output: Path, baseline: dict | None = N
         findings.extend(findings_for(observation))
         status = observation["status"]
         if not 200 <= status < 300:
-            errors.append({"path": path, "kind": "http", "message": http_gap(status, bool(headers))})
+            errors.append({"path": path, "kind": "http", "message": http_gap(status, bool(access))})
         if 300 <= status < 400 or status in (401, 403, 429) or status >= 500:
             break
     if not errors:
@@ -434,6 +443,8 @@ def assess(config: dict, approval: dict, output: Path, baseline: dict | None = N
             kind, message = failure_detail(error)
             errors.append({"path": error.path if isinstance(error, HTTPStop) else "/",
                            "kind": kind, "message": "Verification or exposure stage: " + message})
+    if gateway_session:
+        gateway_session.clear()
     result = {
         "schema_version": 1, "project": config["project"], "target": config["target"]["url"],
         "started_at": start, "finished_at": datetime.now(timezone.utc).isoformat(),
@@ -448,7 +459,9 @@ def assess(config: dict, approval: dict, output: Path, baseline: dict | None = N
             "unauthorized_access": "not_tested",
             "note": (
                 "Google IAP access used a dedicated browser session before the assessment; normal login page requests are outside HEAD check counts. "
-                if profile == "iap-browser-head-only" else ""
+                if profile == "iap-browser-head-only" else
+                "Google IAP access was configured for short-lived, keyless service-account JWTs. IAM signing requests are outside HEAD check counts. "
+                if profile == "iap-service-account-head-only" else ""
             ) + "Header values were graded. Confirmation requires a repeated observation; errors may prevent verification. "
             + ("Public exposure checks were enabled for a fixed list, a random-path baseline and up to three discovered source maps. Signatures use at most 2 KB; bodies are not stored. This is not comprehensive data-exposure coverage. "
                if approval.get("exposure_checks") else "")

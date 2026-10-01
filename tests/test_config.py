@@ -103,6 +103,22 @@ class ConfigTests(unittest.TestCase):
                 load_config(self.write(config))
             self.assertNotIn("PRIVATE_SENTINEL", str(error.exception))
 
+    def test_keyless_access_config_requires_account_not_keys(self):
+        self.config["access"] = {
+            "type": "iap-service-account",
+            "service_account": "fixture-pilot@fixture-project.iam.gserviceaccount.com",
+        }
+        self.assertEqual(load_config(self.write())["access"], self.config["access"])
+        for changes in (
+            {"service_account": "user@example.invalid"}, {"service_account": "../outside"},
+            {"service_account": "fixture-pilot@fixture-project.iam.gserviceaccount.com\n"},
+            {"key_file": "/private/key.json"}, {"token": "PRIVATE_SENTINEL"},
+        ):
+            config = copy.deepcopy(self.config)
+            config["access"].update(changes)
+            with self.assertRaises(ConfigError):
+                load_config(self.write(config))
+
     def test_invalid_paths(self):
         for prefix in ("//elsewhere", "/api/../admin", "/%2e%2e/", "/api?token=x",
                        "/api#fragment", "/api\\admin", "/api\n"):

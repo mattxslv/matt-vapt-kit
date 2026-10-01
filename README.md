@@ -432,6 +432,41 @@ The included report fixture is synthetic and cannot establish any project's secu
 
 ### Access through Google IAP
 
+For approved unattended access, the toolkit supports a dedicated keyless service
+account instead of browser login:
+
+```yaml
+access:
+  type: iap-service-account
+  service_account: your-pilot@your-staging-project.iam.gserviceaccount.com
+```
+
+Use this in a private project configuration and generate a new approval for its
+exact digest. Both `vapt run` and `vapt roles` support it. The account must already
+have `roles/iap.httpsResourceAccessor` on the specific staging IAP resource, and the
+current gcloud identity must have permission to sign JWTs for that account
+(`roles/iam.serviceAccountTokenCreator` on that service account only). The IAM
+Credentials API must be enabled. Provisioning these is an explicit administrator
+action, never an automatic runner action. Do not reuse a production or
+secret-management identity.
+
+The adapter calls `gcloud auth print-access-token` with captured output, then the
+Google IAM Credentials `signJwt` API over verified, pinned HTTPS. JWTs are scoped
+to the configured origin, expire within five minutes and never outlive the
+approval. They are refreshed when less than 30 seconds remain, with approval
+revalidated before every use. Tokens are kept in process memory, not files,
+arguments or report output. Configured application credential variables are
+removed from the gcloud subprocess environment. No service-account key files
+are accepted or created.
+
+The signed JWT uses `Proxy-Authorization`; DTAP application cookies remain
+separate and isolated per account. This avoids Google browser prompts, **not the
+need for DTAP QA credentials**. Signing errors stop the assessment without
+retrying or falling back to another identity. IAM credential requests are
+additional to the bounded application request count. Current browser-login
+and bearer-header behavior is unchanged; arbitrary bearer role testing remains
+unsupported.
+
 Do not disable IAP or alter IAM just to obtain a passing assessment.
 A normal `gcloud auth print-identity-token` token is not necessarily accepted:
 IAP programmatic access may require a configured client allowlist. The toolkit

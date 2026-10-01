@@ -83,6 +83,7 @@ PROFILE_TYPES = {
     "unauthenticated-head-only": "Black-box self-assessment (unauthenticated, header-level)",
     "bearer-head-only": "Gray-box self-assessment (token gateway access, header-level)",
     "iap-browser-head-only": "Gray-box self-assessment (Google IAP sign-in, header-level)",
+    "iap-service-account-head-only": "Gray-box self-assessment (keyless Google IAP access, header-level)",
     "unauthenticated-exposure": "Black-box self-assessment (headers and bounded public exposure)",
     "dtap-role-matrix": "Gray-box self-assessment (approved DTAP endpoint role matrix)",
 }

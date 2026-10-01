@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "cases": [
+    {"id": "simple-search", "method": "GET", "value": "quarterly report", "family": null, "expected": "passed"},
+    {"id": "apostrophe-name", "method": "GET", "value": "O'Reilly", "family": null, "expected": "passed"},
+    {"id": "ordinary-json", "method": "POST", "value": "Please approve the application.", "family": null, "expected": "passed"},
+    {"id": "comparison-text", "method": "POST", "value": "The total is less than 10 and greater than 2.", "family": null, "expected": "passed"},
+    {"id": "xss-script-query", "method": "GET", "value": "<script>alert('fixture')</script>", "family": "941", "expected": "blocked"},
+    {"id": "xss-handler-json", "method": "POST", "value": "<img src=x onerror=alert('fixture')>", "family": "941", "expected": "blocked"},
+    {"id": "sqli-union-query", "method": "GET", "value": "1 UNION SELECT username,password FROM users--", "family": "942", "expected": "blocked"},
+    {"id": "sqli-boolean-json", "method": "POST", "value": "' OR 1=1--", "family": "942", "expected": "blocked"},
+    {"id": "application-denial", "method": "GET", "value": "restricted fixture", "family": null, "expected": "origin_denied"}
+  ]
+}

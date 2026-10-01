@@ -113,7 +113,77 @@ These are locally authored regressions, not an independent blind evaluation.
 Live reflected/DOM scanning needs a separately approved bounded adapter. Live
 stored XSS additionally needs explicit write, cleanup and disposable-data approval.
 
+## Local ModSecurity and OWASP CRS lab
+
+This exercises the upstream **ModSecurity + OWASP CRS Nginx image**, not a mock WAF
+and not Google Cloud Armor. It requires Docker and the Python CLI environment.
+No GCP project, billing account, cloud credentials or staging endpoint is involved.
+Image downloads use the internet; runtime requests stay inside isolated containers.
+
+From the repository root:
+
+```sh
+docker compose build kit
+docker pull owasp/modsecurity-crs@sha256:ac057618e2c42e8192c000cb918ae1dff11446cf12beb6b23d4fa0065b0fe5be
+MVK_RUN_WAF_LAB=1 .venv/bin/python -m unittest discover -s tests -p test_waf_lab.py -v
+```
+
+The dependency manifest is `tests/fixtures/waf-images.json`. The upstream WAF
+image is digest-pinned; the fixture origin uses your locally built toolkit image,
+resolved to an immutable local image ID before starting the run. The lab never
+pulls images implicitly. Missing Docker/images fail an explicitly enabled run
+rather than silently reducing coverage.
+
+### What it verifies
+
+Nine cases run in both `On` and `DetectionOnly` modes: four XSS/SQL-injection
+request patterns, four legitimate controls and one application-generated 403.
+Each case has a direct-origin control and two fresh requests through the WAF.
+
+| Outcome | Required evidence |
+|---|---|
+| Blocked by WAF | Two 403s, no origin delivery, no origin marker, correlated audit statuses, expected CRS signature family and anomaly-blocking rule |
+| Passed through | Two successful responses with matching markers and independently observed origin delivery |
+| Origin denied | Matching 403 origin control and two matching application responses; not misclassified as WAF blocking |
+| Inconclusive | Missing control, audit attribution, repetition or consistent evidence |
+
+Enforcement expects four blocked attack cases, four allowed legitimate cases and
+one correctly attributed application denial. Detection-only mode must still log
+the expected attack signature families, but all eight non-denial cases reach the
+origin. Logged detection is not mislabeled as blocking.
+
+Zero false positives/misses is a gate **for this small corpus only**. Inconclusive
+results fail the expected-outcome check; they are not silently counted as safe.
+The origin only acknowledges synthetic requests. It does not execute SQL or
+JavaScript, so accepted payloads do not establish an application exploit.
+The separate browser XSS lab verifies script execution.
+
+### Isolation and cleanup
+
+The origin uses `--network=none`; the WAF shares that origin's loopback-only network
+namespace. No host ports or Docker socket are exposed. Each container has a
+512 MiB memory cap, one CPU, a 128-PID limit, dropped capabilities and
+`no-new-privileges`. Only the origin's synthetic handler is mounted read-only.
+No host credentials, repository source trees or live data are mounted.
+
+The upstream WAF requires a writable container filesystem for generated config.
+Its audit file contains synthetic request metadata and stays in that disposable
+layer. Request/response bodies are excluded from audit parts; synthetic query
+payloads and match text can still appear. Docker log persistence is disabled.
+The test reads audits in memory and retains only correlated status/rule evidence.
+Cleanup stops only the containers it created, removes their writable layers via
+`--rm`, and verifies they are gone. Downloaded images remain cached for future runs.
+
+The GitHub **Local WAF lab** workflow is manual-only. It needs no cloud credentials
+and creates no GCP resources. GitHub Actions usage can still consume runner minutes
+under your organization's plan; run on your workstation to avoid that usage.
+
+Results mean **local WAF enforcement verified in the tested cases**. Cloud Armor's
+rule translation, routing, IAM, logging and actual enforcement still require a
+separate Google-hosted assessment.
+
 ## Sources
 
 - [Cloud Armor integrations and IAP](https://docs.cloud.google.com/armor/docs/integrating-cloud-armor)
 - [Preconfigured WAF rules and inspection limits](https://docs.cloud.google.com/armor/docs/configure-waf)
+- [Upstream OWASP CRS Docker image and settings](https://github.com/coreruleset/modsecurity-crs-docker)

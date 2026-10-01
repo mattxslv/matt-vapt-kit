@@ -65,6 +65,13 @@ if those dependencies are missing; it does not silently skip. Toolkit CI runs th
 same lab inside the network-disabled report container. See
 [Cloud Armor and XSS](docs/cloud-armor-and-xss.md) for the evidence model.
 
+For WAF evidence changes, run the opt-in
+[local ModSecurity/CRS lab](docs/cloud-armor-and-xss.md#local-modsecurity-and-owasp-crs-lab).
+Its image pull is explicit, runtime network is loopback-only, and it is also
+available as a manual GitHub workflow. Changing the pinned image requires
+rerunning the full enforcement/detection-only corpus; do not weaken expected
+outcomes just to accommodate a new image.
+
 ## Boundaries
 
 Do not run live assessments, enable cloud permissions, deploy applications or

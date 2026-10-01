@@ -16,6 +16,7 @@ you plan to use. None of the steps in the first-run walkthrough scans a live tar
 | Keyless IAP access | gcloud signed into an approved identity; administrator-provisioned staging permissions |
 | Read-only Cloud Armor review | gcloud and approved Cloud Run/Compute metadata read permissions |
 | Local XSS browser lab | The `report` extra and Playwright Chromium; no cloud credentials or live target |
+| Local WAF enforcement lab | Docker, local core image and pinned upstream ModSecurity/CRS image; no GCP resources |
 | DTAP endpoint-role checks | Owner-approved scope, verified role policy and private QA credentials |
 
 The examples use Linux shell commands. Linux is the CI environment. Native

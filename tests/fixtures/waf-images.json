@@ -1,0 +1,4 @@
+{
+  "waf": "owasp/modsecurity-crs@sha256:ac057618e2c42e8192c000cb918ae1dff11446cf12beb6b23d4fa0065b0fe5be",
+  "origin": "matt-vapt-kit:local"
+}

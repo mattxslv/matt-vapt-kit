@@ -30,7 +30,7 @@ an external vulnerability assessment and penetration test.
 | Review API authentication | Offline, heuristic review of committed Next.js route handlers |
 | Review Cloud Armor configuration | Read-only Cloud Run/backend/policy metadata, with explicit association and coverage gaps |
 | Produce private reports | Self-contained HTML, optional PDF and sanitized evidence figures |
-| Exercise the detector locally | HTTPS fixtures, ownership/workflow and browser XSS labs, plus a separate release challenge |
+| Exercise the detector locally | HTTPS fixtures, ownership/workflow, browser XSS and real ModSecurity/CRS labs, plus a separate release challenge |
 
 Live role testing currently supports **DTAP's cookie-login contract only**.
 Record ownership, workflow and XSS checks are local-lab capabilities, not live
@@ -39,6 +39,8 @@ scan runners or scheduled jobs.
 
 See [Cloud Armor and XSS](docs/cloud-armor-and-xss.md) for the new modules' commands,
 evidence requirements and limits. WAF configuration is not proof of application safety.
+The [local WAF lab](docs/cloud-armor-and-xss.md#local-modsecurity-and-owasp-crs-lab)
+verifies real request blocking without GCP resources; it does not verify Cloud Armor.
 
 ## First run: no live target required
 

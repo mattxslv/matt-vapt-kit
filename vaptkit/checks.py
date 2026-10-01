@@ -77,11 +77,20 @@ def check(repo: Path, revision: str, *, static: bool = False) -> None:
     with tempfile.TemporaryDirectory(prefix="matt-vapt-history-") as directory:
         bare = Path(directory) / "history.git"
         run(["git", "clone", "--quiet", "--bare", "--shared", str(repo), str(bare)])
+        # Honor the committed .gitleaksignore (reviewed historical findings).
+        ignore_blob = []
+        try:
+            content = git(repo, "show", f"{sha}:.gitleaksignore")
+            ignore_path = Path(directory) / ".gitleaksignore"
+            ignore_path.write_text(content + "\n")
+            ignore_blob = ["--gitleaks-ignore-path", str(ignore_path)]
+        except ToolError:
+            pass
         run(docker_repo(repo) + [
-            "-v", f"{bare}:{bare}:ro", "-w", str(bare),
+            "-v", f"{directory}:{directory}:ro", "-w", str(bare),
             GITLEAKS, "git", str(bare), "--redact", "--no-banner",
             f"--log-opts=--no-textconv --no-ext-diff {sha}",
-        ])
+        ] + ignore_blob)
     audit_commit(repo, sha)
     if static:
         # Materialize only this committed tree, never the developer's dirty working files.

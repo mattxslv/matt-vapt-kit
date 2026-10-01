@@ -2,6 +2,7 @@
 import json
 import os
 import re
+import random
 import shutil
 import subprocess
 import time
@@ -13,6 +14,8 @@ from contextlib import nullcontext
 
 from rich.console import Console
 from rich.panel import Panel
+from rich.progress_bar import ProgressBar
+from rich.style import Style
 from rich.table import Table
 from rich.text import Text
 
@@ -24,10 +27,66 @@ from .routes import review
 
 ACCENT = "#d68b68"
 LOADING_LINES = (
-    "Getting the crabs out...",
     "Checking under the digital sofa...",
     "Asking the bugs to form a queue...",
     "Untangling the suspicious spaghetti...",
+    "Consulting the rubber duck council...",
+    "Putting on the tiny detective hat...",
+    "Turning paranoia into paperwork...",
+    "Reading the fine print in the fine print...",
+    "Interviewing a very nervous semicolon...",
+    "Inspecting the suspiciously quiet corner...",
+    "Giving the gremlins a clipboard...",
+    "Counting the plot holes...",
+    "Following the breadcrumb-shaped bugs...",
+    "Checking the pockets of the code...",
+    "Asking the skeletons about their closet...",
+    "Making eye contact with the TODOs...",
+    "Looking behind the magic curtain...",
+    "Checking whether the duck has questions...",
+    "Opening the drawer labeled 'temporary'...",
+    "Measuring the spaghetti by the noodle...",
+    "Preparing a strongly worded sticky note...",
+    "Looking for the other end of this string...",
+    "Taking the scenic route through the syntax...",
+    "Asking the exceptions to explain themselves...",
+    "Giving the brackets a head count...",
+    "Checking the trapdoor under the trapdoor...",
+    "Organizing the mystery drawer...",
+    "Reading code with one eyebrow raised...",
+    "Putting the assumptions on a witness stand...",
+    "Looking for duct tape in important places...",
+    "Consulting a suspiciously large checklist...",
+    "Following the trail of abandoned comments...",
+    "Checking the emergency emergency exit...",
+    "Asking 'what could possibly go wrong?'...",
+    "Counting the layers of 'just this once'...",
+    "Taking attendance at the bug meeting...",
+    "Offering the race conditions a chair...",
+    "Untying a knot with excellent documentation...",
+    "Trying to understand past-us...",
+    "Asking the edge cases to come inside...",
+    "Looking for the manual behind the manual...",
+    "Checking the secret compartment's compartment...",
+    "Putting a magnifying glass on the magnifying glass...",
+    "Making a spreadsheet for the gremlins...",
+    "Looking both ways before crossing a callback...",
+    "Asking the magic numbers for identification...",
+    "Peeking into the box marked 'probably fine'...",
+    "Giving the code a politely suspicious look...",
+    "Looking for the loose thread in the sweater...",
+    "Reading the recipe for this particular spaghetti...",
+    "Checking whether 'later' ever happened...",
+    "Taking notes for the next rubber duck meeting...",
+    "Asking the happy path about its neighbors...",
+    "Making room for one more edge case...",
+    "Checking the 'nothing to see here' sign...",
+    "Inspecting the very professional duct tape...",
+    "Looking for the sequel to the workaround...",
+    "Asking the comments to match their alibis...",
+    "Checking the basement of the abstraction...",
+    "Putting the puzzle pieces right-side up...",
+    "Looking for the bug wearing a feature costume...",
 )
 
 
@@ -35,24 +94,44 @@ class LoadingMessage:
     def __init__(self, task: str):
         self.task = task
         self.started = time.monotonic()
+        self.phrases = random.sample(LOADING_LINES, len(LOADING_LINES))
 
     def __rich_console__(self, console, options):
         elapsed = max(0, time.monotonic() - self.started)
-        phrase = LOADING_LINES[int(elapsed // 4) % len(LOADING_LINES)]
+        phrase = self.phrases[int(elapsed // 4) % len(self.phrases)]
         message = Text(phrase, style=ACCENT)
         message.append(f"  {self.task}  ({elapsed:.0f}s)", style="dim")
         yield message
+        yield ProgressBar(total=None, width=24, pulse=True, animation_time=elapsed,
+                          pulse_style=ACCENT, style="grey23")
 
 
-def static_summary(raw: str) -> list[dict]:
+def path_link(path: Path, label: str | None = None, *, enabled=True) -> Text:
+    resolved = path.resolve()
+    display = label if label is not None else str(resolved)
+    display = "".join(char if char.isprintable() else "?" for char in display)
+    return Text(display,
+                style=Style(color=ACCENT, underline=True, link=resolved.as_uri()) if enabled else None)
+
+
+def static_summary(raw: str, *, errors: list[dict] | None = None) -> list[dict]:
     if len(raw) > 20_000_000:
         raise ToolError("Static output exceeded the size limit; results need a narrower review.")
     try:
         value = json.loads(raw)
         if not isinstance(value, dict) or not isinstance(value.get("results"), list):
             raise ValueError
-        if value.get("errors"):
+        processing_errors = value.get("errors", [])
+        if not isinstance(processing_errors, list) or any(not isinstance(error, dict) for error in processing_errors):
+            raise ValueError
+        if processing_errors and errors is None:
             raise ToolError("Static analysis reported processing errors; coverage is incomplete.")
+        if errors is not None:
+            for error in processing_errors:
+                kind = error.get("type", "ProcessingError")
+                if not isinstance(kind, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,79}", kind):
+                    kind = "ProcessingError"
+                errors.append({"type": kind})
         rows = []
         for item in value["results"]:
             path = item["path"]
@@ -88,10 +167,15 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
         parent.chmod(0o700)
         output = parent / ("scan-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6])
     create_output(output)
-    title = Text("  \\_(o_o)_/   Matt VAPT Kit\n", style=f"bold {ACCENT}")
-    title.append("  Small command. Clear evidence.", style="dim")
+    title = Text("   / MVK \\     Matt VAPT Kit\n", style=f"bold {ACCENT}")
+    title.append("  |  >_   |    ", style=ACCENT)
+    title.append("anti vince vulnerability\n", style="dim")
+    title.append("   \\_____/", style=ACCENT)
     console.print(Panel(title, border_style=ACCENT, expand=False, padding=(1, 2)))
-    console.print(Text(f"Repository  {repo}\nRevision    {sha[:12]}\nEvidence    {output.resolve()}"))
+    links = console.is_terminal and not plain
+    console.print(Text("Repository  ") + path_link(repo, enabled=links))
+    console.print(Text(f"Revision    {sha[:12]}"))
+    console.print(Text("Evidence    ") + path_link(output, enabled=links))
     console.print("No live target requests, application logins or cloud changes.", style="yellow")
     console.print("Docker may download pinned scanner images. pnpm audits send package metadata to npm.")
     console.print("Only committed files are checked. Static matches remain suspected until reviewed.\n")
@@ -119,7 +203,7 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
             row = {"check": name, "status": "NOT RUN", "detail": missing}
         else:
             try:
-                with (console.status(LoadingMessage(name), spinner="dots", spinner_style=ACCENT,
+                with (console.status(LoadingMessage(name), spinner="dots12", spinner_style=ACCENT,
                                      refresh_per_second=4) if animate else nullcontext()):
                     detail = action()
                 row = {"check": name, "status": "DONE", "detail": detail or "No issue reported by this check."}
@@ -130,7 +214,7 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
                     "status": "cancelled", "checks": rows,
                     "note": "Partial results only. Remaining checks were not run.",
                 }, indent=2))
-                console.print(Text(f"Partial summary: {(output / 'summary.json').resolve()}", style="yellow"))
+                console.print(Text("Partial summary: ") + path_link(output / "summary.json", enabled=links))
                 raise
             except (ToolError, OSError, subprocess.CalledProcessError) as error:
                 detail = str(error) if isinstance(error, ToolError) else "Tool operation failed; raw details withheld."
@@ -142,7 +226,7 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
     docker_ready = False
     if shutil.which("docker"):
         try:
-            with (console.status(LoadingMessage("Checking Docker"), spinner="dots", spinner_style=ACCENT,
+            with (console.status(LoadingMessage("Checking Docker"), spinner="dots12", spinner_style=ACCENT,
                                  refresh_per_second=4) if animate else nullcontext()):
                 result = subprocess.run(["docker", "info", "--format={{.ServerVersion}}"],
                                         capture_output=True, timeout=15)
@@ -163,13 +247,12 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
             result = subprocess.run(command, capture_output=True, text=True, errors="replace", timeout=180, **kwargs)
         except (OSError, subprocess.TimeoutExpired):
             raise ToolError("Static scanner could not complete; no passing result recorded.") from None
-        if result.returncode not in (0, 1):
-            raise ToolError(f"Static scanner failed (exit {result.returncode}); raw details withheld.")
-        findings = static_summary(result.stdout)
-        if result.returncode == 1 and not findings:
-            raise ToolError("Static scanner exited unsuccessfully without findings; review tooling configuration.")
+        processing_errors = []
+        findings = static_summary(result.stdout, errors=processing_errors)
+        incomplete = bool(processing_errors) or result.returncode not in (0, 1) or (result.returncode == 1 and not findings)
         write_private(output / "static-findings.json", json.dumps({
-            "revision": sha, "findings": findings,
+            "revision": sha, "findings": findings, "processing_errors": processing_errors,
+            "scanner_exit_code": result.returncode, "status": "incomplete" if incomplete else "completed",
             "note": "Static matches only, not confirmed vulnerabilities. Source snippets are deliberately omitted.",
         }, indent=2))
         counts = Counter(item["rule"] for item in findings)
@@ -180,6 +263,9 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
                 console.print(Text("    " + location, style="dim"))
             if len(locations) > 3:
                 console.print(Text(f"    + {len(locations) - 3} more locations in static-findings.json", style="dim"))
+        if incomplete:
+            raise ToolError(f"{len(findings)} static matches retained; {len(processing_errors)} processing errors "
+                            f"(scanner exit {result.returncode}). Coverage incomplete. See static-findings.json.")
         if findings:
             raise ToolError(f"{len(findings)} static matches across {len(counts)} rules. Full locations: static-findings.json. These require review.")
     stage("3 / 4  Static rules", lambda: scan_static(repo, sha, runner=static_command, json_output=True), docker_gap)
@@ -209,7 +295,12 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
                              "Cloud Armor enforcement", "historical breach investigation"]}
     write_private(output / "summary.json", json.dumps(result, indent=2))
     console.print(f"\nFinished in {time.monotonic() - started:.1f}s.", style="bold")
-    console.print(Text(f"Private summary: {(output / 'summary.json').resolve()}"))
+    console.print(Text("Private summary: ") + path_link(output / "summary.json", enabled=links))
+    for name in ("static-findings.json", "route-review.json"):
+        if (output / name).is_file():
+            console.print(Text("Evidence file:   ") + path_link(output / name, enabled=links))
+    if links:
+        console.print("Paths are terminal links. Use your terminal's open-link gesture (often Ctrl+click).", style="dim")
     console.print("Not a live VAPT or an all-clear. NOT RUN is a coverage gap, not a pass.", style="yellow")
     console.print("For approved staging checks: vapt run / vapt roles. See docs/pilot-checklist.md.")
     return 1 if needs_review else 0

@@ -69,11 +69,22 @@ with explicit [scope approval](docs/pilot-checklist.md).
 If the CLI is already installed, `vapt scan /path/to/your-project` does the same work.
 Use `NO_COLOR=1 ./scan /path/to/your-project` for uncolored output. Redirected output
 has no animated spinner.
-The terminal uses warm MVK accents and rotating loading captions, including
-"Getting the crabs out...", while showing the actual task and elapsed time.
-There are no invented progress percentages or artificial delays.
+The terminal uses an MVK shield mark, the tagline **"anti vince vulnerability"**,
+and 60 original shuffled loading captions, including "Consulting the rubber duck
+council..." and "Turning paranoia into paperwork...". An indeterminate pulse and
+spinner accompany the actual task and elapsed time, not invented percentages.
+There are no artificial delays.
 Use `./scan /path/to/your-project --plain` for no colors or motion, or set
 `MVK_REDUCED_MOTION=1` to disable animation while keeping colors.
+Repository/evidence directories and generated result files are clickable OSC 8
+links in supporting terminals. Use your terminal's open-link gesture, often
+Ctrl+click. Unsupported terminals still show the path; remote-session links refer
+to the remote filesystem and might not open on your desktop.
+`--plain` and redirected output omit terminal hyperlinks.
+
+If Semgrep reports processing errors, successfully returned matches are still
+saved and summarized. The static stage stays **REVIEW**, and its JSON records
+sanitized error types and the scanner exit code rather than raw source/error text.
 
 ## What you can do
 

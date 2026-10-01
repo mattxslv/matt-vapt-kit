@@ -10,19 +10,38 @@ from unittest.mock import patch
 from rich.console import Console
 
 from vaptkit.process import ToolError, git
-from vaptkit.scan import LoadingMessage, scan, static_summary
+from vaptkit.scan import LOADING_LINES, LoadingMessage, path_link, scan, static_summary
 
 
 class ScanTests(unittest.TestCase):
     def test_loading_messages_rotate_without_fake_progress(self):
-        with patch("vaptkit.scan.time.monotonic", return_value=10):
+        with patch("vaptkit.scan.time.monotonic", return_value=10), patch(
+            "vaptkit.scan.random.sample", return_value=list(LOADING_LINES)
+        ):
             message = LoadingMessage("Static rules")
-        for now, expected in ((10, "Getting the crabs out"), (14, "digital sofa")):
+        self.assertGreaterEqual(len(LOADING_LINES), 60)
+        self.assertEqual(len(set(LOADING_LINES)), len(LOADING_LINES))
+        self.assertNotIn("Getting the crabs out...", LOADING_LINES)
+        for now, expected in ((10, "digital sofa"), (14, "form a queue")):
             with patch("vaptkit.scan.time.monotonic", return_value=now):
                 line = list(message.__rich_console__(None, None))[0].plain
             self.assertIn(expected, line)
             self.assertIn("Static rules", line)
             self.assertNotIn("%", line)
+
+    def test_clickable_paths_are_encoded_and_plain_mode_has_no_escape_codes(self):
+        path = self.root / "directory with spaces [demo]"
+        link = path_link(path)
+        self.assertEqual(link.style.link, path.resolve().as_uri())
+        stream = io.StringIO()
+        console = Console(file=stream, force_terminal=True)
+        console.print(link)
+        self.assertIn("\x1b]8;", stream.getvalue())
+        self.assertIn("%20", stream.getvalue())
+        stream.seek(0); stream.truncate(0)
+        console.print(path_link(path, enabled=False))
+        self.assertNotIn("\x1b", stream.getvalue())
+        self.assertIn("directory with spaces [demo]", stream.getvalue())
 
     def test_static_summary_keeps_locations_but_never_source_snippets(self):
         raw = json.dumps({"results": [{"path": "/src/example.ts", "check_id": "fixture.rule",
@@ -63,6 +82,32 @@ class ScanTests(unittest.TestCase):
         self.assertNotIn("file-68.js", self.stream.getvalue())
         saved = (self.root / "out/static-findings.json").read_text()
         self.assertEqual(len(json.loads(saved)["findings"]), 69)
+        self.assertNotIn("PRIVATE_CODE", saved + self.stream.getvalue())
+
+    def test_partial_static_results_survive_processing_errors_and_nonzero_exit(self):
+        raw = json.dumps({"results": [
+            {"path": "/src/fixture.js", "check_id": "fixture.rule", "start": {"line": 3}}
+        ], "errors": [{"type": "ParseError", "message": "PRIVATE_CODE"}]})
+        real_run = subprocess.run
+        def process(command, **kwargs):
+            if command[:2] == ["docker", "info"]:
+                return subprocess.CompletedProcess(command, 0)
+            if command[:2] == ["docker", "run"]:
+                return subprocess.CompletedProcess(command, 3, stdout=raw, stderr="PRIVATE_CODE")
+            return real_run(command, **kwargs)
+        with patch("vaptkit.scan.shutil.which", return_value="/fixture/docker"), patch(
+            "vaptkit.scan.subprocess.run", side_effect=process
+        ), patch("vaptkit.scan.scan_history", return_value=None), patch(
+            "vaptkit.scan.audit_commit", return_value=None
+        ), patch("vaptkit.scan.review", return_value={"summary": {"handlers": 0}, "findings": []}):
+            code = scan(self.repo, output=self.root / "out", console=self.console)
+        self.assertEqual(code, 1)
+        saved = (self.root / "out/static-findings.json").read_text()
+        result = json.loads(saved)
+        self.assertEqual(len(result["findings"]), 1)
+        self.assertEqual(result["processing_errors"], [{"type": "ParseError"}])
+        self.assertEqual(result["status"], "incomplete")
+        self.assertIn("1 static matches retained", self.stream.getvalue())
         self.assertNotIn("PRIVATE_CODE", saved + self.stream.getvalue())
 
     def setUp(self):

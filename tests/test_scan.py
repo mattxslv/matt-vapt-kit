@@ -24,7 +24,9 @@ class ScanTests(unittest.TestCase):
         self.assertNotIn("Getting the crabs out...", LOADING_LINES)
         for now, expected in ((10, "digital sofa"), (14, "form a queue")):
             with patch("vaptkit.scan.time.monotonic", return_value=now):
-                line = list(message.__rich_console__(None, None))[0].plain
+                rendered = list(message.__rich_console__(None, None))
+                self.assertEqual(len(rendered), 1)
+                line = rendered[0].plain
             self.assertIn(expected, line)
             self.assertIn("Static rules", line)
             self.assertNotIn("%", line)

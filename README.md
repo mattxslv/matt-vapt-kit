@@ -71,8 +71,8 @@ Use `NO_COLOR=1 ./scan /path/to/your-project` for uncolored output. Redirected o
 has no animated spinner.
 The terminal uses an MVK shield mark, the tagline **"anti vince vulnerability"**,
 and 60 original shuffled loading captions, including "Consulting the rubber duck
-council..." and "Turning paranoia into paperwork...". An indeterminate pulse and
-spinner accompany the actual task and elapsed time, not invented percentages.
+council..." and "Turning paranoia into paperwork...". A spinner accompanies
+the actual task and elapsed time, without a loading bar or invented percentages.
 There are no artificial delays.
 Use `./scan /path/to/your-project --plain` for no colors or motion, or set
 `MVK_REDUCED_MOTION=1` to disable animation while keeping colors.

@@ -14,7 +14,6 @@ from contextlib import nullcontext
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress_bar import ProgressBar
 from rich.style import Style
 from rich.table import Table
 from rich.text import Text
@@ -102,8 +101,6 @@ class LoadingMessage:
         message = Text(phrase, style=ACCENT)
         message.append(f"  {self.task}  ({elapsed:.0f}s)", style="dim")
         yield message
-        yield ProgressBar(total=None, width=24, pulse=True, animation_time=elapsed,
-                          pulse_style=ACCENT, style="grey23")
 
 
 def path_link(path: Path, label: str | None = None, *, enabled=True) -> Text:

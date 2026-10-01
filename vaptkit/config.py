@@ -84,6 +84,11 @@ def load_config(path: Path) -> dict:
             or any(part in (".", "..") for part in prefix.split("/"))
         ):
             raise ConfigError("Scope prefixes must be literal, normalized URL paths.")
+    for pattern in config.get("review", {}).get("auth_patterns", []) + config.get("review", {}).get("role_patterns", []):
+        try:
+            re.compile(pattern)
+        except re.error:
+            raise ConfigError("Review patterns must be valid regular expressions.") from None
     if not set(config["credentials"]).issubset(config["scope"]["roles"]):
         raise ConfigError("Credential roles must appear in scope.roles.")
     if config.get("access", {}).get("type") == "bearer" and not re.fullmatch(r"[A-Z][A-Z0-9_]*", config["access"]["token_env"]):

@@ -3,27 +3,60 @@
   "title": "Matt VAPT Kit project configuration",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "project", "target", "scope", "credentials"],
+  "required": [
+    "schema_version",
+    "project",
+    "target",
+    "scope",
+    "credentials"
+  ],
   "properties": {
-    "schema_version": {"const": 1},
-    "project": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"},
+    "schema_version": {
+      "const": 1
+    },
+    "project": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,63}$"
+    },
     "access": {
       "oneOf": [
         {
-          "type": "object", "additionalProperties": false,
-          "required": ["type", "token_env", "header"],
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "token_env",
+            "header"
+          ],
           "properties": {
-            "type": {"const": "bearer"},
-            "token_env": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]*$"},
-            "header": {"enum": ["Authorization", "Proxy-Authorization"]}
+            "type": {
+              "const": "bearer"
+            },
+            "token_env": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]*$"
+            },
+            "header": {
+              "enum": [
+                "Authorization",
+                "Proxy-Authorization"
+              ]
+            }
           }
         },
         {
-          "type": "object", "additionalProperties": false,
-          "required": ["type"],
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type"
+          ],
           "properties": {
-            "type": {"const": "iap-browser"},
-            "remember_login": {"type": "boolean"}
+            "type": {
+              "const": "iap-browser"
+            },
+            "remember_login": {
+              "type": "boolean"
+            }
           }
         }
       ]
@@ -31,27 +64,61 @@
     "target": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["environment", "url", "allowed_hosts", "verification"],
+      "required": [
+        "environment",
+        "url",
+        "allowed_hosts",
+        "verification"
+      ],
       "properties": {
-        "environment": {"const": "staging"},
-        "url": {"type": "string", "maxLength": 2048},
-        "allowed_hosts": {
-          "type": "array", "minItems": 1, "maxItems": 1, "uniqueItems": true,
-          "items": {"type": "string", "maxLength": 253, "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$"}
+        "environment": {
+          "const": "staging"
         },
-        "verification": {"enum": ["pending", "reachable-not-authorized"]}
+        "url": {
+          "type": "string",
+          "maxLength": 2048
+        },
+        "allowed_hosts": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "maxLength": 253,
+            "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$"
+          }
+        },
+        "verification": {
+          "enum": [
+            "pending",
+            "reachable-not-authorized"
+          ]
+        }
       }
     },
     "scope": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["api_prefixes", "excluded_prefixes", "roles"],
+      "required": [
+        "api_prefixes",
+        "excluded_prefixes",
+        "roles"
+      ],
       "properties": {
-        "api_prefixes": {"$ref": "#/$defs/paths"},
-        "excluded_prefixes": {"$ref": "#/$defs/paths"},
+        "api_prefixes": {
+          "$ref": "#/$defs/paths"
+        },
+        "excluded_prefixes": {
+          "$ref": "#/$defs/paths"
+        },
         "roles": {
-          "type": "array", "uniqueItems": true,
-          "items": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"}
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          }
         }
       }
     },
@@ -60,15 +127,69 @@
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["token_env"],
-        "properties": {"token_env": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]*$"}}
+        "required": [
+          "token_env"
+        ],
+        "properties": {
+          "token_env": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$"
+          }
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "public_routes": {
+          "$ref": "#/$defs/paths"
+        },
+        "privileged_prefixes": {
+          "$ref": "#/$defs/paths"
+        },
+        "exclude_files": {
+          "type": "array",
+          "maxItems": 50,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "auth_patterns": {
+          "type": "array",
+          "maxItems": 50,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "role_patterns": {
+          "type": "array",
+          "maxItems": 50,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        }
       }
     }
   },
   "$defs": {
     "paths": {
-      "type": "array", "uniqueItems": true,
-      "items": {"type": "string", "pattern": "^/", "maxLength": 2048}
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^/",
+        "maxLength": 2048
+      }
     }
   }
 }

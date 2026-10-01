@@ -28,6 +28,11 @@ def main(argv=None) -> int:
     hooks = commands.add_parser("hook", help="Install or remove local pre-push protection")
     hooks.add_argument("action", choices=["install", "uninstall"])
     hooks.add_argument("repo", type=Path)
+    routes = commands.add_parser("review-routes", help="Offline source review of API route authentication")
+    routes.add_argument("config", type=Path)
+    routes.add_argument("repo", type=Path)
+    routes.add_argument("--revision", default="HEAD")
+    routes.add_argument("--output", type=Path, required=True, help="New private JSON file")
     scope = commands.add_parser("scope-template", help="Print an unapproved HEAD-only scope template")
     scope.add_argument("config", type=Path)
     scan = commands.add_parser("run", help="Make approved HEAD requests; optional configured IAP login")
@@ -44,6 +49,7 @@ def main(argv=None) -> int:
                         choices=["RED", "AMBER+STRICT", "AMBER", "GREEN", "CLEAR"])
     report.add_argument("--prepared-by", default="", help="Name shown on the sign-off block")
     report.add_argument("--agency", default="", help="Agency/Office shown in the report details")
+    report.add_argument("--source-review", type=Path, help="Merge suspected findings from vapt review-routes")
     args = parser.parse_args(argv)
 
     if args.command == "doctor":
@@ -65,10 +71,24 @@ def main(argv=None) -> int:
             path = generate(
                 args.input, args.output, reviewed=args.reviewed, html_only=args.html_only,
                 tlp=args.tlp, prepared_by=args.prepared_by, agency=args.agency,
+                source_review=args.source_review,
             )
             print(f"Report written to {path}")
             return 0
         config = load_config(args.config)
+        if args.command == "review-routes":
+            from .assessment import write_private
+            from .routes import review
+            if args.output.exists():
+                raise ToolError("Output file already exists; choose a new path.")
+            result = review(args.repo, config, args.revision)
+            write_private(args.output, json.dumps(result, indent=2))
+            summary = result["summary"]
+            print(f"Reviewed {summary['handlers']} handlers in {summary['route_files']} route files at {result['revision'][:12]}.")
+            for item in result["findings"]:
+                print(f"  [{item['severity'].upper():6}] {item['path']}  {item['title']}")
+            print(f"Route review written to {args.output} ({len(result['findings'])} suspected).")
+            return 0
         if args.command == "scope-template":
             from .assessment import approval_template
             print(json.dumps(approval_template(config), indent=2))

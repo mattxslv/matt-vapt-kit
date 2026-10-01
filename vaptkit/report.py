@@ -567,11 +567,30 @@ self-assessment, not a CERT-PH report | TLP:{esc(tlp)}</footer>
 </main></body></html>"""
 
 
+def merge_source_review(result: dict, review: dict) -> dict:
+    """Add suspected findings from `vapt review-routes` for the same project."""
+    if not isinstance(review, dict) or review.get("kind") != "route-review" or review.get("project") != result.get("project"):
+        raise ToolError("Source review must be a route review for the same project.")
+    findings = review.get("findings", [])
+    if len(result["findings"]) + len(findings) > 100:
+        raise ToolError("Too many findings for one report; fix or scope the route review first.")
+    merged = dict(result, findings=result["findings"] + findings, coverage=dict(result["coverage"]))
+    summary = review.get("summary", {})
+    merged["coverage"]["note"] = (
+        f"{result['coverage']['note']} Static source review of revision {str(review.get('revision', ''))[:12]} "
+        f"covered {summary.get('handlers', 0)} API handlers; its findings are suspected until confirmed live."
+    )[:2000]
+    return merged
+
+
 def generate(source: Path, output: Path, *, reviewed: bool, html_only=False,
-             tlp="AMBER+STRICT", prepared_by="", agency="") -> Path:
+             tlp="AMBER+STRICT", prepared_by="", agency="", source_review: Path | None = None) -> Path:
     if not reviewed:
         raise ToolError("Review and redact the JSON first, then pass --reviewed. Automatic redaction cannot guarantee safety.")
     result = load_json(source)
+    if source_review is not None:
+        validate_result(result)
+        result = merge_source_review(result, load_json(source_review, limit=5_000_000))
     options = {"tlp": tlp, "prepared_by": prepared_by, "agency": agency}
     document = render(result, **options)
     if not html_only:

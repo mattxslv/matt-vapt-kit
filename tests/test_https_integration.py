@@ -17,6 +17,9 @@ from vaptkit.report import generate
 
 
 class Handler(BaseHTTPRequestHandler):
+    def version_string(self):
+        return "fixture"
+
     def do_HEAD(self):
         self.server.seen.append((self.command, self.path, self.headers.get("Proxy-Authorization")))
         if self.path == "/denied":
@@ -32,7 +35,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Strict-Transport-Security", "max-age=31536000")
         self.send_header("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'")
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Set-Cookie", "private-session=DO_NOT_PERSIST")
+        self.send_header("Set-Cookie", "private-session=DO_NOT_PERSIST; Secure; HttpOnly; SameSite=Lax")
         if status == 302:
             self.send_header("Location", "https://outside-scope.example.invalid/")
         self.end_headers()

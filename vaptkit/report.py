@@ -32,6 +32,13 @@ CHECK_LABELS = {
     "csp_present": "Browser script policy (CSP)",
     "nosniff": "Protection against guessing file types",
     "frame_policy_present": "Restrictions on embedding this page",
+    "hsts_strong": "HSTS lasts at least 180 days",
+    "csp_script_strong": "CSP blocks unsafe inline and eval scripts",
+    "frame_policy_strong": "Embedding restricted to trusted origins",
+    "referrer_policy_safe": "Referrer policy does not leak full URLs",
+    "cookies_secure": "Cookies sent over HTTPS only (Secure)",
+    "session_cookies_httponly": "Session cookies hidden from scripts (HttpOnly)",
+    "no_version_disclosure": "Server software versions not disclosed",
 }
 OWASP = (
     ("A01", "Broken Access Control",
@@ -353,7 +360,7 @@ def render(result: dict, screenshots=(), *, tlp="AMBER+STRICT", prepared_by="", 
             f"<p>HTTP status: <strong>{item['status']}</strong></p>"
             f"<table><thead><tr><th>Check</th><th>Result</th></tr></thead><tbody>{rows}</tbody></table>"
             "<p class=\"muted\">Response bodies, cookies and raw header values were not retained. "
-            "Presence alone does not prove a policy is effective.</p></article>"
+            "Header values were graded at capture time against fixed rules; only the pass or fail results were kept.</p></article>"
         )
     evidence_html = "".join(evidence_records) or "<p>No HTTP observations were captured.</p>"
 

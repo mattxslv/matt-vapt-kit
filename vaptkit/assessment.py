@@ -12,6 +12,7 @@ from importlib.metadata import version
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from .headers import grade
 from .process import ToolError
 
 
@@ -146,7 +147,9 @@ def public_addresses(host: str) -> list[str]:
     return ips
 
 
-def observe(host: str, path: str, *, headers=None, expires_at=None, timeout_seconds=10) -> dict:
+def request(host: str, method: str, path: str, *, headers=None, expires_at=None,
+            timeout_seconds=10, body=None, body_limit=0) -> tuple[int, dict[str, list[str]], bytes]:
+    """One pinned, verified HTTPS request. Redirects are never followed."""
     ips = public_addresses(host)
     context = ssl.create_default_context()
     connection = http.client.HTTPSConnection(
@@ -161,26 +164,26 @@ def observe(host: str, path: str, *, headers=None, expires_at=None, timeout_seco
             raw.close()
             raise
         connection.sock.settimeout(remaining_timeout(expires_at, timeout_seconds))
-        connection.request("HEAD", path, headers={
-            "User-Agent": f"Matt-VAPT-Kit/{version('matt-vapt-kit')} (approved-header-check)", **(headers or {}),
+        connection.request(method, path, body=body, headers={
+            "User-Agent": f"Matt-VAPT-Kit/{version('matt-vapt-kit')} (approved-check)", **(headers or {}),
         })
         response = connection.getresponse()
         remaining_timeout(expires_at)
-        csp = response.getheader("Content-Security-Policy", "")
-        frame_directives = [
-            directive.strip().split()[0].lower() for directive in csp.split(";") if directive.strip()
-        ]
-        checks = {
-            "html_response": "text/html" in response.getheader("Content-Type", "").lower(),
-            "hsts_present": bool(response.getheader("Strict-Transport-Security")),
-            "csp_present": bool(csp),
-            "nosniff": response.getheader("X-Content-Type-Options", "").strip().lower() == "nosniff",
-            "frame_policy_present": bool(response.getheader("X-Frame-Options")) or "frame-ancestors" in frame_directives,
-        }
-        # Do not retain cookies, URLs, arbitrary headers or response bodies.
-        return {"path": path, "method": "HEAD", "status": response.status, "checks": checks}
+        collected: dict[str, list[str]] = {}
+        for name, value in response.getheaders():
+            collected.setdefault(name.lower(), []).append(value)
+        data = response.read(body_limit) if body_limit and method != "HEAD" else b""
+        return response.status, collected, data
     finally:
         connection.close()
+
+
+def observe(host: str, path: str, *, headers=None, expires_at=None, timeout_seconds=10) -> dict:
+    status, received, _ = request(
+        host, "HEAD", path, headers=headers, expires_at=expires_at, timeout_seconds=timeout_seconds,
+    )
+    # Only derived booleans are kept: no cookies, URLs, raw headers or bodies.
+    return {"path": path, "method": "HEAD", "status": status, "checks": grade(received)}
 
 
 def failure_detail(error: Exception) -> tuple[str, str]:
@@ -232,6 +235,36 @@ def findings_for(observation: dict) -> list[dict]:
              "The page may lack browser framing restrictions. Clickjacking was not tested.",
              "Review framing requirements and set frame-ancestors or X-Frame-Options."),
         ]
+    graded = [
+        ("hsts_strong", "hsts_present", "HSTS max-age is shorter than 180 days",
+         "Browsers forget the HTTPS-only rule quickly, leaving a window for downgrade on later visits.",
+         "Set Strict-Transport-Security max-age to at least 15552000 (31536000 recommended)."),
+        ("referrer_policy_safe", None, "Referrer policy can leak full URLs",
+         "Full page URLs, including any tokens in query strings, may be sent to other sites.",
+         "Use Referrer-Policy: strict-origin-when-cross-origin or stricter."),
+        ("cookies_secure", None, "Cookie set without the Secure flag",
+         "The cookie may be sent over plain HTTP if a user is ever downgraded.",
+         "Add the Secure attribute to every cookie set by the application."),
+        ("session_cookies_httponly", None, "Session-like cookie readable by scripts",
+         "A script injection flaw could steal the session cookie. Cookie names suggest session use; confirm.",
+         "Add HttpOnly to session and authentication cookies."),
+        ("no_version_disclosure", None, "Server technology or version disclosed in headers",
+         "X-Powered-By or a versioned Server header helps attackers pick known exploits.",
+         "Remove X-Powered-By (Next.js: poweredByHeader: false) and strip versions from Server."),
+    ]
+    if checks["html_response"]:
+        graded += [
+            ("csp_script_strong", "csp_present", "Content Security Policy allows unsafe scripts",
+             "The policy permits inline, eval or wildcard scripts, so it gives little protection against script injection.",
+             "Remove 'unsafe-inline', 'unsafe-eval' and wildcard script sources; use nonces or hashes."),
+            ("frame_policy_strong", "frame_policy_present", "Framing policy allows any origin",
+             "The page can be embedded by other sites, so clickjacking defenses are ineffective.",
+             "Use frame-ancestors 'none' or 'self' (or X-Frame-Options DENY/SAMEORIGIN)."),
+        ]
+    for key, requires, title, impact, fix in graded:
+        # Older records lack graded keys; only grade a header that is actually present.
+        if key in checks and not checks[key] and (requires is None or checks[requires]):
+            candidates.append((key, title, impact, fix))
     for key, title, impact, fix in candidates:
         if not checks[key]:
             findings.append({

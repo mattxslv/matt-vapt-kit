@@ -204,7 +204,7 @@ class NetworkTests(unittest.TestCase):
         response = MagicMock(status=200)
         headers = {"Content-Security-Policy": "script-src https://example.invalid/frame-ancestors",
                    "X-Content-Type-Options": " nosniff "}
-        response.getheader.side_effect = lambda key, default=None: headers.get(key, default)
+        response.getheaders.side_effect = lambda: list(headers.items())
         with patch("socket.getaddrinfo", return_value=[(0, 0, 0, "", ("8.8.8.8", 443))]), patch(
             "socket.create_connection"
         ), patch("ssl.create_default_context"), patch("http.client.HTTPSConnection") as connection:
@@ -230,7 +230,7 @@ class NetworkTests(unittest.TestCase):
             "Set-Cookie": "PRIVATE_SENTINEL", "Server": "PRIVATE_SENTINEL",
         }
         response = MagicMock(status=302)
-        response.getheader.side_effect = lambda key, default=None: headers.get(key, default)
+        response.getheaders.side_effect = lambda: list(headers.items())
         with patch("socket.getaddrinfo", return_value=[(0, 0, 0, "", ("8.8.8.8", 443))]), patch(
             "socket.create_connection"
         ) as connect, patch("ssl.create_default_context") as tls, patch(

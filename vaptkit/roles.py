@@ -64,14 +64,15 @@ def validate(config: dict, approval: dict) -> None:
             raise ToolError("Role sign-in or sign-out is excluded by project scope.")
 
 
-def credentials(config: dict, approval: dict, *, prompt_passwords=False) -> dict:
+def credentials(config: dict, approval: dict, *, prompt_passwords=False, values: dict | None = None) -> dict:
+    values = os.environ if values is None else values
     selected = set(approval["role_accounts"])
     result, emails, passwords = {}, set(), {}
     accounts = [account for account in config["role_testing"]["accounts"] if account["id"] in selected]
     try:
         for account in accounts:
-            email = os.environ.get(account["email_env"], "")
-            if (not email or len(email) > 254 or email.strip() != email or "@" not in email
+            email = values.get(account["email_env"], "")
+            if (not isinstance(email, str) or not email or len(email) > 254 or email.strip() != email or "@" not in email
                     or any(ord(char) < 33 for char in email)):
                 raise ToolError("A role email environment variable is missing or invalid; values withheld.")
             if email.lower() in emails:
@@ -81,7 +82,7 @@ def credentials(config: dict, approval: dict, *, prompt_passwords=False) -> dict
         for account in accounts:
             name = account["password_env"]
             if name not in passwords:
-                password = os.environ.get(name, "")
+                password = values.get(name, "")
                 if not password and prompt_passwords:
                     validate(config, approval)
                     if not sys.stdin.isatty():
@@ -93,7 +94,7 @@ def credentials(config: dict, approval: dict, *, prompt_passwords=False) -> dict
                     except (getpass.GetPassWarning, EOFError, KeyboardInterrupt):
                         raise ToolError("Hidden password entry unavailable or cancelled; no assessment started.") from None
                     validate(config, approval)
-                if not password or len(password) > 1024 or password.strip() != password:
+                if not isinstance(password, str) or not password or len(password) > 1024 or password.strip() != password:
                     raise ToolError("A role password is missing or invalid; values withheld.")
                 passwords[name] = password
             result[account["id"]]["password"] = passwords[name]
@@ -178,11 +179,12 @@ def collect_cookies(headers: dict, host: str) -> dict[str, str]:
     return result
 
 
-def run(config: dict, approval: dict, output: Path, *, prompt_passwords=False) -> tuple[Path, int]:
+def run(config: dict, approval: dict, output: Path, *, prompt_passwords=False,
+        credential_values: dict | None = None) -> tuple[Path, int]:
     validate(config, approval)
     if output.exists() or not output.parent.is_dir():
         raise ToolError("Output must be a new directory inside an existing private parent.")
-    secrets = credentials(config, approval, prompt_passwords=prompt_passwords)
+    secrets = credentials(config, approval, prompt_passwords=prompt_passwords, values=credential_values)
     validate(config, approval)
     create_output(output)
     started = datetime.now(timezone.utc).isoformat()

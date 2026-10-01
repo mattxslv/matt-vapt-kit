@@ -1,0 +1,25 @@
+schema_version: 1
+project: dtap
+target:
+  environment: staging
+  url: https://dtap-test-2ax2v7xwga-as.a.run.app
+  allowed_hosts:
+    - dtap-test-2ax2v7xwga-as.a.run.app
+  verification: pending
+access:
+  type: iap-service-account
+  service_account: dtap-vapt-pilot@example-project.iam.gserviceaccount.com
+scope:
+  api_prefixes: [/api/]
+  excluded_prefixes: []
+  roles: [service-provider, lead-evaluator, administrator]
+credentials: {}
+role_testing:
+  adapter: dtap-cookie-v1
+  accounts:
+    - {id: lead-evaluator, role: lead-evaluator, email_env: DTAP_LEAD_EMAIL, password_env: DTAP_QA_PASSWORD}
+    - {id: service-provider, role: service-provider, email_env: DTAP_SP_EMAIL, password_env: DTAP_QA_PASSWORD}
+  routes:
+    - path: /api/lead-evaluator/requirements
+      allowed_roles: [lead-evaluator, administrator]
+      response_shape: {data: array, stats: object}

@@ -16,12 +16,14 @@ Documentation = "https://github.com/mattxslv/matt-vapt-kit/blob/main/docs/gettin
 
 [project.optional-dependencies]
 report = ["playwright==1.58.0"]
+dashboard = ["Flask==3.1.2", "waitress==3.0.2"]
 
 [project.scripts]
 vapt = "vaptkit.cli:main"
+vapt-dashboard = "vaptkit.dashboard:main"
 
 [tool.setuptools.packages.find]
 include = ["vaptkit*"]
 
 [tool.setuptools.package-data]
-vaptkit = ["schemas/*.json", "assets/*.css", "rules/*.yml"]
+vaptkit = ["schemas/*.json", "assets/*.css", "assets/dashboard/*", "rules/*.yml"]

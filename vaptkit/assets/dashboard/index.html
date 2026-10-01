@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="mvk-token" content="__MVK_TOKEN__">
+  <title>Matt VAPT Kit | Assessment desk</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to assessment</a>
+  <header class="masthead">
+    <a href="/" class="brand" aria-label="Matt VAPT Kit home"><span class="monogram">MVK</span><span>Matt VAPT Kit<small>Internal assessment desk</small></span></a>
+    <span class="local-label"><span aria-hidden="true"></span> Local workspace</span>
+  </header>
+  <main id="main">
+    <section class="intro">
+      <div><p class="eyebrow">CONTROLLED SCOPE. READABLE EVIDENCE.</p><h1>Know what you checked.<br><em>Know what you haven’t.</em></h1>
+        <p class="lede">A guided workspace for staging assessments. Start with a sample report, or review a project’s scope before making a single request.</p></div>
+      <aside class="intro-note"><span class="index">01 / START HERE</span><h2>New to the kit?</h2><p>Try the complete reporting flow with synthetic evidence. No account, cloud access or live scan.</p><button id="demo" class="secondary" type="button">Create sample report <span aria-hidden="true">↗</span></button><small>Clearly labeled as a demonstration.</small></aside>
+    </section>
+    <div id="notice" class="notice" role="alert" hidden></div>
+    <div class="desk">
+      <section class="workflow" aria-labelledby="workflow-title">
+        <div class="section-heading"><p class="eyebrow">NEW ASSESSMENT</p><h2 id="workflow-title">Define before you run.</h2></div>
+        <ol class="steps" aria-label="Assessment steps"><li id="step-1" aria-current="step"><span>1</span>Project &amp; scope</li><li id="step-2"><span>2</span>Review &amp; approve</li><li id="step-3"><span>3</span>Evidence</li></ol>
+        <form id="scope-form">
+          <div class="fields two"><label><span id="project-label">Project</span><select id="project" aria-labelledby="project-label" required><option value="">Loading configurations...</option></select></label>
+            <label><span id="profile-label">Assessment</span><select id="profile" aria-labelledby="profile-label"><option value="headers">Header policy</option><option value="roles">DTAP endpoint roles</option></select></label></div>
+          <p id="project-note" class="field-note">Project files are loaded read-only from the mounted projects folder.</p>
+          <div id="target-info" class="target-strip" hidden><span>EXACT STAGING ORIGIN</span><strong id="target"></strong><small id="access"></small></div>
+          <div class="fields two"><label>Authorized owner<input id="owner" required maxlength="120" autocomplete="name" placeholder="Name of the person approving this run"></label>
+            <label><span id="minutes-label">Approval window</span><select id="minutes" aria-labelledby="minutes-label"><option value="5">5 minutes</option><option value="10" selected>10 minutes</option><option value="20">20 minutes</option><option value="30">30 minutes</option></select></label></div>
+          <label id="paths-label">Approved paths, one per line<textarea id="paths" rows="3" required spellcheck="false">/</textarea></label>
+          <p class="field-note">Exact paths only. No crawling, redirects, live XSS or business-record writes.</p>
+          <fieldset id="accounts-group" hidden><legend>Accounts to compare</legend><div id="accounts"></div><p class="field-note">Include an allowed-role positive control. Credentials are requested in the next step.</p></fieldset>
+          <button id="preview" class="primary" type="submit">Check prerequisites &amp; review scope <span aria-hidden="true">→</span></button>
+        </form>
+        <section id="approval-panel" hidden aria-labelledby="approval-title">
+          <div class="section-heading"><p class="eyebrow">REVIEW BEFORE SENDING REQUESTS</p><h2 id="approval-title">Your approval, in plain sight.</h2></div>
+          <dl id="approval-summary" class="scope-summary"></dl>
+          <p class="caution">This is a live staging assessment. Signing in can create sessions, audit records and login counters. Gateway signing traffic is additional to the request limit. The timer starts when this preview is created.</p>
+          <form id="run-form" autocomplete="off">
+            <div id="credential-fields" class="fields"></div>
+            <p id="credential-note" class="field-note" hidden>Credentials are used by one isolated worker. They are not saved in reports, configuration files or the dashboard’s history.</p>
+            <label class="consent"><input id="consent" type="checkbox" required><span>I am authorized for this exact target, account selection and time window. I accept the login side effects and authorize private report generation. I will review the report before sharing it.</span></label>
+            <div class="actions"><button class="primary" id="run" type="submit">Approve &amp; start assessment</button><button id="back" class="text-button" type="button">Back to scope</button></div>
+          </form>
+        </section>
+        <section id="result-panel" hidden aria-labelledby="result-title" aria-live="polite">
+          <div class="section-heading"><p id="result-kicker" class="eyebrow">ASSESSMENT</p><h2 id="result-title">Working within your scope.</h2></div>
+          <p id="result-message"></p>
+          <div id="result-details"></div>
+          <div id="downloads" class="actions"></div>
+          <button id="new-run" type="button" class="text-button">Set up another assessment</button>
+        </section>
+      </section>
+      <aside class="sidebar">
+        <section class="boundary"><p class="eyebrow">THE BOUNDARY MATTERS</p><h2>Evidence, not an all-clear.</h2><p>A completed run is not a guarantee of security. Blocked and inconclusive checks remain visible.</p><dl><dt>Included here</dt><dd>Header policies, configured DTAP endpoint roles, private HTML and PDF reports.</dd><dt>Not run from this dashboard</dt><dd>Live XSS, ownership or workflow tests, cloud changes, Git hooks and Docker-based labs.</dd></dl><p class="fine">IAP access and application login are separate. Keyless access must already be provisioned; this app never creates IAM permissions.</p></section>
+        <section class="history-section"><div class="history-heading"><h2>Recent runs</h2><button id="refresh" class="text-button" type="button">Refresh</button></div><div id="history"><p class="field-note">Loading local history...</p></div></section>
+      </aside>
+    </div>
+  </main>
+  <footer><strong>MVK / INTERNAL SELF-ASSESSMENT</strong><span>Local single-operator workspace. Not an official CERT-PH report.</span></footer>
+</body>
+</html>

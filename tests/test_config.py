@@ -30,6 +30,18 @@ class ConfigTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(load_config(path)["target"]["environment"], "staging")
 
+    def test_starter_template_is_valid_and_nonlive(self):
+        path = ROOT / "templates/project.example.yml"
+        with patch("socket.socket", side_effect=AssertionError("Unexpected network request")):
+            config = load_config(path)
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(main(["validate", str(path)]), 0)
+        self.assertEqual(config["target"]["url"], "https://staging.example.invalid")
+        self.assertEqual(config["target"]["verification"], "pending")
+        self.assertNotIn("access", config)
+        self.assertNotIn("role_testing", config)
+        self.assertIn('"scan_authorized": false', output.getvalue())
+
     def test_invalid_targets(self):
         urls = [
             "http://staging.example.com", "https://other.example.com",

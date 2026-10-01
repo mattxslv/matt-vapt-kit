@@ -6,8 +6,13 @@ build-backend = "setuptools.build_meta"
 name = "matt-vapt-kit"
 version = "0.5.0"
 description = "Private, staging-first security checks and assessment reports"
+readme = "README.md"
 requires-python = ">=3.11"
 dependencies = ["PyYAML==6.0.2", "jsonschema==4.23.0"]
+
+[project.urls]
+Repository = "https://github.com/mattxslv/matt-vapt-kit"
+Documentation = "https://github.com/mattxslv/matt-vapt-kit/blob/main/docs/getting-started.md"
 
 [project.optional-dependencies]
 report = ["playwright==1.58.0"]

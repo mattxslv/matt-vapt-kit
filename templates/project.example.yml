@@ -1,0 +1,13 @@
+schema_version: 1
+project: example
+target:
+  environment: staging
+  url: https://staging.example.invalid
+  allowed_hosts:
+    - staging.example.invalid
+  verification: pending
+scope:
+  api_prefixes: [/api/]
+  excluded_prefixes: []
+  roles: []
+credentials: {}

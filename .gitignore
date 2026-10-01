@@ -8,6 +8,9 @@ dist/
 .env.*
 !.env.example
 reports/
+.private/
+private-output/
+roles.local.json
 evidence/
 artifacts/
 *.pdf

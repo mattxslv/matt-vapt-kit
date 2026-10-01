@@ -1,4 +1,4 @@
-FROM matt-vapt-kit:0.4.0
+FROM matt-vapt-kit:local
 USER root
 WORKDIR /opt/matt-vapt-kit
 RUN pip install --no-cache-dir ".[report]" \

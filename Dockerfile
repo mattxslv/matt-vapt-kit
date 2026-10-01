@@ -8,7 +8,7 @@ RUN apt-get update \
     && useradd --uid 10001 --gid 10001 --create-home vapt
 
 WORKDIR /opt/matt-vapt-kit
-COPY pyproject.toml ./
+COPY pyproject.toml README.md ./
 COPY vaptkit ./vaptkit
 RUN pip install --no-cache-dir .
 

@@ -9,7 +9,10 @@ from test_assessment import ROOT, approved
 from vaptkit.config import load_config
 from vaptkit.process import ToolError
 from vaptkit.report import render, validate_result
-from vaptkit.roles import BODY_LIMIT, LOGIN, LOGOUT, collect_cookies, matches_shape, run, template, validate
+from vaptkit.roles import (
+    BODY_LIMIT, LOGIN, LOGOUT, collect_cookies, matches_shape, response_quality,
+    role_outcome, run, template, validate,
+)
 
 
 def configuration():
@@ -176,10 +179,11 @@ class RoleTests(unittest.TestCase):
         self.assertEqual(result["role_cleanup"][0]["status"], "unconfirmed")
         self.assertEqual(calls, 4)
 
-    def test_generic_success_is_suspected_not_confirmed(self):
+    def test_generic_success_is_inconclusive_not_a_finding(self):
         result, code = self.execute(Application(catchall=True))
         self.assertEqual(code, 1)
-        self.assertEqual({item["verification"] for item in result["findings"]}, {"suspected"})
+        self.assertEqual(result["findings"], [])
+        self.assertTrue(result["errors"])
 
     def test_json_shape_rejects_errors_truncation_wrong_types_and_duplicates(self):
         headers = {"content-type": ["application/json"]}
@@ -190,6 +194,68 @@ class RoleTests(unittest.TestCase):
             self.assertFalse(matches_shape(headers, body, shape))
         self.assertFalse(matches_shape({"content-type": ["text/html"]}, b'{"data":[],"stats":{}}', shape))
         self.assertTrue(matches_shape(headers, b'{"data":[],"stats":{}}', shape))
+
+    def test_response_quality_is_conservative_without_persisting_bodies(self):
+        shape = {"data": "array", "stats": "object"}
+        body = {"data": [{"fixture": "private"}], "stats": {}}
+        status, headers, raw = reply(200, body)
+        for extra, expected in (
+            ({}, "matched"), ({"age": ["0"]}, "matched"),
+            ({"x-cache": ["MISS"]}, "matched"), ({"age": ["1"]}, "cached"),
+            ({"age": ["invalid"]}, "cached"), ({"age": ["0", "1"]}, "cached"),
+            ({"x-cache": ["Hit from cloudfront"]}, "cached"),
+            ({"cf-cache-status": ["STALE"]}, "cached"),
+        ):
+            with self.subTest(headers=extra):
+                self.assertEqual(response_quality(status, {**headers, **extra}, raw, shape, "provider"), expected)
+        for status, body, account, expected in (
+            (200, {"data": [], "stats": {}}, "provider", "empty"),
+            (200, {"data": [], "stats": {}, "success": False}, "provider", "unmatched"),
+            (401, {"error": "expired"}, "provider", "blocked"),
+            (401, {"error": "signin"}, "anonymous", "denied"),
+            (403, {"error": "denied"}, "provider", "denied"),
+            (403, body, "provider", "unmatched"),
+            (403, {**body, "error": "denied"}, "provider", "unmatched"),
+        ):
+            response = reply(status, body)
+            self.assertEqual(response_quality(*response, shape, account), expected)
+        denied = reply(401, {"error": "expired"})
+        self.assertEqual(response_quality(401, {**denied[1], "age": ["120"]}, denied[2], shape, "provider"),
+                         "blocked")
+
+    def test_reports_show_missing_cells_and_unsupported_live_areas(self):
+        def app(host, method, path, **kwargs):
+            return reply(302, {})
+        result, _ = self.execute(app)
+        document = render(result)
+        self.assertIn("0/3 cells tested; 1 blocked; 0 inconclusive; 2 not run", document)
+        self.assertIn("<td>service-provider</td>", document)
+        self.assertIn("<td>lead-evaluator</td>", document)
+        self.assertIn("Unsupported in live assessments; local lab only", document)
+        self.assertIn("Record ownership", document)
+        self.assertIn("Approval workflows", document)
+
+    def test_inconclusive_cells_are_not_reported_as_tested(self):
+        result, _ = self.execute(Application(catchall=True))
+        document = render(result)
+        self.assertIn("1/3 cells tested; 0 blocked; 2 inconclusive; 0 not run", document)
+        self.assertIn("<td>Inconclusive</td>", document)
+        self.assertNotIn("<td>Tested: confirmed role finding</td>", document)
+
+    def test_report_rejects_new_ambiguous_evidence_and_reads_legacy_records(self):
+        result, _ = self.execute(Application(vulnerable=True))
+        for quality in ("empty", "cached", "unmatched", "blocked"):
+            bad = copy.deepcopy(result)
+            bad["role_observations"][0]["attempts"][0]["evidence_quality"] = quality
+            with self.subTest(quality=quality), self.assertRaises(ToolError):
+                validate_result(bad)
+        legacy = copy.deepcopy(result)
+        for record in legacy["role_observations"]:
+            for attempt in record["attempts"]:
+                del attempt["evidence_quality"]
+        validate_result(legacy)
+        self.assertIn("legacy evidence", render(legacy))
+        self.assertEqual(role_outcome(legacy["role_observations"][0], set()), "inconclusive")
 
     def test_scope_defaults_invalid_and_no_traffic_without_secrets(self):
         config = configuration()

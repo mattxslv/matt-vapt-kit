@@ -256,13 +256,23 @@ records and can change login counters. Obtain permission for these effects even 
 business records must remain unchanged. GET handlers must also be reviewed for side effects.
 
 Unexpected 2xx responses become **confirmed endpoint role-policy violations** only
-when both repeated responses match the configured JSON response shape and an
-allowed-role control succeeds. Generic login pages, JSON errors, truncated bodies and
-missing controls never confirm access. The response schema is an operator-reviewed
+when both repeated responses match the configured JSON response shape, configured
+arrays are nonempty, no cache-hit signal is observed, and an allowed-role control
+meets those same evidence requirements. Generic login pages, JSON errors, truncated
+bodies, empty datasets and missing controls never confirm access. Empty pages remain
+inconclusive even if they advertise a next page; pagination links are never followed.
+The response schema is an operator-reviewed
 oracle, not proof that every returned record is sensitive or belongs to another user.
-Only status, content-type class and shape-match booleans are retained, not bodies.
+Only status, content-type class, shape-match booleans and derived evidence-quality
+labels are retained, not bodies. An observed `Age` greater than zero or cache-hit
+indicator (`X-Cache` or `CF-Cache-Status`) makes the response inconclusive for
+role enforcement. Missing cache indicators do not prove origin freshness.
 
-401/403 on matrix GETs are expected denials. On login they stop the run.
+An anonymous 401 or a 403 can establish an observed denial only with an assessable
+JSON error response, not an HTML gateway page or a successful data envelope.
+This does not prove which layer enforced the denial. A 401 after account login
+could mean session expiry, so it blocks the run instead of passing a role check.
+Non-JSON 401/403 responses also block the run. On login, any 401/403 stops the run.
 Redirects, rate limits, 5xx responses, transport errors and scope expiry stop all
 further traffic, including logout. Such sessions are marked **unconfirmed cleanup**;
 an operator may need to revoke them manually. A logout success response records only
@@ -270,6 +280,14 @@ acknowledgement, not independently proven revocation. The maximum is 196 request
 for eight accounts and ten routes, all serial and inside the approved interval/window.
 Do not run against production or change application/infrastructure configuration
 to force the checks to pass.
+
+Reports distinguish **tested**, **blocked**, **inconclusive** and **not run** matrix
+cells, including approved cells that were never reached. Generic success pages are
+coverage gaps, not vulnerability findings. Partial matching evidence can still be a
+suspected finding, but never a passing matrix. Record ownership and approval
+workflows are explicitly unsupported in live assessments. Older report records
+without evidence-quality labels retain their original status/shape interpretation
+and are labeled as legacy evidence, not silently upgraded to the newer criteria.
 
 ### Accuracy benchmark and limitations
 
@@ -295,6 +313,37 @@ vulnerabilities. Source tracing, cookie-name classification, CSP policy interact
 small exposure signatures and configured JSON response shapes remain heuristic.
 Human review and authorized real-application testing are still required before
 sharing the toolkit as a trusted assessment tool.
+
+### Separate release challenge
+
+```sh
+PYTHONPATH=tests .venv/bin/python -m unittest discover -s release_tests -v
+```
+
+Run this separately before tagging a release. The `Release challenge` GitHub workflow
+also runs on `v*` tags or manual dispatch, not on routine branch pushes. No workflow
+publishes or deploys the toolkit. Missing OpenSSL fails this gate rather than
+silently skipping it.
+
+`release_tests/role_cases.json` is a versioned expected-outcome manifest, separate
+from the challenge server and production classification code. Its 17 cases cover
+HTML/JSON login responses returning 200, error envelopes, empty data, pagination,
+cache indicators, inconsistent responses, expired sessions, gateway denials,
+redirects, rate limits, oversized bodies and missing usable controls. The server
+uses temporary loopback HTTPS, synthetic accounts and no live target input.
+Requests to pagination links or redirect destinations are forbidden by the gate.
+The suite also exercises private JSON and HTML reports and checks for fixture-data
+leaks.
+
+Every case must match its expected outcome, not just avoid confirmed findings.
+Version 1 expects 2 confirmed role violations, 1 assessed denial, 10 inconclusive
+cases and 4 blocked cases. Inconclusive and blocked cases are not counted as safe
+true negatives. These are **locally authored challenge regressions, not a blind
+or statistically independent holdout**. They were inspected while improving the
+detector. A genuine held-out evaluation needs a separately maintained, unseen
+corpus; once a case is used to tune detection it becomes a regression case.
+Do not change expected outcomes merely to make a release pass. Review oracle
+changes explicitly and version substantive corpus revisions.
 
 ### Local ownership and approval-workflow lab
 

@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "cases": [
+    {"id": "explicit-json-denial", "mode": "safe", "outcome": "denied", "status": "completed", "confirmed": 0},
+    {"id": "repeatable-role-bypass", "mode": "bypass", "outcome": "confirmed", "status": "completed", "confirmed": 1},
+    {"id": "html-login-with-200", "mode": "html-login", "outcome": "inconclusive", "status": "incomplete", "confirmed": 0},
+    {"id": "json-login-with-200", "mode": "json-login", "outcome": "inconclusive", "status": "incomplete", "confirmed": 0},
+    {"id": "error-envelope-with-data", "mode": "error-envelope", "outcome": "inconclusive", "status": "incomplete", "confirmed": 0},
+    {"id": "empty-denied-role-dataset", "mode": "empty", "outcome": "inconclusive", "status": "incomplete", "confirmed": 0},
+    {"id": "empty-page-with-next-link", "mode": "empty-page", "outcome": "inconclusive", "status": "incomplete", "confirmed": 0},
+    {"id": "nonempty-first-page-bypass", "mode": "page-bypass", "outcome": "confirmed", "status": "completed", "confirmed": 1},
+    {"id": "cached-success-with-age", "mode": "cached", "outcome": "inconclusive", "status": "incomplete", "confirmed": 0},
+    {"id": "cache-hit-header", "mode": "cache-hit", "outcome": "inconclusive", "status": "incomplete", "confirmed": 0},
+    {"id": "success-then-denial", "mode": "inconsistent", "outcome": "inconclusive", "status": "incomplete", "confirmed": 0},
+    {"id": "expired-application-session", "mode": "expired", "outcome": "blocked", "status": "incomplete", "confirmed": 0},
+    {"id": "gateway-html-denial", "mode": "gateway", "outcome": "blocked", "status": "incomplete", "confirmed": 0},
+    {"id": "redirect-to-login", "mode": "redirect", "outcome": "blocked", "status": "incomplete", "confirmed": 0},
+    {"id": "gateway-rate-limit", "mode": "rate-limit", "outcome": "blocked", "status": "incomplete", "confirmed": 0},
+    {"id": "empty-allowed-role-control", "mode": "empty-control", "outcome": "inconclusive", "status": "incomplete", "confirmed": 0},
+    {"id": "oversized-json-success", "mode": "oversized", "outcome": "inconclusive", "status": "incomplete", "confirmed": 0}
+  ]
+}

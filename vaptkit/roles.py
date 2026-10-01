@@ -98,6 +98,43 @@ def matches_shape(headers: dict, body: bytes, shape: dict) -> bool:
                and not (kind == "number" and isinstance(value[key], bool)) for key, kind in shape.items())
 
 
+def response_quality(status: int, headers: dict, body: bytes, shape: dict, account: str) -> str:
+    value = json_object(body) if content_class(headers) == "json" else None
+    if status in (401, 403) and (value is None or (status == 401 and account != "anonymous")):
+        return "blocked"
+    age = headers.get("age", [])
+    cache_status = " ".join(headers.get("x-cache", []) + headers.get("cf-cache-status", []))
+    if (age and (len(age) != 1 or not re.fullmatch(r"0+", age[0].strip()))
+            or re.search(r"\b(hit|stale|updating|revalidated)\b", cache_status, re.I)):
+        return "cached"
+    if status in (401, 403):
+        if not any(key in value for key in shape) and (value.get("error") or value.get("success") is False):
+            return "denied"
+        return "unmatched"
+    if value is None or not matches_shape(headers, body, shape):
+        return "unmatched"
+    if any(not value[key] for key, kind in shape.items() if kind == "array"):
+        return "empty"
+    return "matched"
+
+
+def role_outcome(record: dict, controls: set[str]) -> str:
+    """Classify derived evidence, retaining the original criteria for legacy records."""
+    attempts = record["attempts"]
+    if not attempts or any(item.get("evidence_quality") == "blocked" for item in attempts):
+        return "blocked"
+    success = all(200 <= item["status"] < 300 and item["shape_matched"]
+                  and item.get("evidence_quality", "matched") == "matched" for item in attempts)
+    if record["expected_allowed"]:
+        return "allowed" if success else "inconclusive"
+    if len(attempts) == 2 and success and record["path"] in controls:
+        return "confirmed"
+    if all(item["status"] in (401, 403) and item.get("evidence_quality", "denied") == "denied"
+           for item in attempts):
+        return "denied"
+    return "inconclusive"
+
+
 def collect_cookies(headers: dict, host: str) -> dict[str, str]:
     result = {}
     try:
@@ -165,6 +202,7 @@ def run(config: dict, approval: dict, output: Path) -> tuple[Path, int]:
         return status, received, data
 
     def inspect(account_id, role, cookies=None):
+        nonlocal stop_cleanup
         for path in approval["paths"]:
             route = routes[path]
             expected = role in route["allowed_roles"]
@@ -173,17 +211,21 @@ def run(config: dict, approval: dict, output: Path) -> tuple[Path, int]:
                       "expected_allowed": expected, "attempts": attempts}
             records.append(record)
             for attempt in range(2):
-                status, headers, body = call("GET", path, cookies)
+                try:
+                    status, headers, body = call("GET", path, cookies)
+                except HTTPStop as error:
+                    attempts.append({"status": error.status, "content_class": "none",
+                                     "shape_matched": False, "evidence_quality": "blocked"})
+                    raise
                 matched = matches_shape(headers, body, route["response_shape"])
-                attempts.append({"status": status, "content_class": content_class(headers), "shape_matched": matched})
+                quality = response_quality(status, headers, body, route["response_shape"], account_id)
+                attempts.append({"status": status, "content_class": content_class(headers),
+                                 "shape_matched": matched, "evidence_quality": quality})
+                if quality == "blocked":
+                    stop_cleanup = True
+                    raise ToolError("Session or gateway denial could not establish application role policy; requests stopped.")
                 if not 200 <= status < 300 or expected:
                     break
-            if expected and not (200 <= attempts[0]["status"] < 300 and attempts[0]["shape_matched"]):
-                errors.append({"path": path, "kind": "http",
-                               "message": "Allowed-role positive control failed or response shape was inconclusive."})
-            elif not expected and attempts[0]["status"] not in (401, 403) and not 200 <= attempts[0]["status"] < 300:
-                errors.append({"path": path, "kind": "http",
-                               "message": "Denied-role check was inconclusive; only 401/403 establishes an explicit denial."})
 
     def error_record(error):
         kind, message = failure_detail(error)
@@ -238,14 +280,20 @@ def run(config: dict, approval: dict, output: Path) -> tuple[Path, int]:
         gateway_headers.clear()
         secrets.clear()
 
-    controls = {item["path"] for item in records if item["expected_allowed"] and item["attempts"]
-                and 200 <= item["attempts"][0]["status"] < 300 and item["attempts"][0]["shape_matched"]}
+    controls = {item["path"] for item in records if role_outcome(item, set()) == "allowed"}
     findings = []
     for item in records:
-        if item["expected_allowed"] or not any(200 <= attempt["status"] < 300 for attempt in item["attempts"]):
+        outcome = role_outcome(item, controls)
+        if outcome in ("inconclusive", "blocked"):
+            errors.append({"path": item["path"], "kind": "http",
+                           "message": f"Role check for {item['account']} was {outcome}; "
+                                      "usable response evidence or an allowed-role control was missing."})
+        if item["expected_allowed"] or not any(
+            200 <= attempt["status"] < 300 and attempt["shape_matched"]
+            and attempt["evidence_quality"] in ("matched", "cached") for attempt in item["attempts"]
+        ):
             continue
-        confirmed = (len(item["attempts"]) == 2 and item["path"] in controls
-                     and all(200 <= attempt["status"] < 300 and attempt["shape_matched"] for attempt in item["attempts"]))
+        confirmed = outcome == "confirmed"
         findings.append({
             "title": f"Unexpected endpoint access for {item['account']}",
             "severity": "high" if confirmed else "medium",
@@ -254,8 +302,10 @@ def run(config: dict, approval: dict, output: Path) -> tuple[Path, int]:
             "impact": "An account outside the configured allowed roles received a successful response. "
                       "This tests endpoint role policy, not record ownership or the sensitivity of returned data.",
             "remediation": "Review the expected role matrix and enforce its policy in middleware and the route.",
-            "evidence": ("Two successful responses matched the configured JSON shape and an allowed-role control succeeded."
-                         if confirmed else "Successful HTTP response observed, but repeated shape or allowed-role control evidence is missing."),
+            "evidence": ("Two successful responses matched the configured JSON shape with nonempty arrays, "
+                         "no observed cache-hit signal and a usable allowed-role control."
+                         if confirmed else "A successful response matched the configured shape, but repetition, "
+                         "cache evidence or an allowed-role control was inconclusive."),
         })
     expected_count = (len(approval["role_accounts"]) + 1) * len(approval["paths"])
     if len(records) != expected_count and not errors:
@@ -275,6 +325,9 @@ def run(config: dict, approval: dict, output: Path) -> tuple[Path, int]:
                              "POST was limited to approved sign-in and sign-out. Login can create sessions, audit "
                              "records and login counters. No business records were intentionally changed. "
                              "Only status, content class and JSON-shape booleans were retained. "
+                             "Derived evidence-quality labels were also retained. Empty arrays, cache-hit signals, "
+                             "expired sessions and misleading responses do not establish passing role coverage. "
+                             "Only exact approved paths were checked; pagination links were not followed. "
                              "Ownership, workflows and unlisted routes were not tested. "
                              "Sign-out acknowledgement is not proof of server-side session revocation."
                              + (" Google IAP access was configured for every matrix request, including the "

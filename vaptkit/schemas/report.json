@@ -348,7 +348,8 @@
               "properties": {
                 "status": {"type": "integer", "minimum": 100, "maximum": 599},
                 "content_class": {"enum": ["html", "json", "text", "javascript", "binary", "none"]},
-                "shape_matched": {"type": "boolean"}
+                "shape_matched": {"type": "boolean"},
+                "evidence_quality": {"enum": ["matched", "empty", "cached", "unmatched", "denied", "blocked"]}
               }
             }
           }

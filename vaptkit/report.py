@@ -12,6 +12,7 @@ from jsonschema import Draft202012Validator
 
 from .assessment import create_output, load_json, write_private
 from .process import ToolError
+from .roles import role_outcome
 
 PRIORITY = {"critical": 0, "high": 1, "medium": 2, "low": 3, "informational": 4}
 SEVERITY_LABEL = {
@@ -116,16 +117,9 @@ def validate_result(result: dict) -> None:
                     or result["errors"] or any(not item["attempts"] for item in records)
                     or {item["account"] for item in cleanup if item["status"] == "acknowledged"} != set(accounts) - {"anonymous"}):
                 raise ToolError("A completed role report needs every approved matrix cell and acknowledged cleanup.")
-            controls = set()
-            for item in records:
-                attempts = item["attempts"]
-                success = all(200 <= attempt["status"] < 300 and attempt["shape_matched"] for attempt in attempts)
-                if item["expected_allowed"]:
-                    if not success:
-                        raise ToolError("A completed role report needs successful allowed-role controls.")
-                    controls.add(item["path"])
-                elif not (len(attempts) == 2 and success) and attempts[0]["status"] not in (401, 403):
-                    raise ToolError("A completed role report cannot contain inconclusive denied-role responses.")
+            controls = {item["path"] for item in records if role_outcome(item, set()) == "allowed"}
+            if any(role_outcome(item, controls) not in ("allowed", "denied", "confirmed") for item in records):
+                raise ToolError("A completed role report cannot contain blocked or inconclusive role responses.")
             if controls != set(result["approved_paths"]):
                 raise ToolError("Every role-tested route needs an allowed-role positive control.")
         elif (result["errors"] or not paths or paths != result["approved_paths"]
@@ -400,21 +394,67 @@ def render(result: dict, screenshots=(), *, tlp="AMBER+STRICT", prepared_by="", 
         ) + '</tbody></table><p class="caption">Table 4.3: Retest of previous findings</p>'
     ) if result.get("retest") else ""
     role_html = ""
+    role_summary = "Not run (not enabled in this profile)"
     if result["profile"] == "dtap-role-matrix":
-        rows = "".join(
-            f"<tr><td>{esc(item['account'])} ({esc(item['role'])})</td><td><code>{esc(item['path'])}</code></td>"
-            f"<td>{'Allow' if item['expected_allowed'] else 'Deny'}</td>"
-            f"<td>{esc(', '.join(str(attempt['status']) for attempt in item['attempts']) or 'No response')}</td>"
-            f"<td>{esc(', '.join('Matched' if attempt['shape_matched'] else 'Not matched' for attempt in item['attempts']))}</td></tr>"
-            for item in result.get("role_observations", [])
-        )
+        records = result.get("role_observations", [])
+        controls = {item["path"] for item in records if role_outcome(item, set()) == "allowed"}
+        indexed = {(item["account"], item["path"]): item for item in records}
+        labels = {"allowed": "Tested: allowed control", "denied": "Tested: denial observed",
+                  "confirmed": "Tested: confirmed role finding", "inconclusive": "Inconclusive",
+                  "blocked": "Blocked", "not_run": "Not run"}
+        counts = {key: 0 for key in labels}
+        rows = ""
+        for account in result.get("role_accounts", []):
+            for path in result["approved_paths"]:
+                item = indexed.get((account, path))
+                outcome = role_outcome(item, controls) if item else "not_run"
+                counts[outcome] += 1
+                attempts = item["attempts"] if item else []
+                expected = ("Allow" if item["expected_allowed"] else "Deny") if item else "Not recorded"
+                quality = ", ".join(attempt.get("evidence_quality", "legacy evidence") for attempt in attempts)
+                rows += (
+                    f"<tr><td>{esc(account)}</td><td><code>{esc(path)}</code></td><td>{expected}</td>"
+                    f"<td>{esc(', '.join(str(attempt['status']) for attempt in attempts) or 'No response')}</td>"
+                    f"<td>{esc(quality or 'No evidence')}</td><td>{labels[outcome]}</td></tr>"
+                )
+        tested = counts["allowed"] + counts["denied"] + counts["confirmed"]
+        role_summary = (f"{tested}/{sum(counts.values())} cells tested; "
+                        f"{counts['blocked']} blocked; {counts['inconclusive']} inconclusive; "
+                        f"{counts['not_run']} not run")
         role_html = (
             "<h4>Endpoint Role Matrix</h4><p>Expected access comes from the approved configuration. "
-            "A successful status alone does not confirm access. Confirmation requires two matching JSON shapes "
-            "and a successful allowed-role control. This does not test object ownership.</p>"
-            "<table><thead><tr><th>Account (role)</th><th>Path</th><th>Expected</th>"
-            f"<th>HTTP attempts</th><th>Response shape</th></tr></thead><tbody>{rows}</tbody></table>"
+            "A successful status alone does not confirm access. New records require two matching JSON shapes "
+            "with nonempty arrays, no observed cache-hit signal and a usable allowed-role control. "
+            "Cache signals are heuristic, not proof of origin freshness. Legacy evidence uses the older "
+            "status/shape criteria and cannot be retroactively checked for empty data or cache hits. "
+            "Only approved paths were requested; pagination links were not followed. "
+            "This does not test object ownership or approval workflows.</p>"
+            f"<p>{esc(role_summary)}</p>"
+            "<table><thead><tr><th>Account</th><th>Path</th><th>Expected</th>"
+            f"<th>HTTP attempts</th><th>Evidence quality</th><th>Outcome</th></tr></thead><tbody>{rows}</tbody></table>"
         )
+    header_tested = sum(200 <= item["status"] < 300 for item in observations)
+    header_summary = (
+        f"{header_tested}/{len(result['approved_paths'])} approved paths observed successfully; "
+        "non-2xx and missing responses are gaps"
+    ) if observations else "Not run (no header observations)"
+    exposure_summary = (
+        "Tested: bounded path list only" if result["coverage"]["data_exposure"] == "tested"
+        and result["status"] == "completed" else "Incomplete: blocked or inconclusive; see recorded checks"
+    ) if result["profile"] == "unauthenticated-exposure" else "Not run (not enabled in this profile)"
+    coverage_details = (
+        "<table><thead><tr><th>Test area</th><th>Coverage boundary</th></tr></thead><tbody>"
+        f"<tr><td>Header policy</td><td>{esc(header_summary)}</td></tr>"
+        f"<tr><td>Public exposure</td><td>{esc(exposure_summary)}</td></tr>"
+        f"<tr><td>Endpoint role policy</td><td>{esc(role_summary)}</td></tr>"
+        "<tr><td>Record ownership</td><td>Unsupported in live assessments; local lab only</td></tr>"
+        "<tr><td>Approval workflows</td><td>Unsupported in live assessments; local lab only</td></tr>"
+        "<tr><td>Unlisted routes and additional pages</td><td>Not tested</td></tr>"
+        "</tbody></table><p>Tested means the stated evidence criteria were met, not that the application "
+        "is secure. Blocked means access, transport or scope prevented a check. Inconclusive means a "
+        "response was observed but could not establish the expected behavior. Not run means no matrix "
+        "attempt was recorded. Cleanup failures can still make an otherwise tested matrix incomplete.</p>"
+    )
     vulnerabilities = "".join(vulnerability_blocks) or (
         "<p>No vulnerabilities were identified within the tested scope. "
         "Untested areas are listed in Section 2.</p>"
@@ -427,8 +467,9 @@ def render(result: dict, screenshots=(), *, tlp="AMBER+STRICT", prepared_by="", 
         "are identified separately."
     ) if observations else "No HEAD response observations were recorded in this assessment."
     gap_note = (
-        "For role-matrix GET checks, 401/403 means explicit denial as expected for disallowed roles. "
-        "Other failed responses remain coverage gaps."
+        "Role-matrix denial coverage requires an assessable JSON denial. Authenticated 401 responses "
+        "and non-JSON gateway denials block new runs rather than passing authorization checks. "
+        "A denial response alone does not prove which layer enforced it."
     ) if result["profile"] == "dtap-role-matrix" else "Non-2xx header responses are coverage gaps, not passing checks."
     cleanup = (("This profile sent HTTP HEAD and bounded GET requests. " if result["profile"] == "unauthenticated-exposure"
                 else "This profile sent only HTTP HEAD requests. ") + "No accounts, files, records or "
@@ -589,6 +630,7 @@ def render(result: dict, screenshots=(), *, tlp="AMBER+STRICT", prepared_by="", 
     <tr><td>Was unauthorized access found?</td><td><strong>{access}</strong></td></tr>
   </tbody></table>
   <p class="caption">Table 2.2: Coverage of the two primary risk questions</p>
+  {coverage_details}
   <p>{esc(result['coverage']['note'])}</p>
   <p class="muted">A clean result cannot establish that no historical data leak occurred.
   Redirects are not followed. {gap_note}</p>

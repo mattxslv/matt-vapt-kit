@@ -35,11 +35,12 @@ def main(argv=None) -> int:
     routes.add_argument("--output", type=Path, required=True, help="New private JSON file")
     scope = commands.add_parser("scope-template", help="Print an unapproved HEAD-only scope template")
     scope.add_argument("config", type=Path)
-    scan = commands.add_parser("run", help="Make approved HEAD requests; optional configured IAP login")
+    scan = commands.add_parser("run", help="Run approved header checks and optional bounded public exposure checks")
     scan.add_argument("config", type=Path)
     scan.add_argument("--approval", type=Path, required=True)
     scan.add_argument("--output", type=Path, required=True)
     scan.add_argument("--acknowledge-scope", action="store_true")
+    scan.add_argument("--baseline", type=Path, help="Earlier assessment.json to retest finding by finding")
     report = commands.add_parser("report", help="Render reviewed observations as HTML, PDF and PNG")
     report.add_argument("input", type=Path)
     report.add_argument("--output", type=Path, required=True)
@@ -97,7 +98,8 @@ def main(argv=None) -> int:
             from .assessment import assess, load_json
             if not args.acknowledge_scope:
                 raise ToolError("Pass --acknowledge-scope only with the authorized owner's approval.")
-            path, code = assess(config, load_json(args.approval), args.output)
+            baseline = load_json(args.baseline) if args.baseline else None
+            path, code = assess(config, load_json(args.approval), args.output, baseline)
             print(f"Assessment record written to {path}; " + ("incomplete." if code else "scoped checks completed."))
             return code
     except ConfigError as error:

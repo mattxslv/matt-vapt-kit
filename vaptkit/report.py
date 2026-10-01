@@ -107,6 +107,8 @@ def validate_result(result: dict) -> None:
         if (result["errors"] or not paths or paths != result["approved_paths"]
                 or any(not 200 <= item["status"] < 300 for item in result["observations"])):
             raise ToolError("A completed report must contain a successful observation for every approved path and no errors.")
+        if any(not 200 <= item["status"] < 300 for item in result.get("verification_observations", [])):
+            raise ToolError("A completed report cannot contain a failed verification response.")
     if result["profile"] in PROFILE_TYPES and (
         result["coverage"]["data_exposure"] != "not_tested"
         or result["coverage"]["unauthorized_access"] != "not_tested"
@@ -292,8 +294,9 @@ def render(result: dict, screenshots=(), *, tlp="AMBER+STRICT", prepared_by="", 
         for item in observations
     ) or '<tr><td colspan="6">No HTTP observations were captured.</td></tr>'
     commands = "".join(
-        f"<li><code>HEAD {esc(result['target'].rstrip('/'))}{esc(path)}</code></li>"
-        for path in result["approved_paths"]
+        f"<li><code>{esc(item['method'])} {esc(result['target'].rstrip('/'))}{esc(item['path'])}</code>"
+        f" (HTTP {item['status']})</li>"
+        for item in result.get("requests", observations)
     )
     figures = []
     for index, item in enumerate(observations, 1):
@@ -328,18 +331,53 @@ def render(result: dict, screenshots=(), *, tlp="AMBER+STRICT", prepared_by="", 
             blocks.append(
                 f'<article class="finding"><h4>{esc(item["title"])}</h4>'
                 f"<p>{esc(item['impact'])}</p>{evidence}"
-                f"<p><strong>Verification:</strong> {esc(item['verification'].capitalize())}</p>{score}{owasp_line}"
+                f"<p><strong>Verification:</strong> {esc(item['verification'].capitalize())}"
+                + (f" ({esc(item['evidence'])})" if item.get("evidence") else "") + f"</p>{score}{owasp_line}"
                 f"<p><strong>Solution:</strong></p><p>{esc(item['remediation'])}</p>"
                 f"<p><strong>Affected Links/Assets:</strong></p><ul><li><code>"
                 f"{esc(result['target'].rstrip('/'))}{esc(item['path'])}</code></li></ul></article>"
             )
         vulnerability_blocks.append(f'<h3 class="sev-heading sev-{severity}">{label.upper()}</h3>' + "".join(blocks))
+    exposure_labels = {
+        "baseline": "Random path baseline", "secret_file": "Environment file", "vcs": "Git metadata",
+        "debug": "Debug endpoint", "health": "Health endpoint", "api_docs": "API documentation",
+        "source_map": "JavaScript source map",
+    }
+    exposure_rows = "".join(
+        f"<tr><td><code>{esc(item['path'])}</code></td><td>{esc(exposure_labels[item['kind']])}</td>"
+        f"<td class=\"num\">{item['status']}</td><td>"
+        + ("Baseline" if item["kind"] == "baseline" else
+           "Exposed (signature matched)" if item["exposed"] and item["signature"] else
+           "Possibly exposed" if item["exposed"] else "No exposure confirmed")
+        + "</td></tr>"
+        for item in result.get("exposure", [])
+    )
+    exposure_html = (
+        "<p>A fixed list of commonly leaked paths was checked. A random path was requested first so that "
+        "catch-all pages can be filtered out. Content signatures used at most the first 2 KB, which was not stored. "
+        "Public documentation and diagnostic metadata require owner review before treating them as vulnerabilities. "
+        "No matching signature does not prove that a resource is safe.</p>"
+        "<table><thead><tr><th>Path</th><th>Check</th><th>Status</th><th>Result</th></tr></thead>"
+        f"<tbody>{exposure_rows}</tbody></table><p class=\"caption\">Table 4.2: Public exposure checks</p>"
+    ) if exposure_rows else '<p class="muted">Not performed in this profile.</p>'
+    retest_labels = {"still_present": "Still present", "resolved": "Resolved", "not_rechecked": "Not rechecked"}
+    retest_html = (
+        "<h3>4.4 Retest Results</h3><p>Comparison with the previous assessment. "
+        "Not rechecked means equivalent evidence was unavailable or inconclusive.</p>"
+        "<table><thead><tr><th>Finding</th><th>Path</th><th>Result</th></tr></thead><tbody>"
+        + "".join(
+            f"<tr><td>{esc(item['title'])}</td><td><code>{esc(item['path'])}</code></td>"
+            f"<td>{esc(retest_labels[item['status']])}</td></tr>"
+            for item in result["retest"]
+        ) + '</tbody></table><p class="caption">Table 4.3: Retest of previous findings</p>'
+    ) if result.get("retest") else ""
     vulnerabilities = "".join(vulnerability_blocks) or (
         "<p>No vulnerabilities were identified within the tested scope. "
         "Untested areas are listed in Section 2.</p>"
     )
 
-    cleanup = ("This profile sent only HTTP HEAD requests. No accounts, files, records or "
+    cleanup = (("This profile sent HTTP HEAD and bounded GET requests. " if result["profile"] == "unauthenticated-exposure"
+                else "This profile sent only HTTP HEAD requests. ") + "No accounts, files, records or "
                "configuration were created or modified on the target.")
     if result["profile"] == "iap-browser-head-only":
         cleanup += (" Google IAP sign-in state may remain in the operator's private toolkit browser "
@@ -507,20 +545,22 @@ def render(result: dict, screenshots=(), *, tlp="AMBER+STRICT", prepared_by="", 
   <h4>External Footprinting</h4>
   <p class="muted">Not performed in this profile.</p>
   <h4>HTTP Response Header Inspection</h4>
-  <p>The kit sent approved HEAD requests and recorded which browser security headers were present.</p>
+  <p>The kit graded approved HEAD responses against fixed rules. Findings marked Confirmed were
+  reproduced on a second request. Stopped checks and unverified findings are identified separately.</p>
   <table><thead><tr><th>Request</th><th>Status</th><th>HSTS</th><th>CSP</th><th>nosniff</th><th>Frame policy</th></tr></thead>
   <tbody>{observation_rows}</tbody></table>
   <p class="caption">Table 4.1: HTTP response header observations</p>
   {''.join(figures)}
   <p><strong>Commands:</strong></p><ul class="commands">{commands}</ul>
-  <h4>Web Application Mapping</h4>
-  <p class="muted">Not performed in this profile.</p>
+  <h4>Public Exposure Checks</h4>
+  {exposure_html}
   <h4>Service Enumeration and Fingerprinting</h4>
   <p class="muted">Not performed in this profile.</p>
   <h3>4.2 Vulnerability Identification</h3>
   {vulnerabilities}
   <h3>4.3 Attack and Exploitation</h3>
   <p>No exploitation was attempted. This profile is non-intrusive.</p>
+  {retest_html}
 </section>
 
 <section id="s5" class="chapter">

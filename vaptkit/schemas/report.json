@@ -137,7 +137,7 @@
     },
     "findings": {
       "type": "array",
-      "maxItems": 100,
+      "maxItems": 200,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -151,6 +151,10 @@
           "remediation"
         ],
         "properties": {
+          "check_id": {
+            "type": "string",
+            "maxLength": 64
+          },
           "title": {
             "type": "string",
             "maxLength": 200
@@ -228,6 +232,10 @@
                 "pattern": "^CVSS:(3\\.1|4\\.0)/[A-Za-z0-9:/.]{1,200}$"
               }
             }
+          },
+          "evidence": {
+            "type": "string",
+            "maxLength": 300
           }
         }
       }
@@ -285,6 +293,99 @@
         "note": {
           "type": "string",
           "maxLength": 2000
+        }
+      }
+    },
+    "verification_observations": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {"$ref": "#/properties/observations/items"}
+    },
+    "requests": {
+      "type": "array",
+      "maxItems": 60,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["method", "path", "status"],
+        "properties": {
+          "method": {"enum": ["HEAD", "GET"]},
+          "path": {"$ref": "#/$defs/path"},
+          "status": {"type": "integer", "minimum": 100, "maximum": 599}
+        }
+      }
+    },
+    "exposure": {
+      "type": "array",
+      "maxItems": 30,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "kind",
+          "status",
+          "exposed",
+          "signature"
+        ],
+        "properties": {
+          "path": {
+            "$ref": "#/$defs/path"
+          },
+          "kind": {
+            "enum": [
+              "baseline",
+              "secret_file",
+              "vcs",
+              "debug",
+              "health",
+              "api_docs",
+              "source_map"
+            ]
+          },
+          "status": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 599
+          },
+          "exposed": {
+            "type": "boolean"
+          },
+          "signature": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "retest": {
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "title",
+          "path",
+          "status"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "path": {
+            "$ref": "#/$defs/path"
+          },
+          "status": {
+            "enum": [
+              "still_present",
+              "resolved",
+              "not_rechecked"
+            ]
+          }
         }
       }
     }

@@ -135,3 +135,19 @@ class ReportTests(unittest.TestCase):
             self.result["coverage"]["data_exposure"] = "tested"
             with self.assertRaises(ToolError):
                 validate_result(self.result)
+
+    def test_exposure_retest_and_verification_render_without_raw_content(self):
+        self.result["profile"] = "unauthenticated-exposure"
+        self.result["exposure"] = [
+            {"path": "/.git/HEAD", "kind": "vcs", "status": 200, "exposed": True, "signature": True},
+            {"path": "/.env", "kind": "secret_file", "status": 404, "exposed": False, "signature": None},
+        ]
+        self.result["requests"] = [{"method": "GET", "path": "/.git/HEAD", "status": 206}]
+        self.result["retest"] = [{"path": "/", "title": "<old>", "status": "not_rechecked"}]
+        self.result["findings"][0]["evidence"] = "<repeat>"
+        validate_result(self.result)
+        document = render(self.result)
+        for text in ("Public exposure checks", "Retest Results", "GET https://", "&lt;repeat&gt;",
+                     "&lt;old&gt;", "No exposure confirmed", "HTTP HEAD and bounded GET"):
+            self.assertIn(text, document)
+        self.assertNotIn("sent only HTTP HEAD", document)

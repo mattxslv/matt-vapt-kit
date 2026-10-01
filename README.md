@@ -10,7 +10,10 @@ self-assessments, not CERT-PH reports or certifications.
 | Push protection | Scan committed history with Gitleaks and audit the exact pushed pnpm lockfile; optional local Semgrep rules |
 | Git integration | Install/remove local pre-push hooks without replacing existing hook behavior |
 | CI integration | Reusable composite action and push-to-main/staging workflow template, no PR required |
-| Scoped runner | Up to ten approved HTTPS HEAD requests; optional bearer/IAP login, no assessment redirects, bodies or crawling |
+| Scoped runner | Up to ten approved paths plus header verification; optional bearer/IAP login, no redirects |
+| Public exposure checks | Explicit opt-in, fixed paths and up to three source maps, bounded GET signatures with no stored bodies |
+| Offline route review | Trace authentication helpers in committed Next.js API handlers and flag suspected gaps |
+| Retest | Compare an earlier assessment using equivalent check evidence, never URL reachability alone |
 | Report generator | CERT-PH-style HTML/PDF report, clearly marked as an MVK self-assessment, with PNG evidence figures |
 | Docker tools | Core tools plus separate pinned ZAP, Nuclei, Gitleaks, Semgrep, Subfinder and testssl images |
 
@@ -127,7 +130,8 @@ tests or third-party reconnaissance services are in scope.
   --output /existing/private/folder/assessment-001
 ```
 
-The local runner makes a maximum of ten serial HEAD requests. It requires public DNS
+The header runner makes at most twenty serial HEAD requests: ten initial observations
+and one verification per path with findings or baseline header findings. It requires public DNS
 addresses, pins the chosen address while validating TLS against the configured host,
 does not follow redirects or use proxies, and bounds socket timeouts by both the
 approved timeout and the remaining approval window. It rechecks expiry after DNS,
@@ -139,11 +143,67 @@ uses the operating system resolver's timeout.
 
 `assessment.json` stores normalized header observations, not raw headers, cookies,
 response bodies or account credentials. Header presence is not proof of effective
-policy. Missing defense headers are observations, not demonstrated exploits.
+policy. Values are graded against fixed rules. Repeated failures are marked
+**confirmed**, meaning the configuration observation was reproduced, not that an
+exploit succeeded. Nonreproduced findings remain **suspected**.
 Data exposure and unauthorized access remain **Not tested** for this profile.
 Report generation rejects a "completed" result with missing paths, failed responses
 or recorded errors. Blocked responses display **Not assessed**, not misleading
 missing-header observations.
+
+### Optional public exposure checks and retest
+
+Set `exposure_checks: true` in an approved scope file to authorize a bounded expansion
+beyond its header `paths`: HEAD checks of `.env`, `.env.local`, `.env.production`,
+`.git/HEAD`, `.git/config`, `/api/debug`, `/api/env`, `/api/config`, `/api/health`,
+`/swagger.json`, `/openapi.json`, `/api-docs`, and a random soft-404 baseline.
+Candidate responses receive a GET with `Range: bytes=0-2047`; at most 2 KB is read
+even if the server ignores Range. One GET of `/` reads at most 256 KiB to discover
+up to three same-origin `/_next/static/*.js.map` paths, checked with the same bounds.
+There is no recursive crawling. The maximum is 52 requests including header verification.
+All requests share the approval window, interval and project exclusions.
+
+This mode requires a configuration **without `access` credentials**. Access through
+IAP or an application account cannot establish that a file is publicly accessible.
+The runner stops on redirects, 401/403, rate limits, server errors or transport failures,
+retaining partial evidence. No redirect is followed and no returned URL is fetched.
+Bodies and credentials are never saved. Signature matches confirm exposed environment
+files, Git metadata or source maps; diagnostic output and API documentation remain
+suspected because their public availability may be intentional.
+
+Soft-404 matching and small content samples are conservative heuristics. They can miss
+real exposures, including files with unexpected content types or signatures beyond
+the read limit. No matching signature is not an all-clear. Exposure coverage refers
+only to this finite list, not every API response or sensitive-data flow.
+
+```sh
+.venv/bin/vapt run projects/dtap.vapt.yml \
+  --approval approval.local.json --acknowledge-scope \
+  --baseline /private/previous/assessment.json --output /private/retest-001
+```
+
+A baseline must match the project, exact target and access profile. Reports show
+**Still present**, **Resolved**, or **Not rechecked**. Header fixes need two successful
+observations of the same check; missing newer check fields do not imply a fix.
+An exposed file is marked resolved only when its exposure recheck returns 404/410.
+Source-review findings, excluded checks, blocked responses and inconclusive results
+are not automatically resolved. Keep baseline files private and review the evidence.
+
+### Offline API authentication review
+
+```sh
+.venv/bin/vapt review-routes projects/dtap.vapt.yml /path/to/DTAP \
+  --revision HEAD --output /private/dtap-routes.json
+.venv/bin/vapt report /private/assessment/assessment.json \
+  --source-review /private/dtap-routes.json --reviewed --output /private/report
+```
+
+Only committed Git objects are read; dirty application files are not scanned or
+modified. Public-route allowlists, privileged prefixes and custom authentication
+patterns live under `review` in the toolkit project config. Helper tracing is bounded
+and heuristic, not a full TypeScript control-flow analysis. Every source-review
+finding remains **suspected** until checked against middleware and live authorized
+behavior. Seeing an auth helper does not prove that every execution path enforces it.
 
 ### Access through Google IAP
 

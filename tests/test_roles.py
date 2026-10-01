@@ -103,6 +103,79 @@ class RoleTests(unittest.TestCase):
         self.assertEqual({item["verification"] for item in result["findings"]}, {"confirmed"})
         self.assertEqual([len(item["attempts"]) for item in result["role_observations"]], [2, 2, 1])
 
+    def test_iap_is_shared_without_sharing_application_sessions(self):
+        config = configuration()
+        config["access"] = {"type": "iap-browser", "remember_login": True}
+        gateway = "GCP_IAP_AUTH_TOKEN_test=SYNTHETIC_GATEWAY_SENTINEL"
+        app = Application()
+        with patch("vaptkit.roles.browser_login", return_value={"Cookie": gateway}) as login:
+            result, code = self.execute(app, config)
+        self.assertEqual(code, 0)
+        self.assertIs(login.call_args.kwargs["validate_scope"], validate)
+        self.assertEqual(login.call_args.args[1]["method"], "GET")
+        self.assertTrue(login.call_args.args[1]["role_login"])
+        for method, path, kwargs in app.calls:
+            cookies = kwargs["headers"]["Cookie"]
+            self.assertTrue(cookies.startswith(gateway))
+            if path == LOGIN:
+                self.assertEqual(cookies, gateway)
+            self.assertFalse("auth-token=lead" in cookies and "auth-token=provider" in cookies)
+        self.assertEqual(app.calls[0][2]["headers"]["Cookie"], gateway)
+        self.assertEqual(result["findings"], [])
+        self.assertIn("Public access outside IAP was not tested", result["coverage"]["note"])
+        self.assertNotIn("SYNTHETIC_GATEWAY_SENTINEL", json.dumps(result) + render(result))
+
+    def test_iap_failure_sends_no_matrix_requests(self):
+        config = configuration()
+        config["access"] = {"type": "iap-browser"}
+        app = Application()
+        with patch("vaptkit.roles.browser_login", side_effect=ToolError("Manual IAP login timed out.")):
+            result, code = self.execute(app, config)
+        self.assertEqual(code, 1)
+        self.assertEqual(app.calls, [])
+        self.assertEqual(result["status"], "incomplete")
+        self.assertEqual(result["coverage"]["unauthorized_access"], "not_tested")
+
+    def test_iap_redirect_or_denial_is_not_a_passing_matrix(self):
+        config = configuration()
+        config["access"] = {"type": "iap-browser"}
+        for status in (302, 401, 403):
+            calls = []
+            def app(host, method, path, **kwargs):
+                calls.append((method, path))
+                return reply(status, {"error": "gateway"})
+            with self.subTest(status=status), patch(
+                "vaptkit.roles.browser_login", return_value={"Cookie": "GCP_IAP_AUTH_TOKEN_test=fixture"}
+            ):
+                result, code = self.execute(app, config)
+            self.assertEqual(code, 1)
+            self.assertEqual(result["findings"], [])
+            self.assertEqual(result["coverage"]["unauthorized_access"], "not_tested")
+            self.assertEqual(len(calls), 1 if status == 302 else 2)
+
+    def test_bearer_access_remains_unsupported(self):
+        config = configuration()
+        config["access"] = {"type": "bearer", "token_env": "TOKEN", "header": "Authorization"}
+        with self.assertRaisesRegex(ToolError, "not bearer"):
+            validate(config, approval_for(config))
+
+    def test_scope_expiry_stops_requests_including_signout(self):
+        app = Application()
+        calls = 0
+        def validate_until_login(config, approval):
+            nonlocal calls
+            calls += 1
+            if calls == 4:
+                raise ToolError("Approval expired.")
+            validate(config, approval)
+        with patch("vaptkit.roles.validate", side_effect=validate_until_login):
+            result, code = self.execute(app)
+        self.assertEqual(code, 1)
+        self.assertEqual([method for method, _, _ in app.calls], ["GET", "POST"])
+        self.assertEqual(app.calls[-1][1], LOGIN)
+        self.assertEqual(result["role_cleanup"][0]["status"], "unconfirmed")
+        self.assertEqual(calls, 4)
+
     def test_generic_success_is_suspected_not_confirmed(self):
         result, code = self.execute(Application(catchall=True))
         self.assertEqual(code, 1)

@@ -215,7 +215,7 @@ behavior. Seeing an auth helper does not prove that every execution path enforce
 ### Approved DTAP role matrix
 
 `vapt roles` supports the existing DTAP cookie login contract only. It is not a
-generic login crawler and it does not support PEMEDES or IAP role login yet.
+generic login crawler and it does not support PEMEDES role login.
 The account aliases distinguish the two evaluators while keeping both in the
 `evaluator` role. Testing two accounts does not by itself test record ownership.
 
@@ -227,6 +227,24 @@ The account aliases distinguish the two evaluators while keeping both in the
 .venv/bin/vapt roles projects/dtap.vapt.yml \
   --approval roles.local.json --acknowledge-scope --output /private/dtap-roles-001
 ```
+
+For DTAP staging behind Google IAP, make a private copy of the toolkit project
+configuration and add `access: {type: iap-browser, remember_login: true}`.
+Generate a new role approval from that exact configuration, then use it with
+`vapt roles`. The normal browser sign-in opens before matrix requests and uses
+the same approval window. Browser navigation and Google sign-in traffic are
+additional to the bounded matrix requests below. Install the optional browser
+dependencies described under IAP login. Bearer gateway access is not supported
+by the role runner.
+
+Only target IAP cookies are shared across requests. DTAP account cookies remain
+isolated and are never collected from the browser. With IAP enabled, "anonymous"
+means no **DTAP application session**, not anonymous internet access: that control
+still authenticates at the gateway. The report records this limitation.
+Gateway redirects stop the run without retrying or following them. A denied
+gateway request cannot establish successful application coverage without the
+allowed-role positive control. DTAP sign-out does not revoke the IAP session;
+`remember_login: true` retains the private browser profile for future use.
 
 Approval binds the config digest, exact GET paths and selected account IDs.
 Each route must have an approved allowed-role account as a positive control.

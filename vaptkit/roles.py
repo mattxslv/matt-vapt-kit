@@ -13,6 +13,7 @@ from .assessment import (
     HTTPStop, approval_template, create_output, digest, failure_detail, reject_constant,
     request, unique_object, utc, validate_approval, write_private,
 )
+from .browser_login import login as browser_login
 from .exposure import content_class
 from .process import ToolError
 
@@ -32,8 +33,10 @@ def template(config: dict) -> dict:
 
 def validate(config: dict, approval: dict) -> None:
     settings = config.get("role_testing")
-    if not settings or settings["adapter"] != "dtap-cookie-v1" or config.get("access"):
-        raise ToolError("Role checks require the DTAP cookie adapter without gateway access configuration.")
+    if not settings or settings["adapter"] != "dtap-cookie-v1":
+        raise ToolError("Role checks require the DTAP cookie adapter.")
+    if config.get("access") and config["access"]["type"] != "iap-browser":
+        raise ToolError("Role checks support only browser IAP gateway access, not bearer access.")
     if not isinstance(approval, dict) or approval.get("role_login") is not True or approval.get("method") != "GET":
         raise ToolError("Role checks require explicit role_login approval and GET paths.")
     head_scope = {key: value for key, value in approval.items() if key not in ("role_login", "role_accounts")}
@@ -116,11 +119,7 @@ def collect_cookies(headers: dict, host: str) -> dict[str, str]:
 
 
 def run(config: dict, approval: dict, output: Path) -> tuple[Path, int]:
-    try:
-        validate(config, approval)
-    except ToolError:
-        stop_cleanup = True
-        raise
+    validate(config, approval)
     secrets = credentials(config, approval)
     create_output(output)
     started = datetime.now(timezone.utc).isoformat()
@@ -134,6 +133,7 @@ def run(config: dict, approval: dict, output: Path) -> tuple[Path, int]:
     active_path = LOGIN
     first = True
     stop_cleanup = False
+    gateway_headers = {}
 
     def call(method, path, cookies=None, body=None):
         nonlocal active_path, first, stop_cleanup
@@ -141,13 +141,16 @@ def run(config: dict, approval: dict, output: Path) -> tuple[Path, int]:
         if not first:
             time.sleep(approval["interval_seconds"])
         first = False
-        validate(config, approval)
-        headers = {"Accept": "application/json", "Cache-Control": "no-cache"}
+        headers = {"Accept": "application/json", "Cache-Control": "no-cache", **gateway_headers}
         if cookies:
-            headers["Cookie"] = "; ".join(f"{name}={value}" for name, value in cookies.items())
+            headers["Cookie"] = "; ".join(
+                ([gateway_headers["Cookie"]] if gateway_headers.get("Cookie") else [])
+                + [f"{name}={value}" for name, value in cookies.items()]
+            )
         if body is not None:
             headers["Content-Type"] = "application/json"
         try:
+            validate(config, approval)
             status, received, data = request(
                 host, method, path, headers=headers, body=body, body_limit=BODY_LIMIT + 1,
                 expires_at=expires, timeout_seconds=timeout,
@@ -190,6 +193,8 @@ def run(config: dict, approval: dict, output: Path) -> tuple[Path, int]:
                        "kind": kind, "message": message[:256]})
 
     try:
+        if config.get("access"):
+            gateway_headers = browser_login(config, approval, validate_scope=validate)
         inspect("anonymous", "anonymous")
         for account_id in approval["role_accounts"]:
             account = accounts[account_id]
@@ -229,6 +234,9 @@ def run(config: dict, approval: dict, output: Path) -> tuple[Path, int]:
                 break
     except (ToolError, OSError, http.client.HTTPException) as error:
         error_record(error)
+    finally:
+        gateway_headers.clear()
+        secrets.clear()
 
     controls = {item["path"] for item in records if item["expected_allowed"] and item["attempts"]
                 and 200 <= item["attempts"][0]["status"] < 300 and item["attempts"][0]["shape_matched"]}
@@ -268,9 +276,12 @@ def run(config: dict, approval: dict, output: Path) -> tuple[Path, int]:
                              "records and login counters. No business records were intentionally changed. "
                              "Only status, content class and JSON-shape booleans were retained. "
                              "Ownership, workflows and unlisted routes were not tested. "
-                             "Sign-out acknowledgement is not proof of server-side session revocation."},
+                             "Sign-out acknowledgement is not proof of server-side session revocation."
+                             + (" Google IAP access was configured for every matrix request, including the "
+                                "application-anonymous control. Public access outside IAP was not tested. "
+                                "DTAP sign-out does not revoke the IAP browser session."
+                                if config.get("access") else "")},
     }
     destination = output / "assessment.json"
     write_private(destination, json.dumps(result, indent=2))
-    secrets.clear()
     return destination, 1 if errors else 0

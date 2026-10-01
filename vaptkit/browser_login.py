@@ -4,6 +4,7 @@ import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 from urllib.parse import unquote, urlsplit
 
 from .process import ToolError
@@ -61,13 +62,15 @@ def profile_directory(origin: str) -> Path:
     return profile
 
 
-def login(config: dict, approval: dict) -> dict[str, str]:
+def login(config: dict, approval: dict, *,
+          validate_scope: Callable[[dict, dict], None] | None = None) -> dict[str, str]:
     from .assessment import public_addresses, utc, validate_approval
+    validate_scope = validate_scope or validate_approval
+    validate_scope(config, approval)
     try:
         from playwright.sync_api import Error as BrowserError, sync_playwright
     except ImportError:
         raise ToolError("Install matt-vapt-kit[report] and Playwright Chromium for manual IAP login.") from None
-    validate_approval(config, approval)
     origin = config["target"]["url"].rstrip("/")
     public_addresses(urlsplit(origin).hostname)
     remaining = (utc(approval["expires_at"]) - datetime.now(timezone.utc)).total_seconds()
@@ -93,12 +96,14 @@ def login(config: dict, approval: dict) -> dict[str, str]:
             try:
                 def route_request(route):
                     request = route.request
-                    if login_request_allowed(request.url, request.method, origin, config["scope"]["excluded_prefixes"]):
+                    if (time.monotonic() < deadline
+                            and login_request_allowed(request.url, request.method, origin, config["scope"]["excluded_prefixes"])):
                         route.continue_()
                     else:
                         route.abort()
 
                 context.route("**/*", route_request)
+                validate_scope(config, approval)
                 cookie = iap_cookie_header(context.cookies(origin + "/"))
                 if cookie:
                     print("Reusing the saved target IAP session; no new sign-in needed.", flush=True)
@@ -108,11 +113,11 @@ def login(config: dict, approval: dict) -> dict[str, str]:
                 while time.monotonic() < deadline:
                     if page.is_closed():
                         raise ToolError("Login window closed before IAP authentication completed.")
-                    validate_approval(config, approval)
+                    validate_scope(config, approval)
                     # Playwright filters by the exact target URL; never collect Google cookies.
                     cookie = iap_cookie_header(context.cookies(origin + "/"))
                     if cookie:
-                        print("Target IAP session acquired; closing login window before scoped HEAD checks.", flush=True)
+                        print("Target IAP session acquired; closing login window before scoped assessment requests.", flush=True)
                         return {"Cookie": cookie}
                     page.wait_for_timeout(500)
                 raise ToolError("Manual IAP login timed out; no assessment requests sent.")

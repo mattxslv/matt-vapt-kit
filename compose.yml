@@ -1,7 +1,7 @@
 services:
   kit:
     build: .
-    image: matt-vapt-kit:0.1.0
+    image: matt-vapt-kit:0.2.0
     network_mode: none
     read_only: true
     cap_drop: [ALL]
@@ -10,6 +10,20 @@ services:
       - /tmp:size=64m,mode=1777
     volumes:
       - ./projects:/workspace/projects:ro
+
+  report:
+    profiles: [report]
+    build:
+      context: .
+      dockerfile: Dockerfile.report
+    image: matt-vapt-kit-report:0.2.0
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    shm_size: 256m
+    tmpfs:
+      - /tmp:size=512m,mode=1777
 
   # Dormant tools, not scheduled jobs. Network access requires an explicit override.
   zap:

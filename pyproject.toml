@@ -4,10 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "matt-vapt-kit"
-version = "0.1.0"
-description = "Private, staging-first security assessment toolkit foundation"
+version = "0.2.0"
+description = "Private, staging-first security checks and assessment reports"
 requires-python = ">=3.11"
 dependencies = ["PyYAML==6.0.2", "jsonschema==4.23.0"]
+
+[project.optional-dependencies]
+report = ["playwright==1.58.0"]
 
 [project.scripts]
 vapt = "vaptkit.cli:main"
@@ -16,4 +19,4 @@ vapt = "vaptkit.cli:main"
 include = ["vaptkit*"]
 
 [tool.setuptools.package-data]
-vaptkit = ["schemas/*.json"]
+vaptkit = ["schemas/*.json", "assets/*.css", "rules/*.yml"]

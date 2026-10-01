@@ -1,0 +1,20 @@
+rules:
+  - id: tls-verification-disabled
+    message: TLS certificate verification is explicitly disabled. Verify the destination instead.
+    severity: ERROR
+    languages: [javascript, typescript]
+    patterns:
+      - pattern: "{..., rejectUnauthorized: false, ...}"
+  - id: dynamic-code-evaluation
+    message: Review dynamic code evaluation; untrusted input must never reach eval.
+    severity: ERROR
+    languages: [javascript, typescript]
+    pattern: eval(...)
+  - id: shell-exec-with-template
+    message: Review shell execution with an interpolated command. Prefer execFile with arguments.
+    severity: ERROR
+    languages: [javascript, typescript]
+    patterns:
+      - pattern-either:
+          - pattern: exec(`...${$VALUE}...`, ...)
+          - pattern: execSync(`...${$VALUE}...`, ...)

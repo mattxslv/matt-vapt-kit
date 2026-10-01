@@ -1,144 +1,213 @@
 # Matt VAPT Kit
 
-Private security self-assessment tooling for team-owned systems.
-This is an internal assessment, not a CERT-PH report or certification.
+Private, staging-first security tooling for Matthew's team. Reports are internal
+self-assessments, not CERT-PH reports or certifications.
 
-## What works today
+## Available in 0.2
 
-- A non-root Docker runner with curl, DNS utilities, ffuf, Git, Nmap and WhatWeb.
-- Digest-pinned, separate Docker services for ZAP, Nuclei, Gitleaks, Semgrep,
-  Subfinder and testssl.sh. They do not run automatically.
-- Offline validation of staging-only YAML configuration with exact host allowlists.
-- PEMEDES configuration and a DTAP draft. No application repositories modified.
+| Component | What it actually does |
+|---|---|
+| Push protection | Scan committed history with Gitleaks and audit the exact pushed pnpm lockfile; optional local Semgrep rules |
+| Git integration | Install/remove local pre-push hooks without replacing existing hook behavior |
+| CI integration | Reusable composite action and push-to-main/staging workflow template, no PR required |
+| Scoped runner | Up to ten approved HTTPS HEAD requests; no redirects, bodies, authentication or crawling |
+| Report generator | Original light HTML/PDF briefing and PNG screenshots of sanitized observations |
+| Docker tools | Core tools plus separate pinned ZAP, Nuclei, Gitleaks, Semgrep, Subfinder and testssl images |
 
-No scanning, hooks, scheduled workflows, screenshot capture or report generation
-is implemented yet. `vapt validate` checks configuration, not website security.
-Container services default to **no network access**. This foundation intentionally
-cannot authorize a scan.
+This is **not a complete VAPT scanner**. ZAP/Nuclei discovery adapters, authenticated
+role/ownership/workflow tests, infrastructure assessments and weekly schedules remain
+future stages. CodeQL requires eligible repository settings and is opt-in.
 
-## Start locally
-
-```sh
-docker compose build kit
-docker compose run --rm kit doctor
-docker compose run --rm kit validate projects/pemedes.vapt.yml
-docker compose run --rm kit validate projects/dtap.vapt.yml
-```
-
-These commands do not contact the target websites. Docker build downloads packages
-from their publishers. The core base and auxiliary images are pinned by digest;
-Debian packages resolve from the distribution repositories at build time, so the
-build is not fully reproducible. Update and revalidate tool pins regularly.
-
-For local development:
+## Setup
 
 ```sh
 python3 -m venv .venv
 .venv/bin/pip install -e .
+docker compose build kit
+docker compose run --rm kit doctor
+docker compose run --rm kit validate projects/pemedes.vapt.yml
+```
+
+Use the local CLI for Git/Docker orchestration; the core container intentionally does
+not mount the Docker socket. Docker build/pull retrieves packages from their publishers.
+Image digests are pinned; Debian and transitive Python packages still resolve at build
+time. Update pins and revalidate regularly.
+
+## Push checks, no PRs
+
+```sh
+.venv/bin/vapt check /path/to/project
+.venv/bin/vapt check /path/to/project --static
+.venv/bin/vapt hook install /path/to/project
+.venv/bin/vapt hook uninstall /path/to/project
+```
+
+The pre-push hook checks every unique nondeleted pushed commit tip (including tag
+targets), not just the current branch or dirty working tree. Gitleaks scans all
+reachable history for each tip and redacts its output. `pnpm audit --audit-level=high`
+checks a temporary copy of that commit's manifests. No dependency install, lifecycle
+scripts or application build is run.
+A temporary bare snapshot shares read-only Git objects during history scanning.
+Local certificate directories, dirty attributes and working-tree scanner overrides
+do not affect the history read. The default Gitleaks rules apply.
+
+Checks fail closed on missing tools, unsupported Node lockfiles, audit errors and
+high/critical dependency findings. Findings are not automatically fixed or ignored.
+Projects without root `package.json` explicitly skip the pnpm audit; their ecosystem
+auditors are not implemented yet. pnpm must resolve the exact version in the project's
+`packageManager` field. The pnpm audit service receives package names and versions,
+not source code. Docker scans have no network access.
+
+Installation preserves executable hooks in the previous hooks directory and chains
+the previous pre-push hook with identical stdin and arguments. Uninstall restores the
+previous repository-local configuration. Keep this toolkit checkout and its virtual
+environment at their installed paths. Reinstall if you move them or add new hooks to
+the previous directory. Hooks are local and bypassable; CI provides another check.
+
+### GitHub Actions
+
+Copy `templates/push-security.yml` into the application's `.github/workflows/`, replace
+`TOOLKIT_COMMIT` with a reviewed full toolkit commit SHA, and commit it. In the private
+toolkit's Actions settings, permit access from repositories owned by the same user.
+No personal token needs to be added to the workflow.
+
+The workflow runs on pushes to `main` or `staging` and manually. It uses full checkout
+history, minimal permissions, no persisted checkout credentials, and pinned actions.
+It does not create issues containing secrets or upload raw reports as artifacts.
+Results remain in the private repository's Actions logs.
+
+CodeQL is a separate optional job, gated by repository variable `ENABLE_CODEQL=true`.
+Confirm private-repository GitHub Code Security eligibility and enable code scanning
+before setting it. The current PEMEDES/DTAP API reports code scanning disabled.
+The three bundled Semgrep rules are a small starter set, **not equivalent to CodeQL
+or comprehensive OWASP coverage**. They check explicitly disabled TLS verification,
+dynamic code evaluation and interpolated shell commands. Findings require triage.
+
+**Deployment is unchanged.** Cloud Build may deploy concurrently with these checks.
+A failed advisory GitHub Action does not stop that deployment. A real release gate
+must be connected to Cloud Build with separate approval.
+
+## Project scope
+
+`projects/pemedes.vapt.yml` contains the PEMEDES staging origin and preliminary roles.
+`projects/dtap.vapt.yml` is a draft; its target did not respond during setup and roles
+need review. Application repositories may use the same format in `.vapt.yml`.
+
+Offline validation accepts only an exact HTTPS origin on port 443, no wildcards or
+embedded credentials. `environment: staging` is a declaration, not proof of isolation.
+The schema is `vaptkit/schemas/project.json`. Credentials are environment-variable
+names only; this HEAD runner never loads or sends them.
+
+### Approve a bounded header check
+
+```sh
+.venv/bin/vapt scope-template projects/pemedes.vapt.yml > approval.local.json
+```
+
+The template is intentionally invalid. An authorized owner must set their name,
+ISO-8601 start/end timestamps with timezone, and 1-10 exact paths. The scope expires
+within four hours; request intervals must be 1-30 seconds. The approval is bound to
+the project config's SHA-256. Changing the config requires a new approval.
+This is an owner attestation, not a digital signature or an authorization system.
+
+Use synthetic staging data, an agreed test window and disabled real email/payment
+side effects. HEAD requests can still invoke poorly designed application actions.
+Check exclusions before approving. No production, shared cloud IPs, availability
+tests or third-party reconnaissance services are in scope.
+
+```sh
+# Only after the authorized owner approves:
+.venv/bin/vapt run projects/pemedes.vapt.yml \
+  --approval approval.local.json --acknowledge-scope \
+  --output /existing/private/folder/assessment-001
+```
+
+The local runner makes a maximum of ten serial HEAD requests. It requires public DNS
+addresses, pins the chosen address while validating TLS against the configured host,
+does not follow redirects or use proxies, and uses a ten-second socket timeout.
+It stops on transport/scope errors, 401/403/429 or server errors. Non-2xx responses
+remain explicit coverage gaps, not passing results. Existing output directories are
+never overwritten. Record and watch the assessment window; DNS resolution itself
+uses the operating system resolver's timeout.
+
+`assessment.json` stores normalized header observations, not raw headers, cookies,
+response bodies or account credentials. Header presence is not proof of effective
+policy. Missing defense headers are observations, not demonstrated exploits.
+Data exposure and unauthorized access remain **Not tested** for this profile.
+
+Compose defaults to no networking. Enabling network access for the core container
+requires an explicit override and does not waive CLI scope checks. Scanner containers
+are dormant tools, not scheduled assessments.
+
+## Your report, with screenshots
+
+Build the separate offline browser-export image:
+
+```sh
+docker compose --profile report build report
+```
+
+Review the assessment JSON for personal data and secrets before export. The toolkit
+retains only selected metadata, but manual input can still contain sensitive text.
+`--reviewed` records your acknowledgement, not a claim of perfect automatic redaction.
+
+```sh
+# Replace both mounts with existing, private directories.
+docker compose run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+  -v /private/assessment-001:/input:ro \
+  -v /private/reports:/output \
+  report report /input/assessment.json --output /output/report-001 --reviewed
+```
+
+Outputs: `report.html`, `report.pdf`, and `evidence-01.png` (one PNG per observation).
+The PNGs are real Chromium screenshots of **rendered, sanitized HTTP evidence**,
+not screenshots of the target website. Each has a caption and hash. Website capture
+and arbitrary scanner-output import are not implemented yet.
+
+HTML is self-contained with embedded screenshots; PDF is tagged and searchable.
+Chromium is network-disabled in Docker, external page requests are blocked, and
+report content is HTML-escaped. Reports use no remote fonts, scripts or images.
+Folders are mode 0700 and files 0600. No encryption is applied; choose appropriate
+encrypted storage and share only with authorized recipients.
+
+For HTML without browser dependencies:
+
+```sh
+.venv/bin/vapt report /private/assessment-001/assessment.json \
+  --output /private/reports/html-001 --reviewed --html-only
+```
+
+For local PDF/PNG export instead of Docker, install `.[report]`, then
+`.venv/bin/playwright install --with-deps --only-shell chromium`.
+
+The first page distinguishes **Confirmed**, **Suspected**, **Not observed in tested
+scope**, and **Not tested**. A clean vulnerability scan does not prove that a historical
+leak never occurred. No CVSS score is invented. Manual findings can use the same strict
+JSON schema; arbitrary raw scanner reports are rejected.
+
+## Private evidence and interpretation
+
+Keep reports, approvals, screenshots, cookies and personal data out of Git. Ignore
+rules are guardrails, not access control. Do not share code or assessment data with
+external scanning services. External-provider reconnaissance remains disabled.
+
+Public JavaScript/API route names are normal web behavior, not automatically source
+disclosure. `NEXT_PUBLIC_*` variable names alone do not establish an authentication
+bypass. Verify actual server-side enforcement and impact. Minimal public liveness
+checks can be appropriate; internal diagnostics need separate controls.
+
+## Verification and cadence
+
+```sh
 .venv/bin/python -m unittest discover -s tests -v
+docker compose run --rm kit doctor
 ```
 
-`vapt doctor` returns nonzero if a core executable is missing. It checks availability,
-not scanner effectiveness. Use the Docker runner for consistent tool availability.
+`tests/fixtures/assessment.json` is synthetic and labeled as such in exports.
+No live application is contacted by the test suite or the toolkit CI.
 
-## Project configuration
-
-Start with `projects/pemedes.vapt.yml`. Eventually each application repository will
-hold its own `.vapt.yml`. The schema is `vaptkit/schemas/project.json`.
-
-- Only an exact HTTPS origin on port 443 is accepted. No wildcards or embedded credentials.
-- `environment: staging` is a declaration, not proof the server is a test environment.
-- A reachable server is not permission to scan. A separate approved scope is required.
-- Roles must be confirmed before authenticated checks. DTAP's roles are intentionally
-  empty until reviewed, and its URL did not respond during setup.
-- Credentials are environment-variable **names**, never values:
-
-```yaml
-credentials:
-  admin:
-    token_env: VAPT_PEMEDES_ADMIN_TOKEN
-```
-
-The foundation does not load credentials. Future adapters must enforce path scope,
-redirect limits and rate limits themselves; a config file alone is not enforcement.
-PEMEDES's export exclusion is only a starting point, not a complete safe scan scope.
-
-## Safety and evidence
-
-Before any active assessment, record the authorized owner, exact hostnames, test
-window, allowed techniques, rate/concurrency limits, test accounts, exclusions,
-stop conditions and cleanup procedure. Do not scan shared cloud IP ranges.
-Do not assume a production WAF or IAM configuration matches staging.
-
-ZAP baseline uses passive detection but its crawler still sends requests. Even GET
-requests can log users out or trigger poorly designed actions. No automatic crawling,
-directory discovery, Nuclei template execution, port scans or production checks
-will be enabled without approved scope. Broad vulnerability scripts are not a default.
-Use synthetic test data, disable real email/payment side effects and avoid destructive
-or availability tests.
-
-Keep code, credentials, reports and customer data off third-party scanning services.
-Subfinder is included as a dormant tool; its external providers are not enabled.
-TheHarvester and external search-provider reconnaissance are deferred until data
-sharing and scope are approved. Wordlists will be selected and pinned with adapters
-rather than installing a large, unbounded discovery list.
-
-Reports and screenshots belong in restricted storage, not Git or public issues.
-The ignore file is a guardrail, not access control. Redact tokens, cookies, personal
-data and secret values before screenshots are persisted or shared. Capture only the
-minimum evidence. Raw API/terminal output rendered as an image must be labeled as
-rendered evidence, not passed off as an original browser screenshot.
-
-## Planned report
-
-Title: **Matt VAPT Kit | Internal Self-Assessment**. Use an original layout, not
-CERT-PH branding, signatures or report numbers.
-
-The summary answers "Was data exposure found?" and "Was unauthorized access found?"
-using **Confirmed**, **Suspected**, **Not observed in tested scope**, or **Not tested**.
-A clean scan cannot establish that no leak occurred. Proving a historical breach
-requires incident investigation, not just a vulnerability scan.
-
-Every finding includes plain-language impact, affected scope, evidence provenance,
-redacted screenshots when useful, verification status, remediation and retest result.
-Include CVSS version/vector only when justified. Do not invent scores or treat an
-automated alert as confirmed. Show untested roles, blocked routes and tool errors.
-Screenshots supplement searchable text, they do not replace it.
-
-Public JavaScript and API route names are normal web application behavior, not
-automatically source disclosure vulnerabilities. `NEXT_PUBLIC_*` variable names alone
-do not establish a bypass. Confirm actual values, server-side enforcement and impact.
-A minimal public liveness endpoint can be appropriate; internal diagnostics need
-separate access controls. No PEMEDES findings have been validated by this toolkit.
-
-## Rollout and cadence
-
-| Stage | Delivery |
-|---|---|
-| Foundation (current) | Docker runner, tool inventory, config validation |
-| Push checks | Local pre-push checks plus Actions on main/staging pushes, no PR required |
-| Assessment runner | Scoped staging adapters and manual role/ownership/workflow checks |
-| Reporting | Original HTML/PDF, plain-language findings, redacted screenshots |
-| Scheduling | Weekly staging baseline, private findings tracking |
-| Expansion | DWAD Hub, ERMC and Gateway API after PEMEDES and DTAP |
-
-Push checks will include secret scanning and dependency checks locally, with CodeQL
-and Semgrep in CI where repository licensing permits. Check CodeQL eligibility for
-private repositories before enabling it. Local hooks are bypassable, so CI remains
-necessary. Use local Semgrep rules without telemetry or source uploads.
-
-Cloud Build may deploy concurrently with a push-triggered GitHub Action. Advisory
-checks **do not block deployment or necessarily run after it**. No deployment wiring
-will change without explicit approval. A future release gate must be connected to
-the actual Cloud Build pipeline if required.
-
-Run automated checks on every push, vulnerability advisory monitoring daily, a scoped
-staging baseline weekly, and manual access-control checks before each release.
-Run a deeper assessment quarterly, before external VAPT and after major auth, data
-or infrastructure changes. Triage relevant critical advisories the same day.
-Set remediation deadlines according to exposure, exploitability and agency policy.
-
-Maintain a system inventory with owner, repository, staging/production targets,
-data sensitivity and last assessment date. Infrastructure review is separate from
-application testing: include IAM, ingress, secrets, database/network exposure and
-logging. Retest fixes and turn confirmed issues into regression tests.
+Use push checks on every push, daily advisory monitoring, and manual access-control
+review before releases. Weekly approved staging scans and quarterly deeper VAPT are
+the planned next layer, not jobs already scheduled. Assess major auth/data/infra
+changes and relevant critical advisories promptly, then retest every confirmed fix.
+Maintain an inventory of owners, targets, sensitive data and assessment dates.

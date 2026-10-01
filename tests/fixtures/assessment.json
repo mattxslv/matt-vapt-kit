@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "project": "demonstration",
+  "target": "https://staging.example.invalid",
+  "started_at": "2026-10-01T00:00:00+00:00",
+  "finished_at": "2026-10-01T00:00:02+00:00",
+  "status": "fixture",
+  "profile": "unauthenticated-head-only",
+  "scope_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "approved_paths": ["/"],
+  "observations": [
+    {
+      "path": "/",
+      "method": "HEAD",
+      "status": 200,
+      "checks": {
+        "html_response": true,
+        "hsts_present": true,
+        "csp_present": false,
+        "nosniff": true,
+        "frame_policy_present": true
+      }
+    }
+  ],
+  "findings": [
+    {
+      "title": "Content Security Policy not observed",
+      "severity": "low",
+      "verification": "observation",
+      "category": "configuration",
+      "path": "/",
+      "impact": "A browser defense against script injection is absent in this synthetic response. No script injection was tested.",
+      "remediation": "Design and test a Content Security Policy that fits the application, then repeat the check."
+    }
+  ],
+  "errors": [],
+  "coverage": {
+    "data_exposure": "not_tested",
+    "unauthorized_access": "not_tested",
+    "note": "Synthetic fixture only. Only HEAD metadata is represented. Login, role/ownership, workflow, infrastructure and historical breach testing are not covered."
+  }
+}

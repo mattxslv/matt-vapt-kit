@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "project", "target", "started_at", "finished_at", "status", "profile", "scope_sha256", "approved_paths", "observations", "findings", "errors", "coverage"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "project": {"type": "string", "maxLength": 64},
+    "target": {"type": "string", "maxLength": 2048},
+    "started_at": {"type": "string", "maxLength": 64},
+    "finished_at": {"type": "string", "maxLength": 64},
+    "status": {"enum": ["completed", "incomplete", "fixture"]},
+    "profile": {"type": "string", "maxLength": 128},
+    "scope_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "approved_paths": {"type": "array", "maxItems": 10, "items": {"$ref": "#/$defs/path"}},
+    "observations": {
+      "type": "array", "maxItems": 10,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["path", "method", "status", "checks"],
+        "properties": {
+          "path": {"$ref": "#/$defs/path"},
+          "method": {"const": "HEAD"},
+          "status": {"type": "integer", "minimum": 100, "maximum": 599},
+          "checks": {
+            "type": "object", "additionalProperties": false,
+            "required": ["html_response", "hsts_present", "csp_present", "nosniff", "frame_policy_present"],
+            "properties": {
+              "html_response": {"type": "boolean"},
+              "hsts_present": {"type": "boolean"},
+              "csp_present": {"type": "boolean"},
+              "nosniff": {"type": "boolean"},
+              "frame_policy_present": {"type": "boolean"}
+            }
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array", "maxItems": 100,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["title", "severity", "verification", "category", "path", "impact", "remediation"],
+        "properties": {
+          "title": {"type": "string", "maxLength": 200},
+          "severity": {"enum": ["critical", "high", "medium", "low", "informational"]},
+          "verification": {"enum": ["confirmed", "suspected", "observation"]},
+          "category": {"enum": ["data_exposure", "unauthorized_access", "configuration"]},
+          "path": {"$ref": "#/$defs/path"},
+          "impact": {"type": "string", "maxLength": 2000},
+          "remediation": {"type": "string", "maxLength": 2000}
+        }
+      }
+    },
+    "errors": {
+      "type": "array", "maxItems": 10,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["path", "kind", "message"],
+        "properties": {
+          "path": {"$ref": "#/$defs/path"},
+          "kind": {"enum": ["scope", "transport", "http"]},
+          "message": {"type": "string", "maxLength": 256}
+        }
+      }
+    },
+    "coverage": {
+      "type": "object", "additionalProperties": false,
+      "required": ["data_exposure", "unauthorized_access", "note"],
+      "properties": {
+        "data_exposure": {"enum": ["not_tested", "tested"]},
+        "unauthorized_access": {"enum": ["not_tested", "tested"]},
+        "note": {"type": "string", "maxLength": 2000}
+      }
+    }
+  },
+  "$defs": {"path": {"type": "string", "maxLength": 256}}
+}

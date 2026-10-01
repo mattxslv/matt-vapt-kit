@@ -20,3 +20,4 @@ artifacts/
 *.p12
 *.log
 .vapt.local.yml
+approval*.json

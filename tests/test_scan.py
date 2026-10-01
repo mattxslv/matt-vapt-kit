@@ -22,6 +22,8 @@ class ScanTests(unittest.TestCase):
             lines = stream.getvalue().splitlines()
             self.assertTrue(all(len(line) <= width for line in lines))
             self.assertIn("anti vince vulnerability", stream.getvalue())
+            if width >= 40:
+                self.assertIn("to prevent spilling the beans :D", stream.getvalue())
             top = next(line for line in lines if "╭" in line)
             self.assertEqual(top.index("╭"), (width - min(width, 60)) // 2)
             self.assertNotIn("\x1b", stream.getvalue())

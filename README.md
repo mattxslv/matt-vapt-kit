@@ -69,7 +69,8 @@ with explicit [scope approval](docs/pilot-checklist.md).
 If the CLI is already installed, `vapt scan /path/to/your-project` does the same work.
 Use `NO_COLOR=1 ./scan /path/to/your-project` for uncolored output. Redirected output
 has no animated spinner.
-The terminal uses a centered PyFiglet MVK wordmark, the tagline **"anti vince vulnerability"**,
+The terminal uses a centered PyFiglet MVK wordmark and the two-line tagline
+**"anti vince vulnerability" / "to prevent spilling the beans :D"**,
 and 60 original shuffled loading captions, including "Consulting the rubber duck
 council..." and "Turning paranoia into paperwork...". A spinner accompanies
 the actual task and elapsed time, without a loading bar or invented percentages.

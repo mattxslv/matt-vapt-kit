@@ -107,21 +107,24 @@ class LoadingMessage:
 
 
 def print_header(console: Console) -> None:
-    width = min(console.width, 68)
+    width = min(console.width, 60)
     if width < 42:
         content = Group(
             Text("MVK | Matt VAPT Kit", style=f"bold {ACCENT}", justify="center"),
-            Text("anti vince vulnerability", style="dim", justify="center"),
+            Text("anti vince vulnerability", justify="center"),
         )
     else:
-        wordmark = Figlet(font="small", width=60).renderText("MVK").rstrip("\n")
+        rendered = Figlet(font="small", width=60).renderText("M V K")
+        wordmark = "\n".join(line.rstrip() for line in rendered.splitlines() if line.strip())
         content = Group(
-            Align.center(Text(wordmark, style=ACCENT)),
-            Text("MATT VAPT KIT", style="bold", justify="center"),
-            Text("anti vince vulnerability", style="dim italic", justify="center"),
+            Align.center(Text(wordmark, style=f"bold {ACCENT}")),
+            Text(""),
+            Text("Matt VAPT Kit", style="bold", justify="center"),
+            Text("anti vince vulnerability", justify="center"),
         )
     console.print()
-    console.print(Align.center(Panel(content, width=width, border_style=ACCENT, padding=(1, 2))))
+    console.print(Align.center(Panel(content, width=width, border_style=ACCENT, padding=(0, 2),
+                                     subtitle=Text("COMMITTED-CODE CHECKS", style="dim"))))
     console.print()
 
 
@@ -188,12 +191,17 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
     create_output(output)
     print_header(console)
     links = console.is_terminal and not plain
-    console.print(Text("Repository  ") + path_link(repo, enabled=links))
-    console.print(Text(f"Revision    {sha[:12]}"))
-    console.print(Text("Evidence    ") + path_link(output, enabled=links))
-    console.print("No live target requests, application logins or cloud changes.", style="yellow")
-    console.print("Docker may download pinned scanner images. pnpm audits send package metadata to npm.")
-    console.print("Only committed files are checked. Static matches remain suspected until reviewed.\n")
+    context = Table.grid(padding=(0, 2))
+    context.add_column(style="dim", no_wrap=True)
+    context.add_column(overflow="fold")
+    context.add_row("Repository", path_link(repo, enabled=links))
+    context.add_row("Commit", Text(sha[:12] + "  (working-tree changes excluded)"))
+    context.add_row("Save to", path_link(output, enabled=links))
+    console.print(context)
+    console.print()
+    console.print("Scope  ", Text("Committed code only. No live target requests, logins or cloud changes."), style="dim")
+    console.print("Network", Text("Image downloads if needed; dependency metadata sent to npm."), style="dim")
+    console.print()
     rows = []
     started = time.monotonic()
 
@@ -213,7 +221,7 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
             raise ToolError(f"{command[0]} returned exit {code}. Review the output for findings or tooling errors.")
 
     def stage(name, action, missing=None):
-        console.print(Text("> " + name, style=f"bold {ACCENT}"))
+        console.rule(Text(name, style=f"bold {ACCENT}"), align="left", style="grey37")
         if missing:
             row = {"check": name, "status": "NOT RUN", "detail": missing}
         else:
@@ -236,7 +244,12 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
                 row = {"check": name, "status": "REVIEW", "detail": detail}
         rows.append(row)
         color = {"DONE": "green", "REVIEW": "yellow", "NOT RUN": "yellow"}[row["status"]]
-        console.print(Text(f"{row['status']}  {row['detail']}\n", style=color))
+        state = Table.grid(padding=(0, 2))
+        state.add_column(no_wrap=True)
+        state.add_column(overflow="fold")
+        state.add_row(Text("  " + row["status"], style=f"bold {color}"), Text(row["detail"]))
+        console.print(state)
+        console.print()
 
     docker_ready = False
     if shutil.which("docker"):
@@ -303,7 +316,10 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
     table.add_column("Detail", ratio=4, overflow="fold")
     for row in rows:
         color = "green" if row["status"] == "DONE" else "yellow"
-        table.add_row(Text(row["check"]), Text(row["status"], style=color), Text(row["detail"]))
+        label = re.sub(r"^\d+ / \d+\s+", "", row["check"])
+        table.add_row(Text(label), Text(row["status"], style=f"bold {color}"), Text(row["detail"]))
+    table.caption = Text("REVIEW = investigate findings or errors. NOT RUN = a coverage gap.", style="dim")
+    console.print()
     console.print(table)
     needs_review = any(row["status"] != "DONE" for row in rows)
     result = {"schema_version": 1, "kind": "repository-scan", "revision": sha,
@@ -312,13 +328,20 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
               "not_tested": ["live staging", "record ownership", "approval workflows", "live XSS",
                              "Cloud Armor enforcement", "historical breach investigation"]}
     write_private(output / "summary.json", json.dumps(result, indent=2))
-    console.print(f"\nFinished in {time.monotonic() - started:.1f}s.", style="bold")
-    console.print(Text("Private summary: ") + path_link(output / "summary.json", enabled=links))
-    for name in ("static-findings.json", "route-review.json"):
+    done = sum(row["status"] == "DONE" for row in rows)
+    attention = len(rows) - done
+    console.print(f"\nFinished in {time.monotonic() - started:.1f}s  |  {done} completed  |  {attention} need attention", style="bold")
+    console.print("\nSaved evidence", style=f"bold {ACCENT}")
+    evidence = Table.grid(padding=(0, 2))
+    evidence.add_column(style="dim", no_wrap=True)
+    evidence.add_column(overflow="fold")
+    for label, name in (("Summary", "summary.json"), ("Static matches", "static-findings.json"),
+                        ("API review", "route-review.json")):
         if (output / name).is_file():
-            console.print(Text("Evidence file:   ") + path_link(output / name, enabled=links))
+            evidence.add_row(label, path_link(output / name, enabled=links))
+    console.print(evidence)
     if links:
         console.print("Paths are terminal links. Use your terminal's open-link gesture (often Ctrl+click).", style="dim")
-    console.print("Not a live VAPT or an all-clear. NOT RUN is a coverage gap, not a pass.", style="yellow")
-    console.print("For approved staging checks: vapt run / vapt roles. See docs/pilot-checklist.md.")
+    console.print("\nNot a live VAPT or an all-clear. Static matches require review.", style="yellow")
+    console.print("Next: review saved evidence. Approved staging checks use vapt run / vapt roles.", style="dim")
     return 1 if needs_review else 0

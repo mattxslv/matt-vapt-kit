@@ -77,6 +77,9 @@ There are no artificial delays.
 The header switches to a compact wordmark in narrow terminals. Scan details stay
 left-aligned for readability, and the final summary has rounded borders and row
 separators. Loading uses the simple dot spinner with the shuffled captions, no bar.
+Run metadata and saved evidence use aligned label/value columns; the final line
+separates completed stages from stages needing attention. The centered wordmark
+uses separated letters and a tighter frame, with the tagline in normal text.
 Use `./scan /path/to/your-project --plain` for no colors or motion, or set
 `MVK_REDUCED_MOTION=1` to disable animation while keeping colors.
 Repository/evidence directories and generated result files are clickable OSC 8

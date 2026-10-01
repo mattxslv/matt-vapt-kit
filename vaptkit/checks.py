@@ -102,7 +102,7 @@ def scan_history(repo: Path, sha: str, *, runner=None) -> None:
         ] + ignore_blob)
 
 
-def scan_static(repo: Path, sha: str, *, runner=None) -> None:
+def scan_static(repo: Path, sha: str, *, runner=None, json_output=False) -> None:
     execute = runner or run
     # Materialize only this committed tree, never the developer's dirty working files.
     with tempfile.TemporaryDirectory(prefix="matt-vapt-source-") as directory:
@@ -132,8 +132,8 @@ def scan_static(repo: Path, sha: str, *, runner=None) -> None:
             "-v", f"{source}:/src:ro", "-v", f"{rules}:/rules:ro",
             "--entrypoint=semgrep", SEMGREP, "scan", "--config=/rules",
             "--metrics=off", "--disable-version-check", "--error",
-            "--strict", "--quiet", "/src",
-        ])
+            "--strict", "--quiet",
+        ] + (["--json"] if json_output else []) + ["/src"])
 
 
 def pushed_commits(lines: str) -> list[str]:

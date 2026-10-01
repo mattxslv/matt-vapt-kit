@@ -50,7 +50,9 @@ For an interactive all-supported-checks workflow:
 This runs secret history, supported pnpm auditing, bundled static rules and
 offline route review against one pinned HEAD revision. Independent stages continue
 after a failure so the final table does not hide coverage gaps. It writes only
-normalized stage statuses and route-review evidence, not raw scanner logs.
+normalized stage statuses, static-match locations and route-review evidence,
+not raw scanner logs. Static matches are grouped by rule in the terminal;
+`static-findings.json` contains every location without source snippets.
 Exit zero means all stages returned normally; one means review or missing coverage;
 two means setup/argument failure. Non-Node dependency coverage is explicitly
 unsupported. Default route heuristics have no project public-route allowlist;

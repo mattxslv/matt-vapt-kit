@@ -1,5 +1,6 @@
 import io
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,10 +10,61 @@ from unittest.mock import patch
 from rich.console import Console
 
 from vaptkit.process import ToolError, git
-from vaptkit.scan import scan
+from vaptkit.scan import LoadingMessage, scan, static_summary
 
 
 class ScanTests(unittest.TestCase):
+    def test_loading_messages_rotate_without_fake_progress(self):
+        with patch("vaptkit.scan.time.monotonic", return_value=10):
+            message = LoadingMessage("Static rules")
+        for now, expected in ((10, "Getting the crabs out"), (14, "digital sofa")):
+            with patch("vaptkit.scan.time.monotonic", return_value=now):
+                line = list(message.__rich_console__(None, None))[0].plain
+            self.assertIn(expected, line)
+            self.assertIn("Static rules", line)
+            self.assertNotIn("%", line)
+
+    def test_static_summary_keeps_locations_but_never_source_snippets(self):
+        raw = json.dumps({"results": [{"path": "/src/example.ts", "check_id": "fixture.rule",
+                                      "start": {"line": 12},
+                                      "extra": {"lines": "PRIVATE_SOURCE_SENTINEL"}}], "errors": []})
+        rows = static_summary(raw)
+        self.assertEqual(rows, [{"path": "example.ts", "rule": "fixture.rule", "line": 12,
+                                 "verification": "suspected"}])
+        self.assertNotIn("PRIVATE_SOURCE_SENTINEL", json.dumps(rows))
+        for invalid in ('{"results":[],"errors":[{"message":"PRIVATE"}]}', "PRIVATE", '{"results":null}'):
+            with self.assertRaises(ToolError) as error:
+                static_summary(invalid)
+            self.assertNotIn("PRIVATE", str(error.exception))
+
+    def test_many_static_matches_are_grouped_without_losing_locations(self):
+        raw = json.dumps({"results": [
+            {"path": f"/src/file-{index}.js", "check_id": "rules.fixture",
+             "start": {"line": index + 1}, "extra": {"lines": "PRIVATE_CODE"}}
+            for index in range(69)
+        ], "errors": []})
+        real_run = subprocess.run
+        def process(command, **kwargs):
+            if command[:2] == ["docker", "info"]:
+                return subprocess.CompletedProcess(command, 0, stdout="")
+            if command[:2] == ["docker", "run"]:
+                self.assertIn("--json", command)
+                return subprocess.CompletedProcess(command, 1, stdout=raw, stderr="")
+            return real_run(command, **kwargs)
+        with patch("vaptkit.scan.shutil.which", return_value="/fixture/docker"), patch(
+            "vaptkit.scan.subprocess.run", side_effect=process
+        ), patch("vaptkit.scan.scan_history", return_value=None), patch(
+            "vaptkit.scan.audit_commit", return_value=None
+        ), patch("vaptkit.scan.review", return_value={"summary": {"handlers": 0}, "findings": []}):
+            code = scan(self.repo, output=self.root / "out", console=self.console)
+        self.assertEqual(code, 1)
+        self.assertIn("69 matches", self.stream.getvalue())
+        self.assertIn("+ 66 more locations", self.stream.getvalue())
+        self.assertNotIn("file-68.js", self.stream.getvalue())
+        saved = (self.root / "out/static-findings.json").read_text()
+        self.assertEqual(len(json.loads(saved)["findings"]), 69)
+        self.assertNotIn("PRIVATE_CODE", saved + self.stream.getvalue())
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
@@ -63,6 +115,15 @@ class ScanTests(unittest.TestCase):
         static.assert_not_called()
         audit.assert_called_once()
         self.assertIn("NOT RUN", self.stream.getvalue())
+
+    def test_plain_mode_does_not_start_animation(self):
+        with patch("vaptkit.scan.shutil.which", return_value=None), patch(
+            "vaptkit.scan.audit_commit", return_value=None
+        ), patch("vaptkit.scan.review", return_value={"summary": {"handlers": 0}, "findings": []}), patch.object(
+            self.console, "status"
+        ) as status:
+            scan(self.repo, output=self.root / "out", console=self.console, plain=True)
+        status.assert_not_called()
 
     def test_uncommitted_files_not_used_for_ecosystem_detection(self):
         git(self.repo, "rm", "package.json")

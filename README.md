@@ -38,8 +38,11 @@ on first use, then runs the supported committed-code checks in order:
 
 You get live stage headings, progress indicators, readable tool output and a final
 status table. A problem in one stage does not hide the results from other independent
-checks. Private `summary.json` and `route-review.json` files go under a new
+checks. Static matches are grouped by rule with at most three example locations,
+not hundreds of code snippets. Private `summary.json`, `static-findings.json` and
+`route-review.json` files go under a new
 `.private/scan-*` directory. Existing evidence is never overwritten.
+The static evidence lists all matched locations without raw source snippets.
 
 **Requirements:** Python 3.11+, Git and Docker. Docker must be running; Node audits
 also require the exact pnpm version declared by the project. First-time setup and
@@ -66,6 +69,11 @@ with explicit [scope approval](docs/pilot-checklist.md).
 If the CLI is already installed, `vapt scan /path/to/your-project` does the same work.
 Use `NO_COLOR=1 ./scan /path/to/your-project` for uncolored output. Redirected output
 has no animated spinner.
+The terminal uses warm MVK accents and rotating loading captions, including
+"Getting the crabs out...", while showing the actual task and elapsed time.
+There are no invented progress percentages or artificial delays.
+Use `./scan /path/to/your-project --plain` for no colors or motion, or set
+`MVK_REDUCED_MOTION=1` to disable animation while keeping colors.
 
 ## What you can do
 

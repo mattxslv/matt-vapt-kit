@@ -35,6 +35,12 @@ def main(argv=None) -> int:
     routes.add_argument("--output", type=Path, required=True, help="New private JSON file")
     scope = commands.add_parser("scope-template", help="Print an unapproved HEAD-only scope template")
     scope.add_argument("config", type=Path)
+    scope.add_argument("--roles", action="store_true", help="Print an unapproved role-login and GET matrix scope")
+    roles = commands.add_parser("roles", help="Test an approved read-only role matrix with isolated DTAP logins")
+    roles.add_argument("config", type=Path)
+    roles.add_argument("--approval", type=Path, required=True)
+    roles.add_argument("--output", type=Path, required=True)
+    roles.add_argument("--acknowledge-scope", action="store_true")
     scan = commands.add_parser("run", help="Run approved header checks and optional bounded public exposure checks")
     scan.add_argument("config", type=Path)
     scan.add_argument("--approval", type=Path, required=True)
@@ -92,8 +98,17 @@ def main(argv=None) -> int:
             return 0
         if args.command == "scope-template":
             from .assessment import approval_template
-            print(json.dumps(approval_template(config), indent=2))
+            from .roles import template
+            print(json.dumps(template(config) if args.roles else approval_template(config), indent=2))
             return 0
+        if args.command == "roles":
+            from .assessment import load_json
+            from .roles import run
+            if not args.acknowledge_scope:
+                raise ToolError("Pass --acknowledge-scope only with explicit owner approval for role login and GET checks.")
+            path, code = run(config, load_json(args.approval), args.output)
+            print(f"Role assessment written to {path}; " + ("incomplete." if code else "scoped matrix completed."))
+            return code
         if args.command == "run":
             from .assessment import assess, load_json
             if not args.acknowledge_scope:

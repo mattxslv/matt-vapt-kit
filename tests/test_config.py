@@ -72,6 +72,24 @@ class ConfigTests(unittest.TestCase):
         self.config["credentials"] = {"admin": {"token_env": "VAPT_PEMEDES_ADMIN_TOKEN"}}
         self.assertEqual(load_config(self.write())["credentials"], self.config["credentials"])
 
+    def test_role_matrix_config_validation(self):
+        base = load_config(ROOT / "projects/dtap.vapt.yml")
+        for change in (
+            lambda c: c["role_testing"]["accounts"][0].update(id="anonymous"),
+            lambda c: c["role_testing"]["accounts"][0].update(role="unknown"),
+            lambda c: c["role_testing"]["accounts"].append(c["role_testing"]["accounts"][0]),
+            lambda c: c["role_testing"]["routes"][0].update(path="/api/auth/signout"),
+            lambda c: c["role_testing"]["routes"][0].update(path="/api/x?token=private"),
+            lambda c: c["role_testing"]["routes"][0].update(path="/api/a/../admin"),
+            lambda c: c["role_testing"]["routes"][0].update(allowed_roles=["unknown"]),
+            lambda c: c["role_testing"]["routes"][0].update(response_shape={}),
+            lambda c: c["role_testing"]["accounts"][0].update(password="PRIVATE_SENTINEL"),
+        ):
+            config = copy.deepcopy(base)
+            change(config)
+            with self.assertRaises(ConfigError):
+                load_config(self.write(config))
+
     def test_access_config_is_explicit_and_environment_only(self):
         self.config["access"] = {"type": "bearer", "token_env": "VAPT_IAP_TOKEN", "header": "Proxy-Authorization"}
         self.assertEqual(load_config(self.write())["access"], self.config["access"])

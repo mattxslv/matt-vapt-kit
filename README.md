@@ -14,11 +14,12 @@ self-assessments, not CERT-PH reports or certifications.
 | Public exposure checks | Explicit opt-in, fixed paths and up to three source maps, bounded GET signatures with no stored bodies |
 | Offline route review | Trace authentication helpers in committed Next.js API handlers and flag suspected gaps |
 | Retest | Compare an earlier assessment using equivalent check evidence, never URL reachability alone |
+| Role matrix | Explicitly approved DTAP logins plus read-only endpoint checks, repeated JSON-shape evidence and allowed-role controls |
 | Report generator | CERT-PH-style HTML/PDF report, clearly marked as an MVK self-assessment, with PNG evidence figures |
 | Docker tools | Core tools plus separate pinned ZAP, Nuclei, Gitleaks, Semgrep, Subfinder and testssl images |
 
 This is **not a complete VAPT scanner**. ZAP/Nuclei discovery adapters, authenticated
-role/ownership/workflow tests, infrastructure assessments and weekly schedules remain
+object-ownership/workflow tests, infrastructure assessments and weekly schedules remain
 future stages. CodeQL requires eligible repository settings and is opt-in.
 
 ## Setup
@@ -95,14 +96,18 @@ must be connected to Cloud Build with separate approval.
 `projects/pemedes.vapt.yml` contains the PEMEDES staging origin and preliminary roles.
 `projects/pemedes-iap.vapt.yml` adds normal govmail sign-in and a reusable private
 toolkit browser profile, without changing PEMEDES or IAP.
-`projects/dtap.vapt.yml` is a draft; its target did not respond during setup and roles
-need review. Application repositories may use the same format in `.vapt.yml`.
+`projects/dtap.vapt.yml` remains unapproved for live runs. Its role matrix starts with
+one read-only lead-evaluator route, derived from committed middleware and response
+code. Confirm the staging host and expected policy before running it. Application
+repositories may use the same format in `.vapt.yml`.
 
 Offline validation accepts only an exact HTTPS origin on port 443, no wildcards or
 embedded credentials. `environment: staging` is a declaration, not proof of isolation.
 The schema is `vaptkit/schemas/project.json`. Per-role `credentials` are reserved
 for future application testing and are not loaded. The optional `access` field
 selects the actual gateway-access method described below.
+The separate `role_testing.accounts` section uses email/password environment variable
+names for the explicit role command. It does not contain credentials.
 
 ### Approve a bounded header check
 
@@ -204,6 +209,47 @@ patterns live under `review` in the toolkit project config. Helper tracing is bo
 and heuristic, not a full TypeScript control-flow analysis. Every source-review
 finding remains **suspected** until checked against middleware and live authorized
 behavior. Seeing an auth helper does not prove that every execution path enforces it.
+
+### Approved DTAP role matrix
+
+`vapt roles` supports the existing DTAP cookie login contract only. It is not a
+generic login crawler and it does not support PEMEDES or IAP role login yet.
+The account aliases distinguish the two evaluators while keeping both in the
+`evaluator` role. Testing two accounts does not by itself test record ownership.
+
+```sh
+.venv/bin/vapt scope-template projects/dtap.vapt.yml --roles > roles.local.json
+# Owner supplies an active window and sets role_login to true after reviewing scope.
+# Load account emails and passwords into the configured environment variables locally.
+# Never put their values in Git, CLI arguments, report notes, or shell history.
+.venv/bin/vapt roles projects/dtap.vapt.yml \
+  --approval roles.local.json --acknowledge-scope --output /private/dtap-roles-001
+```
+
+Approval binds the config digest, exact GET paths and selected account IDs.
+Each route must have an approved allowed-role account as a positive control.
+The command checks anonymous access, logs in once per account, verifies the returned
+email and role, uses that account's isolated `auth-token` and `session-bind` cookies,
+and requests sign-out afterwards. No login retries are made. Only sign-in and sign-out
+receive POST requests. **Login is not side-effect-free:** it creates sessions and audit
+records and can change login counters. Obtain permission for these effects even when
+business records must remain unchanged. GET handlers must also be reviewed for side effects.
+
+Unexpected 2xx responses become **confirmed endpoint role-policy violations** only
+when both repeated responses match the configured JSON response shape and an
+allowed-role control succeeds. Generic login pages, JSON errors, truncated bodies and
+missing controls never confirm access. The response schema is an operator-reviewed
+oracle, not proof that every returned record is sensitive or belongs to another user.
+Only status, content-type class and shape-match booleans are retained, not bodies.
+
+401/403 on matrix GETs are expected denials. On login they stop the run.
+Redirects, rate limits, 5xx responses, transport errors and scope expiry stop all
+further traffic, including logout. Such sessions are marked **unconfirmed cleanup**;
+an operator may need to revoke them manually. A logout success response records only
+acknowledgement, not independently proven revocation. The maximum is 196 requests
+for eight accounts and ten routes, all serial and inside the approved interval/window.
+Do not run against production or change application/infrastructure configuration
+to force the checks to pass.
 
 ### Access through Google IAP
 

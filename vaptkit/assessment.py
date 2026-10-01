@@ -172,6 +172,7 @@ def request(host: str, method: str, path: str, *, headers=None, expires_at=None,
         connection.request(method, path, body=body, headers={
             "User-Agent": f"Matt-VAPT-Kit/{version('matt-vapt-kit')} (approved-check)", **(headers or {}),
         })
+        transport = connection.sock
         response = connection.getresponse()
         remaining_timeout(expires_at)
         collected: dict[str, list[str]] = {}
@@ -180,7 +181,7 @@ def request(host: str, method: str, path: str, *, headers=None, expires_at=None,
         data = bytearray()
         if method != "HEAD":
             while len(data) < body_limit:
-                connection.sock.settimeout(remaining_timeout(expires_at, timeout_seconds))
+                transport.settimeout(remaining_timeout(expires_at, timeout_seconds))
                 chunk = response.read1(min(16384, body_limit - len(data)))
                 remaining_timeout(expires_at)
                 if not chunk:

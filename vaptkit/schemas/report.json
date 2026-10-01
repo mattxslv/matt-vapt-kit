@@ -242,7 +242,7 @@
     },
     "errors": {
       "type": "array",
-      "maxItems": 10,
+      "maxItems": 100,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -303,15 +303,55 @@
     },
     "requests": {
       "type": "array",
-      "maxItems": 60,
+      "maxItems": 200,
       "items": {
         "type": "object",
         "additionalProperties": false,
         "required": ["method", "path", "status"],
         "properties": {
-          "method": {"enum": ["HEAD", "GET"]},
+          "method": {"enum": ["HEAD", "GET", "POST"]},
           "path": {"$ref": "#/$defs/path"},
           "status": {"type": "integer", "minimum": 100, "maximum": 599}
+        }
+      }
+    },
+    "role_accounts": {
+      "type": "array", "minItems": 2, "maxItems": 9, "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"}
+    },
+    "role_cleanup": {
+      "type": "array", "maxItems": 8,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["account", "status"],
+        "properties": {
+          "account": {"type": "string", "maxLength": 64},
+          "status": {"enum": ["acknowledged", "unconfirmed"]}
+        }
+      }
+    },
+    "role_observations": {
+      "type": "array", "maxItems": 90,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["account", "role", "path", "expected_allowed", "attempts"],
+        "properties": {
+          "account": {"type": "string", "maxLength": 64},
+          "role": {"type": "string", "maxLength": 64},
+          "path": {"$ref": "#/$defs/path"},
+          "expected_allowed": {"type": "boolean"},
+          "attempts": {
+            "type": "array", "maxItems": 2,
+            "items": {
+              "type": "object", "additionalProperties": false,
+              "required": ["status", "content_class", "shape_matched"],
+              "properties": {
+                "status": {"type": "integer", "minimum": 100, "maximum": 599},
+                "content_class": {"enum": ["html", "json", "text", "javascript", "binary", "none"]},
+                "shape_matched": {"type": "boolean"}
+              }
+            }
+          }
         }
       }
     },

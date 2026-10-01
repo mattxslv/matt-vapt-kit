@@ -93,4 +93,21 @@ def load_config(path: Path) -> dict:
         raise ConfigError("Credential roles must appear in scope.roles.")
     if config.get("access", {}).get("type") == "bearer" and not re.fullmatch(r"[A-Z][A-Z0-9_]*", config["access"]["token_env"]):
         raise ConfigError("Access token configuration must name an environment variable.")
+    if "role_testing" in config:
+        settings = config["role_testing"]
+        ids = [item["id"] for item in settings["accounts"]]
+        paths = [item["path"] for item in settings["routes"]]
+        if len(set(ids)) != len(ids) or "anonymous" in ids or len(set(paths)) != len(paths):
+            raise ConfigError("Role account IDs and route paths must be unique; anonymous is reserved.")
+        roles = set(config["scope"]["roles"])
+        if any(item["role"] not in roles for item in settings["accounts"]) or any(
+                not set(item["allowed_roles"]) <= roles for item in settings["routes"]):
+            raise ConfigError("Role matrix roles must appear in scope.roles.")
+        for path in paths:
+            if (not path.startswith("/api/") or path.startswith("/api/auth/")
+                    or any(char.isspace() or not 33 <= ord(char) <= 126 for char in path)
+                    or any(char in path for char in ("?", "#", "%", "\\"))
+                    or any(part in (".", "..") for part in path.split("/"))
+                    or any(path.startswith(prefix) for prefix in config["scope"]["excluded_prefixes"])):
+                raise ConfigError("Role routes must be exact, non-auth API paths inside the approved scope.")
     return config

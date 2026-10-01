@@ -82,6 +82,8 @@ PROFILE_TYPES = {
     "unauthenticated-head-only": "Black-box self-assessment (unauthenticated, header-level)",
     "bearer-head-only": "Gray-box self-assessment (token gateway access, header-level)",
     "iap-browser-head-only": "Gray-box self-assessment (Google IAP sign-in, header-level)",
+    "unauthenticated-exposure": "Black-box self-assessment (headers and bounded public exposure)",
+    "dtap-role-matrix": "Gray-box self-assessment (approved DTAP endpoint role matrix)",
 }
 PHT = timezone(timedelta(hours=8))
 FORMAT_ID = "MVK-SAR"
@@ -104,12 +106,34 @@ def validate_result(result: dict) -> None:
         raise ToolError("Report input does not match the assessment schema; contents withheld.")
     if result["status"] == "completed":
         paths = [item["path"] for item in result["observations"]]
-        if (result["errors"] or not paths or paths != result["approved_paths"]
+        if result["profile"] == "dtap-role-matrix":
+            accounts = result.get("role_accounts", [])
+            records = result.get("role_observations", [])
+            expected = {(account, path) for account in accounts for path in result["approved_paths"]}
+            actual = {(item["account"], item["path"]) for item in records}
+            cleanup = result.get("role_cleanup", [])
+            if (not expected or "anonymous" not in accounts or actual != expected or len(records) != len(expected)
+                    or result["errors"] or any(not item["attempts"] for item in records)
+                    or {item["account"] for item in cleanup if item["status"] == "acknowledged"} != set(accounts) - {"anonymous"}):
+                raise ToolError("A completed role report needs every approved matrix cell and acknowledged cleanup.")
+            controls = set()
+            for item in records:
+                attempts = item["attempts"]
+                success = all(200 <= attempt["status"] < 300 and attempt["shape_matched"] for attempt in attempts)
+                if item["expected_allowed"]:
+                    if not success:
+                        raise ToolError("A completed role report needs successful allowed-role controls.")
+                    controls.add(item["path"])
+                elif not (len(attempts) == 2 and success) and attempts[0]["status"] not in (401, 403):
+                    raise ToolError("A completed role report cannot contain inconclusive denied-role responses.")
+            if controls != set(result["approved_paths"]):
+                raise ToolError("Every role-tested route needs an allowed-role positive control.")
+        elif (result["errors"] or not paths or paths != result["approved_paths"]
                 or any(not 200 <= item["status"] < 300 for item in result["observations"])):
             raise ToolError("A completed report must contain a successful observation for every approved path and no errors.")
         if any(not 200 <= item["status"] < 300 for item in result.get("verification_observations", [])):
             raise ToolError("A completed report cannot contain a failed verification response.")
-    if result["profile"] in PROFILE_TYPES and (
+    if result["profile"].endswith("-head-only") and (
         result["coverage"]["data_exposure"] != "not_tested"
         or result["coverage"]["unauthorized_access"] != "not_tested"
     ):
@@ -280,7 +304,7 @@ def render(result: dict, screenshots=(), *, tlp="AMBER+STRICT", prepared_by="", 
     if result["coverage"]["data_exposure"] == "not_tested":
         recommendations.append(
             "Review API responses, client bundles and diagnostic endpoints for sensitive data. "
-            "This profile did not inspect response bodies."
+            "This assessment does not establish comprehensive data-exposure coverage."
         )
     recommendations.append("Retest every remediated finding and record the result.")
     recommendation_items = "".join(f"<li>{esc(text)}</li>" for text in recommendations)
@@ -371,6 +395,22 @@ def render(result: dict, screenshots=(), *, tlp="AMBER+STRICT", prepared_by="", 
             for item in result["retest"]
         ) + '</tbody></table><p class="caption">Table 4.3: Retest of previous findings</p>'
     ) if result.get("retest") else ""
+    role_html = ""
+    if result["profile"] == "dtap-role-matrix":
+        rows = "".join(
+            f"<tr><td>{esc(item['account'])} ({esc(item['role'])})</td><td><code>{esc(item['path'])}</code></td>"
+            f"<td>{'Allow' if item['expected_allowed'] else 'Deny'}</td>"
+            f"<td>{esc(', '.join(str(attempt['status']) for attempt in item['attempts']) or 'No response')}</td>"
+            f"<td>{esc(', '.join('Matched' if attempt['shape_matched'] else 'Not matched' for attempt in item['attempts']))}</td></tr>"
+            for item in result.get("role_observations", [])
+        )
+        role_html = (
+            "<h4>Endpoint Role Matrix</h4><p>Expected access comes from the approved configuration. "
+            "A successful status alone does not confirm access. Confirmation requires two matching JSON shapes "
+            "and a successful allowed-role control. This does not test object ownership.</p>"
+            "<table><thead><tr><th>Account (role)</th><th>Path</th><th>Expected</th>"
+            f"<th>HTTP attempts</th><th>Response shape</th></tr></thead><tbody>{rows}</tbody></table>"
+        )
     vulnerabilities = "".join(vulnerability_blocks) or (
         "<p>No vulnerabilities were identified within the tested scope. "
         "Untested areas are listed in Section 2.</p>"
@@ -379,6 +419,16 @@ def render(result: dict, screenshots=(), *, tlp="AMBER+STRICT", prepared_by="", 
     cleanup = (("This profile sent HTTP HEAD and bounded GET requests. " if result["profile"] == "unauthenticated-exposure"
                 else "This profile sent only HTTP HEAD requests. ") + "No accounts, files, records or "
                "configuration were created or modified on the target.")
+    if result["profile"] == "dtap-role-matrix":
+        cleanup = (
+            "Only the approved login and logout endpoints received POST requests. Route checks used GET. "
+            "Login can create session and audit records and update login counters. "
+            "No business records or configuration were intentionally changed. Credentials, cookies and bodies "
+            "were not stored in artifacts. Logout acknowledgement does not prove server-side revocation."
+        )
+        cleanup += " Session cleanup: " + "; ".join(
+            f"{item['account']}: {item['status']}" for item in result.get("role_cleanup", [])
+        ) + ". Unconfirmed sessions may require manual cleanup."
     if result["profile"] == "iap-browser-head-only":
         cleanup += (" Google IAP sign-in state may remain in the operator's private toolkit browser "
                     "profile on the assessment workstation. It is not part of this report.")
@@ -554,6 +604,7 @@ def render(result: dict, screenshots=(), *, tlp="AMBER+STRICT", prepared_by="", 
   <p><strong>Commands:</strong></p><ul class="commands">{commands}</ul>
   <h4>Public Exposure Checks</h4>
   {exposure_html}
+  {role_html}
   <h4>Service Enumeration and Fingerprinting</h4>
   <p class="muted">Not performed in this profile.</p>
   <h3>4.2 Vulnerability Identification</h3>

@@ -26,6 +26,12 @@ class ScanTests(unittest.TestCase):
                 self.assertIn("to prevent spilling the beans :D", stream.getvalue())
             top = next(line for line in lines if "╭" in line)
             self.assertEqual(top.index("╭"), (width - min(width, 60)) // 2)
+            if width >= 40:
+                bottom_index = next(index for index, line in enumerate(lines) if "╰" in line)
+                caption = lines[bottom_index + 1]
+                self.assertIn("to prevent spilling the beans :D", caption)
+                self.assertEqual(len(caption.rstrip()), len(lines[bottom_index].rstrip()))
+                self.assertNotIn("│", caption)
             self.assertNotIn("\x1b", stream.getvalue())
 
     def test_loading_messages_rotate_without_fake_progress(self):

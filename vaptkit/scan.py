@@ -112,7 +112,6 @@ def print_header(console: Console) -> None:
         content = Group(
             Text("MVK | Matt VAPT Kit", style=f"bold {ACCENT}", justify="center"),
             Text("anti vince vulnerability", justify="center"),
-            Text("to prevent spilling the beans :D", style="dim", justify="center"),
         )
     else:
         rendered = Figlet(font="small", width=60).renderText("M V K")
@@ -122,11 +121,12 @@ def print_header(console: Console) -> None:
             Text(""),
             Text("Matt VAPT Kit", style="bold", justify="center"),
             Text("anti vince vulnerability", justify="center"),
-            Text("to prevent spilling the beans :D", style="dim", justify="center"),
         )
     console.print()
-    console.print(Align.center(Panel(content, width=width, border_style=ACCENT, padding=(0, 2),
-                                     subtitle=Text("COMMITTED-CODE CHECKS", style="dim"))))
+    panel = Panel(content, width=width, border_style=ACCENT, padding=(0, 2),
+                  subtitle=Text("COMMITTED-CODE CHECKS", style="dim"))
+    aside = Align.right(Text("to prevent spilling the beans :D", style="dim italic"), width=width)
+    console.print(Align.center(Group(panel, aside)))
     console.print()
 
 

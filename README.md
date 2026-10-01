@@ -19,6 +19,54 @@ an external vulnerability assessment and penetration test.
 [Team pilot checklist](docs/pilot-checklist.md) |
 [Contributing](CONTRIBUTING.md)
 
+## One command, in your terminal
+
+There is **no web application to start**. From this toolkit folder, run:
+
+```bash
+./scan /path/to/your-project
+```
+
+For example, `./scan ~/DTAP`. Use the same command in **VS Code > Terminal > New
+Terminal** with a Bash terminal. The launcher prepares the local Python environment
+on first use, then runs the supported committed-code checks in order:
+
+1. Secret-history scanning with containerized Gitleaks.
+2. Dependency auditing for projects with a supported root pnpm manifest.
+3. Bundled static-analysis rules with containerized Semgrep.
+4. Offline Next.js API authentication review.
+
+You get live stage headings, progress indicators, readable tool output and a final
+status table. A problem in one stage does not hide the results from other independent
+checks. Private `summary.json` and `route-review.json` files go under a new
+`.private/scan-*` directory. Existing evidence is never overwritten.
+
+**Requirements:** Python 3.11+, Git and Docker. Docker must be running; Node audits
+also require the exact pnpm version declared by the project. First-time setup and
+missing Docker images require downloads. pnpm audit sends dependency metadata to npm.
+No system-wide Python install or Docker socket mount is needed.
+
+For project-specific route policies:
+
+```bash
+./scan ~/DTAP --config projects/dtap.vapt.yml
+```
+
+| Terminal status | Meaning |
+|---|---|
+| `DONE` | That stage finished; read its detail for applicability and limits |
+| `REVIEW` | Findings or a tool error need attention; inspect the terminal output and saved evidence |
+| `NOT RUN` | Missing prerequisites or unsupported coverage, not a pass |
+
+This command checks **committed HEAD**, not unsaved/dirty files. It does not install
+Git hooks, change application code, provision cloud resources or start a live scan.
+It does not claim to check every vulnerability. Live staging checks remain separate,
+with explicit [scope approval](docs/pilot-checklist.md).
+
+If the CLI is already installed, `vapt scan /path/to/your-project` does the same work.
+Use `NO_COLOR=1 ./scan /path/to/your-project` for uncolored output. Redirected output
+has no animated spinner.
+
 ## What you can do
 
 | Capability | Scope |

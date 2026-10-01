@@ -5,6 +5,13 @@
 Start with a synthetic report. Install additional tools only for the capability
 you plan to use. None of the steps in the first-run walkthrough scans a live target.
 
+**Want to check a repository immediately?** From the toolkit folder, use
+`./scan /path/to/your-project`. It bootstraps the local Python environment and runs
+all supported independent committed-code checks with progress and a final table.
+Docker and the project's exact pnpm version must already be available for their
+respective stages. See the [one-command guide](../README.md#one-command-in-your-terminal).
+The sample-report walkthrough below is optional and does not scan a repository.
+
 For the shortest walkthrough with expected outputs, start with the
 [README's six steps](../README.md#step-by-step-use-it-in-your-terminal-or-vs-code).
 This page adds installation details and optional dependencies.

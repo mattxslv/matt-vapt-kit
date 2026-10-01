@@ -32,7 +32,8 @@ def docker_repo(repo: Path) -> list[str]:
     return command
 
 
-def audit_commit(repo: Path, sha: str) -> None:
+def audit_commit(repo: Path, sha: str, *, runner=None) -> None:
+    execute = runner or run
     listing = git(repo, "ls-tree", "-r", "--name-only", sha).splitlines()
     if "package.json" not in listing:
         print("Dependency audit: not applicable (no root package.json at this commit).")
@@ -67,16 +68,24 @@ def audit_commit(repo: Path, sha: str) -> None:
         ).stdout
         (root / "pnpm-lock.yaml").write_bytes(lock)
         print("Auditing committed lockfile (package names/versions sent to npm's audit service).")
-        run(["pnpm", "audit", "--audit-level=high", "--registry=https://registry.npmjs.org"], cwd=root)
+        execute(["pnpm", "audit", "--audit-level=high", "--registry=https://registry.npmjs.org"], cwd=root)
 
 
 def check(repo: Path, revision: str, *, static: bool = False) -> None:
     repo = Path(git(repo, "rev-parse", "--show-toplevel")).resolve()
     sha = checked_revision(repo, revision)
     print(f"Checking committed tree {sha[:12]}; dirty working files are not included.", flush=True)
+    scan_history(repo, sha)
+    audit_commit(repo, sha)
+    if static:
+        scan_static(repo, sha)
+
+
+def scan_history(repo: Path, sha: str, *, runner=None) -> None:
+    execute = runner or run
     with tempfile.TemporaryDirectory(prefix="matt-vapt-history-") as directory:
         bare = Path(directory) / "history.git"
-        run(["git", "clone", "--quiet", "--bare", "--shared", str(repo), str(bare)])
+        execute(["git", "clone", "--quiet", "--bare", "--shared", str(repo), str(bare)])
         # Honor the committed .gitleaksignore (reviewed historical findings).
         ignore_blob = []
         try:
@@ -86,43 +95,45 @@ def check(repo: Path, revision: str, *, static: bool = False) -> None:
             ignore_blob = ["--gitleaks-ignore-path", str(ignore_path)]
         except ToolError:
             pass
-        run(docker_repo(repo) + [
+        execute(docker_repo(repo) + [
             "-v", f"{directory}:{directory}:ro", "-w", str(bare),
             GITLEAKS, "git", str(bare), "--redact", "--no-banner",
             f"--log-opts=--no-textconv --no-ext-diff {sha}",
         ] + ignore_blob)
-    audit_commit(repo, sha)
-    if static:
-        # Materialize only this committed tree, never the developer's dirty working files.
-        with tempfile.TemporaryDirectory(prefix="matt-vapt-source-") as directory:
-            source = Path(directory)
-            archive = subprocess.run(
-                ["git", "-C", str(repo), "archive", sha], capture_output=True, check=True
-            )
-            import io
-            import tarfile
-            with tarfile.open(fileobj=io.BytesIO(archive.stdout)) as tar:
-                for member in tar.getmembers():
-                    if not member.isfile():
-                        continue
-                    relative = Path(member.name)
-                    if relative.is_absolute() or ".." in relative.parts:
-                        raise ToolError("Unsafe path in committed archive.")
-                    destination = source / relative
-                    destination.parent.mkdir(parents=True, exist_ok=True)
-                    with tar.extractfile(member) as stream:
-                        destination.write_bytes(stream.read())
-            rules = Path(__file__).parent / "rules"
-            run([
-                "docker", "run", "--rm", "--network=none", "--cap-drop=ALL",
-                "--security-opt=no-new-privileges",
-                "--user", f"{os.getuid()}:{os.getgid()}", "-e", "HOME=/tmp",
-                "-e", "SEMGREP_SEND_METRICS=off", "-e", "SEMGREP_ENABLE_VERSION_CHECK=0",
-                "-v", f"{source}:/src:ro", "-v", f"{rules}:/rules:ro",
-                "--entrypoint=semgrep", SEMGREP, "scan", "--config=/rules",
-                "--metrics=off", "--disable-version-check", "--error",
-                "--strict", "--quiet", "/src",
-            ])
+
+
+def scan_static(repo: Path, sha: str, *, runner=None) -> None:
+    execute = runner or run
+    # Materialize only this committed tree, never the developer's dirty working files.
+    with tempfile.TemporaryDirectory(prefix="matt-vapt-source-") as directory:
+        source = Path(directory)
+        archive = subprocess.run(
+            ["git", "-C", str(repo), "archive", sha], capture_output=True, check=True
+        )
+        import io
+        import tarfile
+        with tarfile.open(fileobj=io.BytesIO(archive.stdout)) as tar:
+            for member in tar.getmembers():
+                if not member.isfile():
+                    continue
+                relative = Path(member.name)
+                if relative.is_absolute() or ".." in relative.parts:
+                    raise ToolError("Unsafe path in committed archive.")
+                destination = source / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                with tar.extractfile(member) as stream:
+                    destination.write_bytes(stream.read())
+        rules = Path(__file__).parent / "rules"
+        execute([
+            "docker", "run", "--rm", "--network=none", "--cap-drop=ALL",
+            "--security-opt=no-new-privileges",
+            "--user", f"{os.getuid()}:{os.getgid()}", "-e", "HOME=/tmp",
+            "-e", "SEMGREP_SEND_METRICS=off", "-e", "SEMGREP_ENABLE_VERSION_CHECK=0",
+            "-v", f"{source}:/src:ro", "-v", f"{rules}:/rules:ro",
+            "--entrypoint=semgrep", SEMGREP, "scan", "--config=/rules",
+            "--metrics=off", "--disable-version-check", "--error",
+            "--strict", "--quiet", "/src",
+        ])
 
 
 def pushed_commits(lines: str) -> list[str]:

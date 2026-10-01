@@ -8,7 +8,7 @@ version = "0.5.0"
 description = "Private, staging-first security checks and assessment reports"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["PyYAML==6.0.2", "jsonschema==4.23.0"]
+dependencies = ["PyYAML==6.0.2", "jsonschema==4.23.0", "rich==14.2.0"]
 
 [project.urls]
 Repository = "https://github.com/mattxslv/matt-vapt-kit"

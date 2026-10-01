@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+kit_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if [ ! -x "$kit_dir/.venv/bin/python" ]; then
+    if ! command -v python3 >/dev/null 2>&1; then
+        printf '%s\n' "Python 3.11+ is required to orchestrate the containerized scanners. Install Python first."
+        exit 2
+    fi
+    printf '%s\n' "First run: creating the toolkit's local Python environment."
+    python3 -m venv "$kit_dir/.venv"
+fi
+if ! "$kit_dir/.venv/bin/python" -c 'import rich, vaptkit.scan' >/dev/null 2>&1; then
+    printf '%s\n' "Installing the toolkit and terminal dependencies (downloads Python packages)."
+    "$kit_dir/.venv/bin/python" -m pip install --quiet -e "$kit_dir"
+fi
+exec "$kit_dir/.venv/bin/vapt" scan "$@"

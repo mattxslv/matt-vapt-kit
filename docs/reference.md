@@ -40,6 +40,24 @@ time. Update pins and revalidate regularly.
 
 ## Push checks, no PRs
 
+For an interactive all-supported-checks workflow:
+
+```sh
+./scan /path/to/project
+./scan /path/to/project --config projects/dtap.vapt.yml
+```
+
+This runs secret history, supported pnpm auditing, bundled static rules and
+offline route review against one pinned HEAD revision. Independent stages continue
+after a failure so the final table does not hide coverage gaps. It writes only
+normalized stage statuses and route-review evidence, not raw scanner logs.
+Exit zero means all stages returned normally; one means review or missing coverage;
+two means setup/argument failure. Non-Node dependency coverage is explicitly
+unsupported. Default route heuristics have no project public-route allowlist;
+use `--config` for reviewed project policy. Source findings remain suspected.
+
+The existing fail-closed `check` command and hooks retain their previous behavior:
+
 ```sh
 .venv/bin/vapt check /path/to/project
 .venv/bin/vapt check /path/to/project --static

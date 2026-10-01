@@ -18,6 +18,10 @@ def main(argv=None) -> int:
     )
     parser.add_argument("--version", action="version", version=version("matt-vapt-kit"))
     commands = parser.add_subparsers(dest="command", required=True)
+    combined = commands.add_parser("scan", help="Run all supported committed-code checks with readable progress")
+    combined.add_argument("repo", type=Path, nargs="?", default=Path.cwd())
+    combined.add_argument("--config", type=Path, help="Optional project policy for offline API authentication review")
+    combined.add_argument("--output", type=Path, help="New private output directory (default: .private/scan-*)")
     validate = commands.add_parser("validate", help="Validate staging config offline")
     validate.add_argument("config", type=Path)
     doctor = commands.add_parser("doctor", help="Check core tools or task-specific prerequisites without scans")
@@ -78,6 +82,9 @@ def main(argv=None) -> int:
         return 0 if all(tools.values()) else 1
 
     try:
+        if args.command == "scan":
+            from .scan import scan
+            return scan(args.repo, config_path=args.config, output=args.output)
         if args.command == "doctor":
             from .doctor import diagnose
             if args.config is not None and args.profile != "roles":
@@ -159,6 +166,9 @@ def main(argv=None) -> int:
     except ConfigError as error:
         print(f"Configuration error: {error}", file=sys.stderr)
         return 2
+    except KeyboardInterrupt:
+        print("\nCancelled by the operator. No remaining checks will be started.", file=sys.stderr)
+        return 130
     except ToolError as error:
         print(f"Operation failed: {error}", file=sys.stderr)
         return 2

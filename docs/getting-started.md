@@ -5,6 +5,20 @@
 Start with a synthetic report. Install additional tools only for the capability
 you plan to use. None of the steps in the first-run walkthrough scans a live target.
 
+For the shortest walkthrough with expected outputs, start with the
+[README's six steps](../README.md#step-by-step-use-it-in-your-terminal-or-vs-code).
+This page adds installation details and optional dependencies.
+
+## Open the right terminal
+
+In VS Code, open the toolkit folder, then select **Terminal > New Terminal**.
+Choose **Bash** for the commands below. You can also use an ordinary Linux terminal;
+the toolkit does not require a VS Code extension or an AI skill.
+
+These are Linux/Bash examples, not native PowerShell commands. A teammate pilot
+on native Windows has not been completed. In a remote VS Code/SSH session, commands
+run on the remote machine and reports must be downloaded to view locally.
+
 ## Requirements by capability
 
 | Capability | Requirements |
@@ -36,33 +50,53 @@ For a team pilot, the maintainer should supply a **reviewed full commit SHA**.
 Check out that revision before installing. Do not assume the newest `main` commit
 has completed a team pilot.
 
-```sh
+```bash
 python3 -m venv .venv
-.venv/bin/python -m pip install -e .
-.venv/bin/vapt --version
-.venv/bin/vapt --help
-.venv/bin/vapt doctor --for html
+source .venv/bin/activate
+python -m pip install -e .
+vapt --version
+vapt --help
+vapt doctor --for html
 ```
 
-The examples use the virtual environment's executables directly, so activating
-the environment is optional. No system-wide `sudo pip` install is needed.
+**Activation makes the commands shorter:** `vapt` is the same executable as
+`.venv/bin/vapt`, and `python` is `.venv/bin/python`. Activate the environment again
+in each new terminal. For an already installed checkout, do not recreate the
+environment; just enter the folder and run `source .venv/bin/activate`.
+Examples later in this guide keep the full paths so they also work without
+activation. No system-wide `sudo pip` install is needed.
 The editable install keeps the CLI tied to this checkout; moving it requires
 reinstallation, particularly when using Git hooks.
 
 ## 2. Try the offline path
 
-```sh
-.venv/bin/vapt validate templates/project.example.yml
-mkdir -m 700 .private
-.venv/bin/vapt report tests/fixtures/assessment.json \
+With the environment activated:
+
+```bash
+vapt validate templates/project.example.yml
+mkdir -p .private
+chmod 700 .private
+vapt report tests/fixtures/assessment.json \
   --reviewed --html-only --output .private/demo-report
 ```
 
 Expected results:
 
 - Validation reports `configuration: valid` and `scan_authorized: false`.
-- `.private/demo-report/report.html` opens locally and says **SYNTHETIC EXAMPLE**.
+- `Report written to .private/demo-report/report.html` confirms the file was created.
 - No application target is contacted and no cloud or QA credentials are loaded.
+
+The CLI does **not** open your browser automatically. On a Linux desktop, run:
+
+```bash
+xdg-open .private/demo-report/report.html
+```
+
+Or use your browser's **Open File** command. In VS Code, opening the file in the
+editor can show source code instead of the rendered page. Download the file first
+when using a remote workspace. The rendered report says **SYNTHETIC EXAMPLE**:
+the findings were supplied as fixture data, not discovered on your application.
+`scan_authorized: false` from validation is expected and is not a failure.
 
 `.private/` is ignored by Git. That is not encryption or a substitute for local
 file permissions. Use approved storage on an appropriately protected workstation.
@@ -151,6 +185,8 @@ complete.
 |---|---|
 | Private clone fails | Verify your GitHub repository access; never put a token into the clone URL |
 | `vapt` is not found | Use `.venv/bin/vapt` from the repository root |
+| Short commands stop working in a new terminal | Enter the toolkit folder and run `source .venv/bin/activate` |
+| `Report written` appears but nothing opens | Open the HTML with `xdg-open` on Linux, or your browser's Open File command |
 | Browser executable or libraries missing | Install the optional browser components, or use `--html-only` |
 | Output directory already exists | Choose a new run directory; do not overwrite previous evidence |
 | Approval digest/window rejected | Reconfirm the exact config and obtain a fresh, active approval |

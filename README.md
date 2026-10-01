@@ -42,35 +42,108 @@ evidence requirements and limits. WAF configuration is not proof of application 
 The [local WAF lab](docs/cloud-armor-and-xss.md#local-modsecurity-and-owasp-crs-lab)
 verifies real request blocking without GCP resources; it does not verify Cloud Armor.
 
-## First run: no live target required
+## Step-by-step: use it in your terminal or VS Code
 
-Use Python **3.11+** and Git in a Linux-style shell. You need access to this private
-GitHub repository. Docker, Google Cloud credentials and test-account passwords are
-**not required** for this walkthrough.
+This walkthrough uses **Linux/Bash**, Python **3.11+**, Git and access to this
+private repository. It creates a **sample report only**. You do not need Docker,
+Google credentials or a DTAP password, and it does not scan your application.
 
-```sh
+### Step 1: open a terminal and enter the repository
+
+In **VS Code**, choose **Terminal > New Terminal** and use a Bash terminal.
+In an ordinary terminal, use the same commands.
+
+If you have not cloned the repository:
+
+```bash
 git clone https://github.com/mattxslv/matt-vapt-kit.git
 cd matt-vapt-kit
+```
 
+If you already have it, open that folder in VS Code or enter its existing location,
+for example `cd ~/matt-vapt-kit`. Run the remaining commands from this folder.
+
+### Step 2: install once and enable the short commands
+
+```bash
 python3 -m venv .venv
-.venv/bin/python -m pip install -e .
+source .venv/bin/activate
+python -m pip install -e .
+```
 
-.venv/bin/vapt --version
-.venv/bin/vapt doctor --for html
-.venv/bin/vapt validate templates/project.example.yml
+Now use **`vapt`**, instead of typing `.venv/bin/vapt` every time.
+For an existing installation, skip creation/installation and just run
+`source .venv/bin/activate`. Activate it again whenever you open a new terminal.
 
-mkdir -m 700 .private
-.venv/bin/vapt report tests/fixtures/assessment.json \
+### Step 3: check that your local setup works
+
+```bash
+vapt --version
+vapt doctor --for html
+vapt validate templates/project.example.yml
+```
+
+| Output | What it means |
+|---|---|
+| `ready: true` | Your environment can generate HTML reports |
+| `configuration: valid` | The example YAML has the correct format |
+| `scan_authorized: false` | Expected: this example does not authorize a live scan |
+
+**None of these commands scans DTAP or finds new vulnerabilities.**
+
+### Step 4: generate the sample report
+
+```bash
+mkdir -p .private
+chmod 700 .private
+vapt report tests/fixtures/assessment.json \
   --reviewed --html-only --output .private/demo-report
 ```
 
-Open `.private/demo-report/report.html`. It is clearly labeled as a **synthetic
-example**. Validation and report generation do not contact a target; installation
-downloads Python dependencies. On repeat runs, choose a new output directory:
-existing evidence is never overwritten.
+Expected output: `Report written to .private/demo-report/report.html`.
+This means the file was created successfully. **It does not open automatically.**
+If that output folder already exists, choose another name such as
+`.private/demo-report-002`; the toolkit never overwrites existing evidence.
 
-See [getting started](docs/getting-started.md) for PDF export, optional Docker tools,
-environment requirements and troubleshooting.
+### Step 5: open the report in a browser
+
+On a Linux desktop:
+
+```bash
+xdg-open .private/demo-report/report.html
+```
+
+Alternatively, open the HTML file using your browser's **Open File** command.
+In VS Code, the file is at `.private/demo-report/report.html`; opening it in the
+editor shows HTML source, not necessarily the rendered report. For a remote/SSH
+workspace, download the file and open it on your local computer.
+
+The report must say **SYNTHETIC EXAMPLE**. These are demonstration findings, not
+results from your system.
+
+### Step 6: choose what you actually want to check
+
+| Your goal | Follow this guide |
+|---|---|
+| Check committed code or install automatic pre-push checks | [Code and Git checks](docs/reference.md#push-checks-no-prs) |
+| Run a real staging header or DTAP role assessment | [Staging walkthrough and approvals](docs/pilot-checklist.md#run-only-the-approved-scope) |
+| Generate PDF reports or troubleshoot setup | [Full setup guide](docs/getting-started.md) |
+| Exercise XSS or WAF detection without cloud resources | [Local labs](docs/cloud-armor-and-xss.md) |
+
+For a real assessment, `report` is the **last** step. First run an approved
+assessment with `vapt run` or `vapt roles`, then review and export its JSON.
+Running `report` against the sample fixture never tests your application.
+
+**Next time you open the terminal:**
+
+```bash
+cd ~/matt-vapt-kit
+source .venv/bin/activate
+vapt --help
+```
+
+Use your actual checkout path if it is elsewhere. No VS Code extension or AI
+skill is required. `deactivate` leaves the Python environment when you are done.
 
 For a configured pilot, `vapt doctor --for roles --config .private/project.yml`
 checks the relevant local dependencies. `vapt roles --prompt-passwords` supports

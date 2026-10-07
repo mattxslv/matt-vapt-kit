@@ -27,6 +27,19 @@ folders are listed for one-key reruns, and a matching `projects/*.vapt.yml` poli
 is picked by folder name (for example `~/DTAP` uses `dtap.vapt.yml`). Evidence is
 saved under this toolkit's `.private/` directory.
 
+Two more menu options cover live targets:
+
+- **Quick staging check** asks for a staging URL and your explicit permission,
+  then builds a short-lived scope and approval automatically and runs the
+  existing read-only header, cookie and exposed-file checks (`vapt run`
+  under the hood). Sites behind a login (for example Google IAP) are not
+  supported from this menu entry.
+- **Local attack testing** asks for a `localhost`/`127.0.0.1` URL and runs
+  Nuclei and an OWASP ZAP active scan against it in Docker, with
+  `--network host` so the containers can reach your machine. It sends real
+  attack payloads, so only point it at a disposable local copy of an app
+  with synthetic data, never at staging or production.
+
 ## One command, in your terminal
 
 There is **no web application to start**. From this toolkit folder, run:

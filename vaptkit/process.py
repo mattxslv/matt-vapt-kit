@@ -1,9 +1,27 @@
+import re
 import subprocess
 from pathlib import Path
 
 
 class ToolError(RuntimeError):
     pass
+
+
+def stream(command: list[str], printer, *, cwd: Path | None = None) -> tuple[str, int]:
+    """Run a command, printing each output line via printer(line), and return (combined_text, exit_code)."""
+    lines = []
+    try:
+        with subprocess.Popen(command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              text=True, errors="replace") as process:
+            for line in process.stdout:
+                clean = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", line.rstrip())
+                clean = "".join(char for char in clean if char == "\t" or char.isprintable())
+                printer(clean)
+                lines.append(clean)
+            code = process.wait()
+    except OSError:
+        raise ToolError(f"Cannot start {command[0]}; install it before continuing.") from None
+    return "\n".join(lines), code
 
 
 def git(repo: Path, *args: str) -> str:

@@ -355,7 +355,6 @@ def run_local_attack(console: Console) -> None:
         "-v", f"{output}:/output",
         "projectdiscovery/nuclei:latest",
         "-u", url, "-severity", "low,medium,high,critical", "-c", "10", "-o", "/output/nuclei.txt",
-        "-silent", "-disable-update-check",
     ], printer, timeout=NUCLEI_TIMEOUT_SECONDS, on_timeout=stop(nuclei_name))
     hits = len((output / "nuclei.txt").read_text().splitlines()) if (output / "nuclei.txt").is_file() else 0
     if nuclei_timed_out:

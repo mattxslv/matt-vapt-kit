@@ -60,6 +60,18 @@ def pause(console: Console) -> None:
     ask(console, "\nPress Enter to go back to the menu...")
 
 
+def retry_input(console: Console, prompt: str, parse):
+    """Ask for input, retrying on parse() raising ToolError. Typing b/back cancels (returns None)."""
+    while True:
+        entry = ask(console, prompt)
+        if entry.lower() in ("b", "back"):
+            return None
+        try:
+            return parse(entry)
+        except ToolError as error:
+            console.print(Text(f"{error} (type b to go back to the menu)", style="yellow"))
+
+
 def option(console: Console, key: str, label: str) -> None:
     console.print(Text(f"  {key:>2}  ", style=f"bold {ACCENT}") + Text(label))
 
@@ -192,14 +204,8 @@ def run_staging_check(console: Console) -> None:
     console.print(Text("Safe, read-only checks: security headers, cookies, and a short list of commonly "
                        "exposed files/endpoints (.env, .git/HEAD, debug endpoints, source maps).", style="dim"))
     console.print(Text("Login-protected sites (for example anything behind Google IAP) are not supported here.", style="dim"))
-    url = ask(console, "\nStaging URL: ")
-    if not url:
-        return
-    try:
-        config = staging_config(url)
-    except ToolError as error:
-        console.print(Text(f"\n{error}", style="yellow"))
-        pause(console)
+    config = retry_input(console, "\nStaging URL (or b to go back): ", staging_config)
+    if config is None:
         return
     console.print(Text(f"\nThis will send a small number of HEAD/GET requests to {config['target']['url']}.", style="yellow"))
     if ask(console, "Do you have permission to test this site? (y/N): ").lower() != "y":
@@ -256,16 +262,26 @@ def is_local_target(url: str) -> bool:
     return parsed.hostname in LOCAL_HOSTS and bool(parsed.scheme) and parsed.port is not None
 
 
+def local_url(entry: str) -> str:
+    """Accept a bare port, host:port, or a full URL and normalize to http://localhost:PORT."""
+    entry = entry.strip() or "3000"
+    if entry.isdigit():
+        entry = f"http://localhost:{entry}"
+    elif "://" not in entry:
+        entry = "http://" + entry
+    if not is_local_target(entry):
+        raise ToolError("Enter a port (3000), a host:port (localhost:3000) or a full URL (http://localhost:3000).")
+    return entry
+
+
 def run_local_attack(console: Console) -> None:
     console.print(Text("Local attack testing", style="bold"))
     console.print(Text("Runs active security scanners (Nuclei, OWASP ZAP) against an app running on "
                        "this machine. These send real test payloads, not just observations.", style="dim"))
     console.print(Text("Only use this on a disposable local copy with synthetic data, never on staging "
                        "or production.", style="yellow"))
-    url = ask(console, "\nLocal target URL [http://localhost:3000]: ") or "http://localhost:3000"
-    if not is_local_target(url):
-        console.print(Text("\nEnter a full localhost URL with a port, for example http://localhost:3000.", style="yellow"))
-        pause(console)
+    url = retry_input(console, "\nLocal port or URL [3000] (or b to go back): ", local_url)
+    if url is None:
         return
     if ask(console, "This app is running locally and it's OK to attack-test it now? (y/N): ").lower() != "y":
         return

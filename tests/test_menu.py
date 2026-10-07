@@ -1,7 +1,8 @@
 import unittest
+from unittest.mock import MagicMock
 
 from vaptkit.process import ToolError, stream
-from vaptkit.menu import is_local_target, staging_config, staging_recap
+from vaptkit.menu import is_local_target, local_url, retry_input, staging_config, staging_recap
 
 
 class StagingConfigTests(unittest.TestCase):
@@ -31,6 +32,42 @@ class LocalTargetTests(unittest.TestCase):
         self.assertFalse(is_local_target("http://example.com:3000"))
         self.assertFalse(is_local_target("http://localhost"))
         self.assertFalse(is_local_target("localhost:3000"))
+
+
+class LocalUrlTests(unittest.TestCase):
+    def test_accepts_bare_port_host_port_and_full_url(self):
+        self.assertEqual(local_url("3000"), "http://localhost:3000")
+        self.assertEqual(local_url("localhost:8080"), "http://localhost:8080")
+        self.assertEqual(local_url("http://127.0.0.1:5000"), "http://127.0.0.1:5000")
+
+    def test_blank_entry_falls_back_to_default_port(self):
+        self.assertEqual(local_url(""), "http://localhost:3000")
+        self.assertEqual(local_url("   "), "http://localhost:3000")
+
+    def test_remote_host_or_missing_port_raises(self):
+        with self.assertRaises(ToolError):
+            local_url("example.com:3000")
+        with self.assertRaises(ToolError):
+            local_url("localhost")
+
+
+class RetryInputTests(unittest.TestCase):
+    def console(self, *inputs):
+        stub = MagicMock()
+        stub.input.side_effect = inputs
+        return stub
+
+    def test_retries_until_parse_succeeds(self):
+        console = self.console("not a port", "example.com:3000", "3000")
+        result = retry_input(console, "prompt", local_url)
+        self.assertEqual(result, "http://localhost:3000")
+        self.assertEqual(console.input.call_count, 3)
+
+    def test_b_cancels_without_calling_parse(self):
+        console = self.console("b")
+        parse = MagicMock()
+        self.assertIsNone(retry_input(console, "prompt", parse))
+        parse.assert_not_called()
 
 
 class StagingRecapTests(unittest.TestCase):

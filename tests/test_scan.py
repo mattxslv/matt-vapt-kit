@@ -22,16 +22,16 @@ class ScanTests(unittest.TestCase):
             lines = stream.getvalue().splitlines()
             self.assertTrue(all(len(line) <= width for line in lines))
             self.assertIn("anti vince vulnerability", stream.getvalue())
+            self.assertIn("Matt VAPT Kit", stream.getvalue())
+            self.assertNotIn("╭", stream.getvalue())
+            self.assertNotIn("│", stream.getvalue())
+            self.assertNotIn("COMMITTED-CODE CHECKS", stream.getvalue())
             if width >= 40:
                 self.assertIn("to prevent spilling the beans :D", stream.getvalue())
-            top = next(line for line in lines if "╭" in line)
-            self.assertEqual(top.index("╭"), (width - min(width, 60)) // 2)
-            if width >= 40:
-                bottom_index = next(index for index, line in enumerate(lines) if "╰" in line)
-                caption = lines[bottom_index + 1]
-                self.assertIn("to prevent spilling the beans :D", caption)
-                self.assertEqual(len(caption.rstrip()), len(lines[bottom_index].rstrip()))
-                self.assertNotIn("│", caption)
+                caption_line = next(line for line in lines if "to prevent spilling the beans :D" in line)
+                left_margin = len(caption_line) - len(caption_line.lstrip())
+                right_margin = len(caption_line) - len(caption_line.rstrip())
+                self.assertLessEqual(abs(left_margin - right_margin), 2)
             self.assertNotIn("\x1b", stream.getvalue())
 
     def test_loading_message_shows_word_and_elapsed_time_without_fake_progress(self):

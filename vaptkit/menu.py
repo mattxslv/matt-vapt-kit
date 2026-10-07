@@ -20,7 +20,7 @@ from .assessment import approval_template, assess
 from .config import ConfigError, load_config
 from .doctor import diagnose
 from .process import ToolError, git, stream
-from .scan import ACCENT, path_link, print_header, scan
+from .scan import path_link, print_header, scan
 
 KIT = Path(__file__).resolve().parent.parent
 PRIVATE = KIT / ".private"
@@ -53,7 +53,7 @@ def matching_config(repo: Path) -> Path | None:
 
 
 def ask(console: Console, prompt: str) -> str:
-    return console.input(Text(prompt, style=f"bold {ACCENT}")).strip()
+    return console.input(Text(prompt, style="bold")).strip()
 
 
 def pause(console: Console) -> None:
@@ -73,7 +73,10 @@ def retry_input(console: Console, prompt: str, parse):
 
 
 def option(console: Console, key: str, label: str) -> None:
-    console.print(Text(f"  {key:>2}  ", style=f"bold {ACCENT}") + Text(label))
+    line = Text()
+    line.append(f"  {key:>2}  ", style="bold")
+    line.append(label, style="default")
+    console.print(line)
 
 
 def choose_project(console: Console) -> Path | None:
@@ -129,7 +132,7 @@ def show_latest(console: Console) -> None:
         return
     summary = json.loads((folder / "summary.json").read_text())
     table = Table(title="Latest scan", title_style="bold", header_style="bold",
-                  box=box.ROUNDED, border_style=ACCENT, show_lines=True, padding=(0, 1))
+                  box=box.ROUNDED, border_style="grey50", show_lines=True, padding=(0, 1))
     table.add_column("Check", ratio=2)
     table.add_column("Status", no_wrap=True)
     table.add_column("Detail", ratio=4, overflow="fold")
@@ -239,7 +242,7 @@ def run_staging_check(console: Console) -> None:
         "paths": ["/"],
     })
     output = PRIVATE / f"quick-staging-{stamp}"
-    console.print(Text(f"\nChecking {config['target']['url']} for up to {minutes} minute(s)...", style=ACCENT))
+    console.print(Text(f"\nChecking {config['target']['url']} for up to {minutes} minute(s)..."))
     try:
         path, code = assess(config, approval, output)
     except ToolError as error:
@@ -348,7 +351,7 @@ def run_local_attack(console: Console) -> None:
 
     summary = []
     nuclei_name = f"mvk-nuclei-{stamp}"
-    console.rule(Text("1 / 2  Nuclei known-issue scan", style=f"bold {ACCENT}"), align="left", style="grey37")
+    console.rule(Text("1 / 2  Nuclei known-issue scan", style="bold"), align="left", style="grey37")
     nuclei_log, code, nuclei_timed_out = stream([
         "docker", "run", "--rm", "--network", "host", "--name", nuclei_name,
         "--memory=1g", "--memory-swap=1g",
@@ -365,7 +368,7 @@ def run_local_attack(console: Console) -> None:
     console.print()
 
     zap_name = f"mvk-zap-{stamp}"
-    console.rule(Text("2 / 2  ZAP active scan", style=f"bold {ACCENT}"), align="left", style="grey37")
+    console.rule(Text("2 / 2  ZAP active scan", style="bold"), align="left", style="grey37")
     zap_log, code, zap_timed_out = stream([
         "docker", "run", "--rm", "--network", "host", "--name", zap_name,
         "--memory=2g", "--memory-swap=2g", "-e", "JAVA_OPTS=-Xmx1536m",
@@ -381,7 +384,7 @@ def run_local_attack(console: Console) -> None:
     console.print(Text(f"  {summary[-1]}", style="bold " + ("yellow" if alerts or zap_timed_out else "green")))
 
     console.print()
-    console.print(Text("Saved evidence", style=f"bold {ACCENT}"))
+    console.print(Text("Saved evidence", style="bold"))
     for name in ("nuclei.txt", "zap-report.html"):
         if (output / name).is_file():
             console.print(Text("  ") + path_link(output / name))

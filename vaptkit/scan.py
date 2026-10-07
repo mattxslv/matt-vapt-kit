@@ -120,10 +120,17 @@ SHIELD = (
 
 def print_header(console: Console) -> None:
     width = min(console.width, 60)
+    caption = Text(justify="center")
+    caption.append("Matt VAPT Kit", style="bold")
+    caption.append("\n")
+    caption.append("anti vince vulnerability", style="dim")
+    caption.append("\n")
+    caption.append("to prevent spilling the beans :D", style="dim italic")
     if width < 42:
         content = Group(
-            Text("MVK | Matt VAPT Kit", style=f"bold {ACCENT}", justify="center"),
-            Text("anti vince vulnerability", justify="center"),
+            Text("MVK", style="bold", justify="center"),
+            Text(""),
+            caption,
         )
     else:
         rendered = Figlet(font="ansi_shadow", width=60).renderText("MVK")
@@ -136,20 +143,16 @@ def print_header(console: Console) -> None:
         for index, (shield_line, wordmark_line) in enumerate(zip(shield_lines, wordmark_lines)):
             if index:
                 lockup.append("\n")
-            lockup.append(shield_line, style=ACCENT)
+            lockup.append(shield_line, style="dim")
             lockup.append("  ")
-            lockup.append(wordmark_line, style=f"bold {ACCENT}")
+            lockup.append(wordmark_line, style="bold")
         content = Group(
-            Align.center(lockup),
+            Align.center(lockup, width=width),
             Text(""),
-            Text("Matt VAPT Kit", style="bold", justify="center"),
-            Text("anti vince vulnerability", justify="center"),
+            Align.center(caption, width=width),
         )
     console.print()
-    panel = Panel(content, width=width, border_style=ACCENT, padding=(0, 2),
-                  subtitle=Text("COMMITTED-CODE CHECKS", style="dim"))
-    aside = Align.right(Text("to prevent spilling the beans :D", style="dim italic"), width=width)
-    console.print(Align.center(Group(panel, aside)))
+    console.print(Align.center(content))
     console.print()
 
 
@@ -158,7 +161,7 @@ def path_link(path: Path, label: str | None = None, *, enabled=True) -> Text:
     display = label if label is not None else str(resolved)
     display = "".join(char if char.isprintable() else "?" for char in display)
     return Text(display,
-                style=Style(color=ACCENT, underline=True, link=resolved.as_uri()) if enabled else None)
+                style=Style(underline=True, link=resolved.as_uri()) if enabled else None)
 
 
 def static_summary(raw: str, *, errors: list[dict] | None = None) -> list[dict]:
@@ -254,7 +257,7 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
             raise ToolError(f"{command[0]} returned exit {code}. Review the output for findings or tooling errors.")
 
     def stage(name, action, missing=None):
-        console.rule(Text(name, style=f"bold {ACCENT}"), align="left", style="grey37")
+        console.rule(Text(name, style="bold"), align="left", style="grey37")
         if missing:
             row = {"check": name, "status": "NOT RUN", "detail": missing}
         else:
@@ -343,7 +346,7 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
         return f"{summary['handlers']} handlers reviewed; no suspected authentication gaps reported."
     stage("4 / 4  API authentication review", routes)
     table = Table(title="Assessment summary", title_style="bold", header_style="bold",
-                  box=box.ROUNDED, border_style=ACCENT, show_lines=True, padding=(0, 1))
+                  box=box.ROUNDED, border_style="grey50", show_lines=True, padding=(0, 1))
     table.add_column("Check", ratio=2)
     table.add_column("Status", no_wrap=True)
     table.add_column("Detail", ratio=4, overflow="fold")
@@ -367,7 +370,7 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
     finished = datetime.now().strftime("%I:%M %p").lstrip("0")
     console.print(Text(f"\n✻ {random.choice(DONE_WORDS)} for {duration(time.monotonic() - started)} · done {finished} · "
                        f"{done} completed · {outcome}", style="dim"))
-    console.print("\nSaved evidence", style=f"bold {ACCENT}")
+    console.print("\nSaved evidence", style="bold")
     evidence = Table.grid(padding=(0, 2))
     evidence.add_column(style="dim", no_wrap=True)
     evidence.add_column(overflow="fold")

@@ -45,6 +45,30 @@ DONE_WORDS = (
     "Baked", "Brewed", "Cooked", "Crunched", "Churned", "Sleuthed", "Simmered", "Stewed",
 )
 SPINNER_FRAMES = "·✢✳✶✻✽✻✶✳✢"
+DECOR_CODE_LINES = (
+    "if (user.role !== 'admin') return",
+    "const token = crypto.randomBytes(32)",
+    "SELECT * FROM sessions WHERE id = ?",
+    "export async function middleware(req) {",
+    "headers.set('X-Frame-Options', 'DENY')",
+    "await bcrypt.compare(password, hash)",
+    "process.env.DATABASE_URL ?? 'sqlite://'",
+    "app.use(helmet())",
+    "const jwt = sign(payload, secret)",
+    "if (!authorized) throw new Error('403')",
+    "git log --oneline -n 20",
+    "docker run --rm --network host ...",
+    "grep -rn 'TODO' --include=*.ts .",
+    "cookie.secure = true; cookie.httpOnly = true",
+    "response.status(401).json({ error })",
+    "const hash = sha256(input).hex()",
+    "import { NextRequest } from 'next/server'",
+    "WHERE created_at > NOW() - INTERVAL '1 day'",
+    "openssl x509 -in cert.pem -noout -dates",
+    "trustProxy: false, // verify origin",
+)
+DECOR_WINDOW = 3
+DECOR_SECONDS_PER_LINE = 0.6
 
 
 class LoadingMessage:
@@ -52,12 +76,17 @@ class LoadingMessage:
         self.task = re.sub(r"^\d+ / \d+\s+", "", task)
         self.started = time.monotonic()
         self.word = random.choice(LOADING_WORDS)
+        self.offset = random.randrange(len(DECOR_CODE_LINES))
 
     def __rich_console__(self, console, options):
         elapsed = max(0, time.monotonic() - self.started)
+        start = self.offset + int(elapsed / DECOR_SECONDS_PER_LINE)
+        decor = Text("\n".join(
+            DECOR_CODE_LINES[(start + index) % len(DECOR_CODE_LINES)] for index in range(DECOR_WINDOW)
+        ), style="dim")
         message = Text(SPINNER_FRAMES[int(elapsed * 8) % len(SPINNER_FRAMES)] + " " + self.word + "…", style=ACCENT)
         message.append(f" ({elapsed:.0f}s · {self.task})", style="dim")
-        yield message
+        yield Group(decor, message)
 
 
 def loading(console: Console, task: str, animate: bool):
@@ -128,7 +157,7 @@ def print_header(console: Console) -> None:
     caption.append("to prevent spilling the beans :D", style="dim italic")
     if width < 42:
         content = Group(
-            Text("MVK", style="bold", justify="center"),
+            Text("MVK", style=f"bold {ACCENT}", justify="center"),
             Text(""),
             caption,
         )
@@ -143,9 +172,9 @@ def print_header(console: Console) -> None:
         for index, (shield_line, wordmark_line) in enumerate(zip(shield_lines, wordmark_lines)):
             if index:
                 lockup.append("\n")
-            lockup.append(shield_line, style="dim")
+            lockup.append(shield_line, style=ACCENT)
             lockup.append("  ")
-            lockup.append(wordmark_line, style="bold")
+            lockup.append(wordmark_line, style=f"bold {ACCENT}")
         content = Group(
             Align.center(lockup, width=width),
             Text(""),

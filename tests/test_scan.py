@@ -10,7 +10,7 @@ from unittest.mock import patch
 from rich.console import Console
 
 from vaptkit.process import ToolError, git
-from vaptkit.scan import LOADING_WORDS, LoadingMessage, duration, path_link, print_header, recap, scan, static_summary
+from vaptkit.scan import DECOR_CODE_LINES, DECOR_WINDOW, LOADING_WORDS, LoadingMessage, duration, path_link, print_header, recap, scan, static_summary
 
 
 class ScanTests(unittest.TestCase):
@@ -37,7 +37,7 @@ class ScanTests(unittest.TestCase):
     def test_loading_message_shows_word_and_elapsed_time_without_fake_progress(self):
         with patch("vaptkit.scan.time.monotonic", return_value=10), patch(
             "vaptkit.scan.random.choice", return_value="Topsy-turvying"
-        ):
+        ), patch("vaptkit.scan.random.randrange", return_value=0):
             message = LoadingMessage("Static rules")
         self.assertGreaterEqual(len(LOADING_WORDS), 60)
         self.assertEqual(len(set(LOADING_WORDS)), len(LOADING_WORDS))
@@ -45,10 +45,23 @@ class ScanTests(unittest.TestCase):
             with patch("vaptkit.scan.time.monotonic", return_value=now):
                 rendered = list(message.__rich_console__(None, None))
                 self.assertEqual(len(rendered), 1)
-                line = rendered[0].plain
-            self.assertIn("Topsy-turvying…", line)
-            self.assertIn(f"({seconds} · Static rules)", line)
-            self.assertNotIn("%", line)
+                stream = io.StringIO()
+                Console(file=stream, force_terminal=False, width=80).print(rendered[0])
+                text = stream.getvalue()
+            self.assertIn("Topsy-turvying…", text)
+            self.assertIn(f"({seconds} · Static rules)", text)
+            self.assertNotIn("%", text)
+
+    def test_loading_message_shows_decorative_code_lines_not_real_source(self):
+        with patch("vaptkit.scan.time.monotonic", return_value=0), patch(
+            "vaptkit.scan.random.choice", return_value="Digging"
+        ), patch("vaptkit.scan.random.randrange", return_value=0):
+            message = LoadingMessage("Secret history")
+            stream = io.StringIO()
+            Console(file=stream, force_terminal=False, width=80).print(next(iter(message.__rich_console__(None, None))))
+        text = stream.getvalue()
+        shown = [line for line in DECOR_CODE_LINES[:DECOR_WINDOW] if line in text]
+        self.assertEqual(len(shown), DECOR_WINDOW)
 
     def test_recap_summarizes_findings_and_suggests_first_step(self):
         rows = [{"check": f"{n} / 4  {name}", "status": status, "detail": ""} for n, name, status in (

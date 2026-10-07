@@ -10,7 +10,7 @@ from unittest.mock import patch
 from rich.console import Console
 
 from vaptkit.process import ToolError, git
-from vaptkit.scan import LOADING_LINES, LoadingMessage, path_link, print_header, scan, static_summary
+from vaptkit.scan import LOADING_WORDS, LoadingMessage, duration, path_link, print_header, recap, scan, static_summary
 
 
 class ScanTests(unittest.TestCase):
@@ -34,22 +34,39 @@ class ScanTests(unittest.TestCase):
                 self.assertNotIn("│", caption)
             self.assertNotIn("\x1b", stream.getvalue())
 
-    def test_loading_messages_rotate_without_fake_progress(self):
+    def test_loading_message_shows_word_and_elapsed_time_without_fake_progress(self):
         with patch("vaptkit.scan.time.monotonic", return_value=10), patch(
-            "vaptkit.scan.random.sample", return_value=list(LOADING_LINES)
+            "vaptkit.scan.random.choice", return_value="Topsy-turvying"
         ):
             message = LoadingMessage("Static rules")
-        self.assertGreaterEqual(len(LOADING_LINES), 60)
-        self.assertEqual(len(set(LOADING_LINES)), len(LOADING_LINES))
-        self.assertNotIn("Getting the crabs out...", LOADING_LINES)
-        for now, expected in ((10, "digital sofa"), (14, "form a queue")):
+        self.assertGreaterEqual(len(LOADING_WORDS), 60)
+        self.assertEqual(len(set(LOADING_WORDS)), len(LOADING_WORDS))
+        for now, seconds in ((10, "0s"), (47, "37s")):
             with patch("vaptkit.scan.time.monotonic", return_value=now):
                 rendered = list(message.__rich_console__(None, None))
                 self.assertEqual(len(rendered), 1)
                 line = rendered[0].plain
-            self.assertIn(expected, line)
-            self.assertIn("Static rules", line)
+            self.assertIn("Topsy-turvying…", line)
+            self.assertIn(f"({seconds} · Static rules)", line)
             self.assertNotIn("%", line)
+
+    def test_recap_summarizes_findings_and_suggests_first_step(self):
+        rows = [{"check": f"{n} / 4  {name}", "status": status, "detail": ""} for n, name, status in (
+            (1, "Secret history", "REVIEW"), (2, "Dependency audit", "REVIEW"),
+            (3, "Static rules", "NOT RUN"), (4, "API authentication review", "REVIEW"))]
+        text = recap("DTAP", rows, {"leaks": 74, "vulnerabilities": 13, "severity": "10 moderate | 3 high",
+                                    "high": True, "routes": 16})
+        self.assertIn("DTAP has 74 possible secrets", text)
+        self.assertIn("13 vulnerable packages (10 moderate | 3 high)", text)
+        self.assertIn("16 API routes", text)
+        self.assertIn("Static rules did not run", text)
+        self.assertIn("Next, go through the leaked secrets first", text)
+        clean = recap("demo", [{"check": "1 / 4  Secret history", "status": "DONE", "detail": ""}], {})
+        self.assertIn("Nothing was flagged", clean)
+
+    def test_duration_reads_like_minutes_and_seconds(self):
+        self.assertEqual(duration(20.4), "20s")
+        self.assertEqual(duration(125), "2m 5s")
 
     def test_clickable_paths_are_encoded_and_plain_mode_has_no_escape_codes(self):
         path = self.root / "directory with spaces [demo]"

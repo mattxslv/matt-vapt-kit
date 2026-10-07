@@ -80,15 +80,15 @@ has no animated spinner.
 The terminal uses a centered PyFiglet MVK wordmark and the two-line tagline
 **"anti vince vulnerability" / "to prevent spilling the beans :D"**,
 with the second line placed outside the frame at its bottom-right edge,
-and 60 original shuffled loading captions, including "Consulting the rubber duck
-council..." and "Turning paranoia into paperwork...". A spinner accompanies
-the actual task and elapsed time, without a loading bar or invented percentages.
+and a one-word loading status such as `✻ Topsy-turvying… (37s · Static rules)`,
+picked from 60 words, with the actual task and elapsed time and no loading bar or
+invented percentages. The scan ends with a line like
+`✻ Cooked for 2m 5s · done 3:46 PM · 0 completed · 4 need attention` and a
+plain-English `※ recap:` of what was found and what to look at first.
 There are no artificial delays.
 The header switches to a compact wordmark in narrow terminals. Scan details stay
 left-aligned for readability, and the final summary has rounded borders and row
-separators. Loading uses the simple dot spinner with the shuffled captions, no bar.
-Run metadata and saved evidence use aligned label/value columns; the final line
-separates completed stages from stages needing attention. The centered wordmark
+separators. Run metadata and saved evidence use aligned label/value columns. The centered wordmark
 uses separated letters and a tighter frame, with the tagline in normal text.
 Use `./scan /path/to/your-project --plain` for no colors or motion, or set
 `MVK_REDUCED_MOTION=1` to disable animation while keeping colors.

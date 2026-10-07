@@ -16,6 +16,7 @@ from pyfiglet import Figlet
 from rich import box
 from rich.align import Align
 from rich.console import Console, Group
+from rich.live import Live
 from rich.panel import Panel
 from rich.style import Style
 from rich.table import Table
@@ -28,82 +29,84 @@ from .process import ToolError, git
 from .routes import review
 
 ACCENT = "#d68b68"
-LOADING_LINES = (
-    "Checking under the digital sofa...",
-    "Asking the bugs to form a queue...",
-    "Untangling the suspicious spaghetti...",
-    "Consulting the rubber duck council...",
-    "Putting on the tiny detective hat...",
-    "Turning paranoia into paperwork...",
-    "Reading the fine print in the fine print...",
-    "Interviewing a very nervous semicolon...",
-    "Inspecting the suspiciously quiet corner...",
-    "Giving the gremlins a clipboard...",
-    "Counting the plot holes...",
-    "Following the breadcrumb-shaped bugs...",
-    "Checking the pockets of the code...",
-    "Asking the skeletons about their closet...",
-    "Making eye contact with the TODOs...",
-    "Looking behind the magic curtain...",
-    "Checking whether the duck has questions...",
-    "Opening the drawer labeled 'temporary'...",
-    "Measuring the spaghetti by the noodle...",
-    "Preparing a strongly worded sticky note...",
-    "Looking for the other end of this string...",
-    "Taking the scenic route through the syntax...",
-    "Asking the exceptions to explain themselves...",
-    "Giving the brackets a head count...",
-    "Checking the trapdoor under the trapdoor...",
-    "Organizing the mystery drawer...",
-    "Reading code with one eyebrow raised...",
-    "Putting the assumptions on a witness stand...",
-    "Looking for duct tape in important places...",
-    "Consulting a suspiciously large checklist...",
-    "Following the trail of abandoned comments...",
-    "Checking the emergency emergency exit...",
-    "Asking 'what could possibly go wrong?'...",
-    "Counting the layers of 'just this once'...",
-    "Taking attendance at the bug meeting...",
-    "Offering the race conditions a chair...",
-    "Untying a knot with excellent documentation...",
-    "Trying to understand past-us...",
-    "Asking the edge cases to come inside...",
-    "Looking for the manual behind the manual...",
-    "Checking the secret compartment's compartment...",
-    "Putting a magnifying glass on the magnifying glass...",
-    "Making a spreadsheet for the gremlins...",
-    "Looking both ways before crossing a callback...",
-    "Asking the magic numbers for identification...",
-    "Peeking into the box marked 'probably fine'...",
-    "Giving the code a politely suspicious look...",
-    "Looking for the loose thread in the sweater...",
-    "Reading the recipe for this particular spaghetti...",
-    "Checking whether 'later' ever happened...",
-    "Taking notes for the next rubber duck meeting...",
-    "Asking the happy path about its neighbors...",
-    "Making room for one more edge case...",
-    "Checking the 'nothing to see here' sign...",
-    "Inspecting the very professional duct tape...",
-    "Looking for the sequel to the workaround...",
-    "Asking the comments to match their alibis...",
-    "Checking the basement of the abstraction...",
-    "Putting the puzzle pieces right-side up...",
-    "Looking for the bug wearing a feature costume...",
+LOADING_WORDS = (
+    "Bamboozling", "Befuddling", "Bug-hunting", "Burrowing", "Combobulating", "Concocting",
+    "Cross-examining", "Decrypting", "Deducing", "Detecting", "Digging", "Disentangling",
+    "Dusting", "Excavating", "Fact-checking", "Ferreting", "Fiddling", "Finagling",
+    "Flummoxing", "Foraging", "Frisking", "Gumshoeing", "Hmm-ing", "Hunting",
+    "Inspecting", "Interrogating", "Investigating", "Jiggling", "Lurking", "Magnifying",
+    "Meandering", "Moseying", "Nitpicking", "Noodling", "Nosing", "Patrolling",
+    "Peeking", "Perusing", "Pondering", "Poking", "Prodding", "Puzzling",
+    "Quizzing", "Rummaging", "Scouring", "Scrutinizing", "Sleuthing", "Sniffing",
+    "Snooping", "Spelunking", "Squinting", "Staking-out", "Swabbing", "Tiptoeing",
+    "Topsy-turvying", "Triangulating", "Unravelling", "Untangling", "Whittling", "Wrangling",
 )
+DONE_WORDS = (
+    "Baked", "Brewed", "Cooked", "Crunched", "Churned", "Sleuthed", "Simmered", "Stewed",
+)
+SPINNER_FRAMES = "·✢✳✶✻✽✻✶✳✢"
 
 
 class LoadingMessage:
     def __init__(self, task: str):
-        self.task = task
+        self.task = re.sub(r"^\d+ / \d+\s+", "", task)
         self.started = time.monotonic()
-        self.phrases = random.sample(LOADING_LINES, len(LOADING_LINES))
+        self.word = random.choice(LOADING_WORDS)
 
     def __rich_console__(self, console, options):
         elapsed = max(0, time.monotonic() - self.started)
-        phrase = self.phrases[int(elapsed // 4) % len(self.phrases)]
-        message = Text(phrase, style=ACCENT)
-        message.append(f"  {self.task}  ({elapsed:.0f}s)", style="dim")
+        message = Text(SPINNER_FRAMES[int(elapsed * 8) % len(SPINNER_FRAMES)] + " " + self.word + "…", style=ACCENT)
+        message.append(f" ({elapsed:.0f}s · {self.task})", style="dim")
         yield message
+
+
+def loading(console: Console, task: str, animate: bool):
+    return Live(LoadingMessage(task), console=console, refresh_per_second=8, transient=True) if animate else nullcontext()
+
+
+def duration(seconds: float) -> str:
+    minutes, seconds = divmod(round(seconds), 60)
+    return f"{minutes}m {seconds}s" if minutes else f"{seconds}s"
+
+
+def recap(project: str, rows: list[dict], facts: dict) -> str:
+    found = []
+    for row in rows:
+        stage = re.sub(r"^\d+ / \d+\s+", "", row["check"])
+        if row["status"] != "REVIEW":
+            continue
+        if stage == "Secret history" and facts.get("leaks"):
+            found.append(f"{facts['leaks']} possible secrets in its Git history")
+        elif stage == "Dependency audit" and facts.get("vulnerabilities"):
+            severity = f" ({facts['severity']})" if facts.get("severity") else ""
+            found.append(f"{facts['vulnerabilities']} vulnerable packages{severity}")
+        elif stage == "Static rules" and facts.get("static"):
+            found.append(f"{facts['static']} static-rule matches")
+        elif stage == "API authentication review" and facts.get("routes"):
+            found.append(f"{facts['routes']} API routes that may be missing auth checks")
+        else:
+            found.append(f"a {stage.lower()} result that needs a look")
+    skipped = [re.sub(r"^\d+ / \d+\s+", "", row["check"]) for row in rows if row["status"] in ("NOT RUN", "CANCELLED")]
+    if found:
+        listed = found[0] if len(found) == 1 else ", ".join(found[:-1]) + " and " + found[-1]
+        text = f"{project} has {listed}."
+    else:
+        text = f"Nothing was flagged in {project}'s committed code."
+    if skipped:
+        text += f" {', '.join(skipped)} did not run, so that part is not covered."
+    if facts.get("leaks"):
+        text += " Next, go through the leaked secrets first: rotate any real key, then add false positives to .gitleaksignore."
+    elif facts.get("high"):
+        text += " Next, update the packages marked high in the dependency audit."
+    elif facts.get("routes"):
+        text += " Next, open route-review.json and confirm each flagged route checks the login and role."
+    elif facts.get("static"):
+        text += " Next, open static-findings.json and check each match."
+    elif skipped:
+        text += " Next, fix what stopped those checks and scan again."
+    else:
+        text += " Live staging checks are still separate."
+    return text
 
 
 def print_header(console: Console) -> None:
@@ -205,6 +208,7 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
     console.print("Network", Text("Image downloads if needed; dependency metadata sent to npm."), style="dim")
     console.print()
     rows = []
+    facts = {}
     started = time.monotonic()
 
     def execute(command, *, cwd=None):
@@ -215,6 +219,13 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
                     # Render scanner output literally, without Rich markup or terminal control sequences.
                     clean = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", line.rstrip())
                     clean = "".join(char for char in clean if char == "\t" or char.isprintable())
+                    if match := re.search(r"leaks found: (\d+)", clean):
+                        facts["leaks"] = int(match[1])
+                    if match := re.search(r"(\d+) vulnerabilit(?:y|ies) found", clean):
+                        facts["vulnerabilities"] = int(match[1])
+                    if match := re.search(r"Severity: (.+)", clean):
+                        facts["severity"] = match[1].strip()
+                        facts["high"] = bool(re.search(r"\d+ (high|critical)", facts["severity"]))
                     console.print(Text("  " + clean, style="dim"))
                 code = process.wait()
         except OSError:
@@ -228,8 +239,7 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
             row = {"check": name, "status": "NOT RUN", "detail": missing}
         else:
             try:
-                with (console.status(LoadingMessage(name), spinner="dots", spinner_style=ACCENT,
-                                     refresh_per_second=4) if animate else nullcontext()):
+                with loading(console, name, animate):
                     detail = action()
                 row = {"check": name, "status": "DONE", "detail": detail or "No issue reported by this check."}
             except KeyboardInterrupt:
@@ -256,8 +266,7 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
     docker_ready = False
     if shutil.which("docker"):
         try:
-            with (console.status(LoadingMessage("Checking Docker"), spinner="dots", spinner_style=ACCENT,
-                                 refresh_per_second=4) if animate else nullcontext()):
+            with loading(console, "Checking Docker", animate):
                 result = subprocess.run(["docker", "info", "--format={{.ServerVersion}}"],
                                         capture_output=True, timeout=15)
             docker_ready = result.returncode == 0
@@ -279,6 +288,7 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
             raise ToolError("Static scanner could not complete; no passing result recorded.") from None
         processing_errors = []
         findings = static_summary(result.stdout, errors=processing_errors)
+        facts["static"] = len(findings)
         incomplete = bool(processing_errors) or result.returncode not in (0, 1) or (result.returncode == 1 and not findings)
         write_private(output / "static-findings.json", json.dumps({
             "revision": sha, "findings": findings, "processing_errors": processing_errors,
@@ -305,6 +315,7 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
         write_private(output / "route-review.json", json.dumps(result, indent=2))
         summary = result["summary"]
         count = len(result["findings"])
+        facts["routes"] = count
         if count:
             raise ToolError(f"{count} suspected API authentication findings. Review route-review.json; these are not confirmed exploits.")
         if not summary["handlers"]:
@@ -332,7 +343,10 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
     write_private(output / "summary.json", json.dumps(result, indent=2))
     done = sum(row["status"] == "DONE" for row in rows)
     attention = len(rows) - done
-    console.print(f"\nFinished in {time.monotonic() - started:.1f}s  |  {done} completed  |  {attention} need attention", style="bold")
+    outcome = f"{attention} need attention" if attention else "all checks done"
+    finished = datetime.now().strftime("%I:%M %p").lstrip("0")
+    console.print(Text(f"\n✻ {random.choice(DONE_WORDS)} for {duration(time.monotonic() - started)} · done {finished} · "
+                       f"{done} completed · {outcome}", style="dim"))
     console.print("\nSaved evidence", style=f"bold {ACCENT}")
     evidence = Table.grid(padding=(0, 2))
     evidence.add_column(style="dim", no_wrap=True)
@@ -346,4 +360,6 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
         console.print("Paths are terminal links. Use your terminal's open-link gesture (often Ctrl+click).", style="dim")
     console.print("\nNot a live VAPT or an all-clear. Static matches require review.", style="yellow")
     console.print("Next: review saved evidence. Approved staging checks use vapt run / vapt roles.", style="dim")
+    console.print()
+    console.print(Text("※ recap: ", style=f"bold {ACCENT}") + Text(recap(repo.name, rows, facts), style="italic"))
     return 1 if needs_review else 0

@@ -117,7 +117,7 @@ def print_header(console: Console) -> None:
             Text("anti vince vulnerability", justify="center"),
         )
     else:
-        rendered = Figlet(font="small", width=60).renderText("M V K")
+        rendered = Figlet(font="slant", width=60).renderText("M V K")
         wordmark = "\n".join(line.rstrip() for line in rendered.splitlines() if line.strip())
         content = Group(
             Align.center(Text(wordmark, style=f"bold {ACCENT}")),

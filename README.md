@@ -19,6 +19,14 @@ an external vulnerability assessment and penetration test.
 [Team pilot checklist](docs/pilot-checklist.md) |
 [Contributing](CONTRIBUTING.md)
 
+## Menu
+
+Run `vaptkit` (or `.venv/bin/vaptkit` from this folder) for a numbered menu:
+scan a project, see the latest results, or check prerequisites. Recently scanned
+folders are listed for one-key reruns, and a matching `projects/*.vapt.yml` policy
+is picked by folder name (for example `~/DTAP` uses `dtap.vapt.yml`). Evidence is
+saved under this toolkit's `.private/` directory.
+
 ## One command, in your terminal
 
 There is **no web application to start**. From this toolkit folder, run:

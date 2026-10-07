@@ -255,6 +255,8 @@ def run_staging_check(console: Console) -> None:
 
 
 LOCAL_HOSTS = ("localhost", "127.0.0.1")
+NUCLEI_TIMEOUT_SECONDS = 600
+ZAP_TIMEOUT_SECONDS = 900
 
 
 def is_local_target(url: str) -> bool:
@@ -274,6 +276,21 @@ def local_url(entry: str) -> str:
     return entry
 
 
+LOW_MEMORY_MB = 4096
+
+
+def available_memory_mb() -> int | None:
+    """Available RAM in MiB from /proc/meminfo, or None if it can't be read (non-Linux)."""
+    try:
+        with open("/proc/meminfo") as handle:
+            for line in handle:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) // 1024
+    except (OSError, ValueError, IndexError):
+        return None
+    return None
+
+
 def run_local_attack(console: Console) -> None:
     console.print(Text("Local attack testing", style="bold"))
     console.print(Text("Runs active security scanners (Nuclei, OWASP ZAP) against an app running on "
@@ -284,46 +301,74 @@ def run_local_attack(console: Console) -> None:
     if url is None:
         return
     if ask(console, "This app is running locally and it's OK to attack-test it now? (y/N): ").lower() != "y":
+        console.print(Text("\nStopped; nothing was run.", style="dim"))
+        pause(console)
         return
     if not shutil.which("docker"):
         console.print(Text("\nDocker is required for local attack testing.", style="yellow"))
         pause(console)
         return
+    available = available_memory_mb()
+    if available is not None and available < LOW_MEMORY_MB:
+        console.print(Text(f"\nOnly {available} MiB RAM is free; these scanners can make the machine "
+                           "slow or unresponsive. Close other apps first.", style="yellow"))
+        if ask(console, "Continue anyway? (y/N): ").lower() != "y":
+            console.print(Text("\nStopped; nothing was run.", style="dim"))
+            pause(console)
+            return
     PRIVATE.mkdir(mode=0o700, exist_ok=True)
-    output = PRIVATE / ("attack-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6])
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6]
+    output = PRIVATE / f"attack-{stamp}"
     output.mkdir(mode=0o700)
     console.clear()
     print_header(console)
     console.print(Text(f"Target   {url}", style="dim"))
     console.print(Text(f"Save to  {output}", style="dim"))
+    console.print(Text("Each scanner is capped on memory and time so a slow machine doesn't need "
+                       "to be force-stopped.", style="dim"))
     console.print()
 
     def printer(line):
         console.print(Text("  " + line, style="dim"))
 
+    def stop(name):
+        def callback():
+            subprocess.run(["docker", "kill", name], capture_output=True)
+        return callback
+
     summary = []
+    nuclei_name = f"mvk-nuclei-{stamp}"
     console.rule(Text("1 / 2  Nuclei known-issue scan", style=f"bold {ACCENT}"), align="left", style="grey37")
-    nuclei_log, code = stream([
-        "docker", "run", "--rm", "--network", "host",
+    nuclei_log, code, nuclei_timed_out = stream([
+        "docker", "run", "--rm", "--network", "host", "--name", nuclei_name,
+        "--memory=1g", "--memory-swap=1g",
         "-v", f"{output}:/output",
         "projectdiscovery/nuclei:latest",
-        "-u", url, "-severity", "low,medium,high,critical", "-o", "/output/nuclei.txt",
-    ], printer)
+        "-u", url, "-severity", "low,medium,high,critical", "-c", "10", "-o", "/output/nuclei.txt",
+    ], printer, timeout=NUCLEI_TIMEOUT_SECONDS, on_timeout=stop(nuclei_name))
     hits = len((output / "nuclei.txt").read_text().splitlines()) if (output / "nuclei.txt").is_file() else 0
-    summary.append(f"Nuclei: {hits} matched issue(s)." if code == 0 else "Nuclei: scan did not complete; see nuclei.txt.")
+    if nuclei_timed_out:
+        summary.append(f"Nuclei: stopped after {NUCLEI_TIMEOUT_SECONDS // 60} minute(s); {hits} matched issue(s) so far.")
+    else:
+        summary.append(f"Nuclei: {hits} matched issue(s)." if code == 0 else "Nuclei: scan did not complete; see nuclei.txt.")
     console.print(Text(f"  {summary[-1]}", style="bold " + ("yellow" if hits or code else "green")))
     console.print()
 
+    zap_name = f"mvk-zap-{stamp}"
     console.rule(Text("2 / 2  ZAP active scan", style=f"bold {ACCENT}"), align="left", style="grey37")
-    zap_log, code = stream([
-        "docker", "run", "--rm", "--network", "host",
+    zap_log, code, zap_timed_out = stream([
+        "docker", "run", "--rm", "--network", "host", "--name", zap_name,
+        "--memory=2g", "--memory-swap=2g", "-e", "JAVA_OPTS=-Xmx1536m",
         "-v", f"{output}:/zap/wrk:rw",
         "ghcr.io/zaproxy/zaproxy:stable",
         "zap-full-scan.py", "-t", url, "-r", "zap-report.html", "-I",
-    ], printer)
+    ], printer, timeout=ZAP_TIMEOUT_SECONDS, on_timeout=stop(zap_name))
     alerts = zap_log.count("WARN-NEW:") + zap_log.count("FAIL-NEW:")
-    summary.append(f"ZAP: {alerts} alert(s) raised." if (output / "zap-report.html").is_file() else "ZAP: scan did not complete.")
-    console.print(Text(f"  {summary[-1]}", style="bold " + ("yellow" if alerts else "green")))
+    if zap_timed_out:
+        summary.append(f"ZAP: stopped after {ZAP_TIMEOUT_SECONDS // 60} minute(s); partial results may be in zap-report.html.")
+    else:
+        summary.append(f"ZAP: {alerts} alert(s) raised." if (output / "zap-report.html").is_file() else "ZAP: scan did not complete.")
+    console.print(Text(f"  {summary[-1]}", style="bold " + ("yellow" if alerts or zap_timed_out else "green")))
 
     console.print()
     console.print(Text("Saved evidence", style=f"bold {ACCENT}"))

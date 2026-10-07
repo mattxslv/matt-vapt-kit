@@ -38,7 +38,10 @@ Two more menu options cover live targets:
   Nuclei and an OWASP ZAP active scan against it in Docker, with
   `--network host` so the containers can reach your machine. It sends real
   attack payloads, so only point it at a disposable local copy of an app
-  with synthetic data, never at staging or production.
+  with synthetic data, never at staging or production. Each scanner runs
+  with a memory cap and a time limit (10 minutes for Nuclei, 15 for ZAP) so
+  a slow machine doesn't need a manual kill, and it warns first if free
+  memory looks low.
 
 ## One command, in your terminal
 

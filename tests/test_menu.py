@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import MagicMock
 
 from vaptkit.process import ToolError, stream
-from vaptkit.menu import is_local_target, local_url, retry_input, staging_config, staging_recap
+from vaptkit.menu import is_local_target, local_url, retry_input, staging_config, staging_recap, available_memory_mb
 
 
 class StagingConfigTests(unittest.TestCase):
@@ -94,13 +94,40 @@ class StagingRecapTests(unittest.TestCase):
 
 
 class StreamTests(unittest.TestCase):
-    def test_stream_returns_combined_output_and_exit_code(self):
+    def test_stream_returns_combined_output_exit_code_and_not_timed_out(self):
         lines = []
-        text, code = stream(["sh", "-c", "echo one; echo two"], lines.append)
+        text, code, timed_out = stream(["sh", "-c", "echo one; echo two"], lines.append)
         self.assertEqual(code, 0)
         self.assertEqual(lines, ["one", "two"])
         self.assertEqual(text, "one\ntwo")
+        self.assertFalse(timed_out)
 
     def test_stream_raises_if_command_cannot_start(self):
         with self.assertRaises(ToolError):
             stream(["definitely-not-a-real-executable"], lambda line: None)
+
+    def test_stream_kills_slow_command_and_calls_on_timeout(self):
+        called = []
+        text, code, timed_out = stream(
+            ["sh", "-c", "echo start; sleep 5; echo done"],
+            lambda line: None, timeout=0.2, on_timeout=lambda: called.append(True),
+        )
+        self.assertTrue(timed_out)
+        self.assertEqual(called, [True])
+        self.assertIn("start", text)
+        self.assertNotIn("done", text)
+        self.assertNotEqual(code, 0)
+
+class AvailableMemoryTests(unittest.TestCase):
+    def test_reads_mem_available_in_mib_from_proc_meminfo(self):
+        from unittest.mock import mock_open, patch
+        from vaptkit.menu import available_memory_mb
+        content = "MemTotal:       16000000 kB\nMemAvailable:    4194304 kB\n"
+        with patch("builtins.open", mock_open(read_data=content)):
+            self.assertEqual(available_memory_mb(), 4096)
+
+    def test_returns_none_when_proc_meminfo_is_unavailable(self):
+        from unittest.mock import patch
+        from vaptkit.menu import available_memory_mb
+        with patch("builtins.open", side_effect=OSError):
+            self.assertIsNone(available_memory_mb())

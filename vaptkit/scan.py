@@ -361,5 +361,5 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
     console.print("\nNot a live VAPT or an all-clear. Static matches require review.", style="yellow")
     console.print("Next: review saved evidence. Approved staging checks use vapt run / vapt roles.", style="dim")
     console.print()
-    console.print(Text("※ recap: ", style=f"bold {ACCENT}") + Text(recap(repo.name, rows, facts), style="italic"))
+    console.print(Text("※ recap: ", style="bold dim") + Text(recap(repo.name, rows, facts), style="italic dim"))
     return 1 if needs_review else 0

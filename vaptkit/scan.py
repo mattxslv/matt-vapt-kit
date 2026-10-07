@@ -127,11 +127,20 @@ def print_header(console: Console) -> None:
         )
     else:
         rendered = Figlet(font="ansi_shadow", width=60).renderText("MVK")
-        wordmark = "\n".join(line.rstrip() for line in rendered.splitlines() if line.strip())
+        wordmark_lines = [line.rstrip() for line in rendered.splitlines() if line.strip()]
+        shield_lines = list(SHIELD)
+        pad = len(wordmark_lines) - len(shield_lines)
+        blank = " " * len(SHIELD[0])
+        shield_lines = [blank] * (pad // 2) + shield_lines + [blank] * (pad - pad // 2)
+        lockup = Text()
+        for index, (shield_line, wordmark_line) in enumerate(zip(shield_lines, wordmark_lines)):
+            if index:
+                lockup.append("\n")
+            lockup.append(shield_line, style=ACCENT)
+            lockup.append("  ")
+            lockup.append(wordmark_line, style=f"bold {ACCENT}")
         content = Group(
-            Align.center(Text("\n".join(SHIELD), style=ACCENT)),
-            Text(""),
-            Align.center(Text(wordmark, style=f"bold {ACCENT}")),
+            Align.center(lockup),
             Text(""),
             Text("Matt VAPT Kit", style="bold", justify="center"),
             Text("anti vince vulnerability", justify="center"),

@@ -109,6 +109,15 @@ def recap(project: str, rows: list[dict], facts: dict) -> str:
     return text
 
 
+SHIELD = (
+    "  ▄▄▄▄▄  ",
+    " █ ▀ ▀ █ ",
+    " █  ◆  █ ",
+    "  █▀▀▀█  ",
+    "   ▀▀▀   ",
+)
+
+
 def print_header(console: Console) -> None:
     width = min(console.width, 60)
     if width < 42:
@@ -117,9 +126,11 @@ def print_header(console: Console) -> None:
             Text("anti vince vulnerability", justify="center"),
         )
     else:
-        rendered = Figlet(font="slant", width=60).renderText("M V K")
+        rendered = Figlet(font="ansi_shadow", width=60).renderText("MVK")
         wordmark = "\n".join(line.rstrip() for line in rendered.splitlines() if line.strip())
         content = Group(
+            Align.center(Text("\n".join(SHIELD), style=ACCENT)),
+            Text(""),
             Align.center(Text(wordmark, style=f"bold {ACCENT}")),
             Text(""),
             Text("Matt VAPT Kit", style="bold", justify="center"),

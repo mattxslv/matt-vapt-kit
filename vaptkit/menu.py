@@ -256,6 +256,12 @@ def run_staging_check(console: Console) -> None:
 
 LOCAL_HOSTS = ("localhost", "127.0.0.1")
 NUCLEI_TIMEOUT_SECONDS = 600
+ZAP_NOISE = re.compile(r"^\d+ \[\S+\] |^Found Java version|^Available memory:|^Using JVM args:")
+
+
+def is_noisy_zap_line(line: str) -> bool:
+    """True for ZAP's raw Java boot/logging lines, not its scan findings or errors."""
+    return bool(ZAP_NOISE.match(line))
 ZAP_TIMEOUT_SECONDS = 900
 
 
@@ -331,6 +337,10 @@ def run_local_attack(console: Console) -> None:
     def printer(line):
         console.print(Text("  " + line, style="dim"))
 
+    def zap_printer(line):
+        if not is_noisy_zap_line(line):
+            printer(line)
+
     def stop(name):
         def callback():
             subprocess.run(["docker", "kill", name], capture_output=True)
@@ -345,6 +355,7 @@ def run_local_attack(console: Console) -> None:
         "-v", f"{output}:/output",
         "projectdiscovery/nuclei:latest",
         "-u", url, "-severity", "low,medium,high,critical", "-c", "10", "-o", "/output/nuclei.txt",
+        "-silent", "-disable-update-check",
     ], printer, timeout=NUCLEI_TIMEOUT_SECONDS, on_timeout=stop(nuclei_name))
     hits = len((output / "nuclei.txt").read_text().splitlines()) if (output / "nuclei.txt").is_file() else 0
     if nuclei_timed_out:
@@ -361,8 +372,8 @@ def run_local_attack(console: Console) -> None:
         "--memory=2g", "--memory-swap=2g", "-e", "JAVA_OPTS=-Xmx1536m",
         "-v", f"{output}:/zap/wrk:rw",
         "ghcr.io/zaproxy/zaproxy:stable",
-        "zap-full-scan.py", "-t", url, "-r", "zap-report.html", "-I",
-    ], printer, timeout=ZAP_TIMEOUT_SECONDS, on_timeout=stop(zap_name))
+        "zap-full-scan.py", "-t", url, "-r", "zap-report.html", "-I", "-s",
+    ], zap_printer, timeout=ZAP_TIMEOUT_SECONDS, on_timeout=stop(zap_name))
     alerts = zap_log.count("WARN-NEW:") + zap_log.count("FAIL-NEW:")
     if zap_timed_out:
         summary.append(f"ZAP: stopped after {ZAP_TIMEOUT_SECONDS // 60} minute(s); partial results may be in zap-report.html.")

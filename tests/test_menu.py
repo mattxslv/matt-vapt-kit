@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import MagicMock
 
 from vaptkit.process import ToolError, stream
-from vaptkit.menu import is_local_target, local_url, retry_input, staging_config, staging_recap, available_memory_mb
+from vaptkit.menu import is_local_target, is_noisy_zap_line, local_url, retry_input, staging_config, staging_recap, available_memory_mb
 
 
 class StagingConfigTests(unittest.TestCase):
@@ -131,3 +131,21 @@ class AvailableMemoryTests(unittest.TestCase):
         from vaptkit.menu import available_memory_mb
         with patch("builtins.open", side_effect=OSError):
             self.assertIsNone(available_memory_mb())
+
+class ZapNoiseFilterTests(unittest.TestCase):
+    def test_drops_java_boot_and_logger_lines(self):
+        for line in (
+            "Found Java version 17.0.20",
+            "Available memory: 17818 MB",
+            "Using JVM args: -Xmx4454m",
+            "876 [main] INFO  org.parosproxy.paros.Constant - Copying default configuration",
+        ):
+            self.assertTrue(is_noisy_zap_line(line), line)
+
+    def test_keeps_findings_and_errors(self):
+        for line in (
+            "WARN-NEW: Missing header [10021] x 3",
+            "FAIL-NEW: 0\tFAIL-INPROG: 0\tWARN-NEW: 1",
+            "2026-10-07 09:40:52,198 I/O error: [Errno 5] ZAP failed to access: http://127.0.0.1:1",
+        ):
+            self.assertFalse(is_noisy_zap_line(line), line)

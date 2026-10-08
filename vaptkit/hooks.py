@@ -121,7 +121,7 @@ def audit_runner(command, *, cwd=None, **kwargs):
 
 def warn(stage: str, error: Exception) -> None:
     print(f"MVK: {stage} was skipped because it could not run ({error}). "
-          "Run vaptkit option 3 to check your setup.", file=sys.stderr)
+          "Run vaptkit option 6 to check your setup.", file=sys.stderr)
 
 
 def protect(repo: Path, local: str, remote: str | None) -> None:

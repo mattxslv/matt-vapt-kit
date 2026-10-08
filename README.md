@@ -10,28 +10,18 @@
   <img src="https://img.shields.io/badge/status-private%20team%20pilot-1f1b19" alt="Status: private team pilot">
 </p>
 
-**Scoped security checks for staging, with private evidence you can review.**
-
-Matt VAPT Kit (MVK) combines committed-code checks, approval-bound assessments and
-HTML/PDF reporting in a local Python CLI. Checks are rule-based, with no AI service
-calls. It is built to help a development team find and investigate issues before
-an external vulnerability assessment and penetration test.
+**Security checks for the team's projects, with private evidence and PDF reports.**
+Rule-based, no AI service calls. Built to find and fix issues before an external
+VAPT.
 
 > [!IMPORTANT]
-> **Private, supervised team pilot.** This is not a complete VAPT scanner, a
-> security certification or an official CERT-PH report. A clean result means
-> nothing was found in the tested scope, not that the application is secure.
+> **Private, supervised team pilot.** Not a complete VAPT scanner, a certification
+> or a CERT-PH report. A clean result means nothing was found in the tested scope,
+> not that the application is secure.
 
-[Getting started](docs/getting-started.md) |
-[Assessment reference](docs/reference.md) |
-[Team pilot checklist](docs/pilot-checklist.md) |
-[Contributing](CONTRIBUTING.md)
+## Install
 
-## Menu
-
-New laptop, nothing installed yet? Clone the repo and run one command.
-
-**Linux/macOS:**
+Needs Python 3.11+ on PATH and Docker running. Clone, then run one command:
 
 ```bash
 git clone https://github.com/mattxslv/matt-vapt-kit.git
@@ -41,389 +31,94 @@ cd matt-vapt-kit
 
 ![Linux install](docs/screenshots/01-install-linux.svg)
 
-**Windows (PowerShell):**
-
-```powershell
-git clone https://github.com/mattxslv/matt-vapt-kit.git
-cd matt-vapt-kit
-powershell -ExecutionPolicy Bypass -File .\install.ps1
-```
+On Windows (PowerShell), the last line is
+`powershell -ExecutionPolicy Bypass -File .\install.ps1` (the bypass applies to that
+command only).
 
 ![Windows install](docs/screenshots/02-install-windows.svg)
 
-The installer also sets up the PDF report tools (Playwright and a one-time
-~150 MB browser download). If that download fails, reports are saved as HTML
-until you run the installer again.
-
-Python 3.11+ must already be installed and on PATH (from
-[python.org](https://www.python.org/downloads/), with "Add python.exe to PATH"
-checked during setup). The `-ExecutionPolicy Bypass` only applies to this one
-command; it does not change your system's script policy.
+The first run sets everything up (including the PDF tools, a one-time ~150 MB
+download), asks which of your Git projects to protect on every push, then opens the
+menu. Afterwards, `./install` or `vaptkit` just opens the menu.
 
 > [!WARNING]
-> Native Windows has not completed a teammate pilot. Scans (option 1) and
-> local attack testing (option 5) need Docker Desktop running, and both have
-> Windows-specific handling that was exercised on Linux, not yet on a real
-> Windows machine. On Windows, option 5 reaches your app through
-> `host.docker.internal` (Docker Desktop's name for your computer) instead of
-> host networking. Some dev servers reject that hostname: Vite, for example,
-> needs `server.allowedHosts: ['host.docker.internal']`.
+> Windows has not completed a teammate pilot yet; its Docker handling was only
+> tested on Linux. Option 5 reaches your app as `host.docker.internal`, which some
+> dev servers reject (Vite needs `server.allowedHosts: ['host.docker.internal']`).
 
-Either way, it creates the local Python environment and installs the toolkit
-into it. On that first run it then finds the Git projects in your home folder and
-asks which ones to protect on every `git push` (pick numbers, or `a` for all; see
-option 7 below), then opens the menu. Running it again later just reopens the
-menu (it skips reinstalling once the toolkit is already set up).
-
-Already installed? Run `vaptkit` (or `.venv/bin/vaptkit`, `.venv\Scripts\vaptkit.exe`
-on Windows, from this folder) for the menu. Options are grouped into Scan, Live checks and
-Setup, and a status line under them shows your last scan and whether push protection is on:
+## The menu
 
 ![vaptkit menu](docs/screenshots/03-menu.svg)
 
-1. **Scan a project** — recently scanned folders are listed
-   for one-key reruns, and a matching `projects/*.vapt.yml` policy is picked by
-   folder name (for example `~/DTAP` uses `dtap.vapt.yml`). Evidence is saved
-   under this toolkit's `.private/` directory. At the end it offers a **PDF
-   report** (summary, secret count, static matches, API routes without an auth
-   check, scope), saved next to the evidence as `report.pdf` and `report.html`.
-2. **Latest results** — the most recent scan's check table, with a
-   link to its saved evidence folder, and `p` to make a PDF report of it.
+1. **Scan a project:** secrets in Git history, vulnerable dependencies, code rules
+   and API routes without a login check. Projects with a standing approval (DTAP)
+   also get read-only checks of their staging site. Ends with an optional PDF report.
+2. **Latest results:** the last scan's table; `p` makes a PDF.
 
    ![Latest scan results](docs/screenshots/04-latest-results.svg)
-3. **Check this computer** — local prerequisites (Python, Git,
-   Docker). If Docker is running, it also checks whether the Nuclei/ZAP images
-   used by local attack testing are already pulled and offers to download them
-   up front, so a later attack-test run doesn't stall mid-scan on the pull.
-
-   ![Readiness check](docs/screenshots/05-ready.svg)
-4. **Quick staging check** — asks for a staging URL and your explicit
-   permission, then builds a short-lived scope and approval automatically and
-   runs the existing read-only header, cookie and exposed-file checks
-   (`vapt run` under the hood), then offers a PDF report of the result. Sites
-   behind a login (for example Google IAP) are not supported from this menu entry.
-
-   ![Quick staging check](docs/screenshots/07-staging-check.svg)
-5. **Local attack testing** — asks for a `localhost`/`127.0.0.1` URL and runs
-   Nuclei and an OWASP ZAP active scan against it in Docker, with
-   `--network host` so the containers can reach your machine. It sends real
-   attack payloads, so only point it at a disposable local copy of an app
-   with synthetic data, never at staging or production. Each scanner runs
-   with a memory cap and a time limit (10 minutes for Nuclei, 15 for ZAP) so
-   a slow machine doesn't need a manual kill, and it warns first if free
-   memory looks low. Nuclei is kept to the port you entered: it runs HTTP
-   templates only and skips the few that hardcode their own port, which would
-   otherwise probe other services on your machine. ZAP's DOM XSS rule is turned
-   off here: it needs a browser
-   inside the container that doesn't fit the memory cap and stalled every scan.
-   Use the [local XSS browser lab](docs/cloud-armor-and-xss.md) for DOM XSS. On
-   Windows the scanners reach the app through `host.docker.internal` instead;
-   see the warning above.
-
-   ![Local attack testing](docs/screenshots/08-local-attack.svg)
-6. **Compare last two scans** — diffs `static-findings.json` and
-   `route-review.json` between the two most recent `.private/scan-*` folders,
-   reporting new/resolved static-rule matches and new/resolved API routes with
-   no authentication check. Needs at least two scans to show anything.
+3. **Compare last two scans:** what's new and what got fixed.
 
    ![Compare scans](docs/screenshots/06-compare.svg)
-7. **Protect git pushes** — finds the Git projects in your home folder (no
-   need to know where they live), and installs a pre-push check in the ones you
-   pick, or all of them with `a`. Before each `git push` it scans **only the new
-   commits** for leaked secrets, and if `package.json`/`pnpm-lock.yaml` changed,
-   runs a high/critical dependency audit. Findings **block the push** and show the
-   file, line and commit (secret values redacted). If the check can't run, for
-   example Docker is off, it warns and lets the push through. Old leaks already on
-   the remote don't block new pushes. `git push --no-verify` skips it in an
-   emergency, false positives go in the project's `.gitleaksignore`, and
-   `vapt hook uninstall <project folder>` removes it. Projects cloned later aren't
-   covered until you run option 7 again.
+4. **Quick staging check:** paste any staging URL for read-only header, cookie and
+   exposed-file checks. Asks for permission first; login-protected sites aren't
+   supported.
+
+   ![Quick staging check](docs/screenshots/07-staging-check.svg)
+5. **Local attack testing:** Nuclei and ZAP against an app on your own machine,
+   kept to the port you enter. Sends real attack payloads, so use a disposable
+   local copy, never staging or production.
+
+   ![Local attack testing](docs/screenshots/08-local-attack.svg)
+6. **Check this computer:** Python, Git, Docker and the scanner images.
+
+   ![Readiness check](docs/screenshots/05-ready.svg)
+7. **Protect git pushes:** finds your projects and checks only the new commits
+   before each `git push`. New leaked secrets or high/critical vulnerable packages
+   block the push; if the check can't run, it warns and lets it through.
+   `git push --no-verify` skips it in an emergency.
 
    ![Protect your git pushes](docs/screenshots/09-protect.svg)
 
-Screenshots are rendered from the real menu code using synthetic scan data, not
-findings from any real project.
+Screenshots use the real menu code with made-up data, never real findings.
 
-## One command, in your terminal
+## Reading results
 
-There is **no web application to start**. From this toolkit folder, run:
-
-```bash
-./scan /path/to/your-project
-```
-
-For example, `./scan ~/DTAP`. Use the same command in **VS Code > Terminal > New
-Terminal** with a Bash terminal. The launcher prepares the local Python environment
-on first use, then runs the supported committed-code checks in order:
-
-1. Secret-history scanning with containerized Gitleaks.
-2. Dependency auditing for projects with a supported root pnpm manifest.
-3. Bundled static-analysis rules with containerized Semgrep.
-4. Offline Next.js API authentication review.
-
-You get live stage headings, progress indicators, readable tool output and a final
-status table. A problem in one stage does not hide the results from other independent
-checks. Static matches are grouped by rule with at most three example locations,
-not hundreds of code snippets. Private `summary.json`, `static-findings.json` and
-`route-review.json` files go under a new
-`.private/scan-*` directory. Existing evidence is never overwritten.
-The static evidence lists all matched locations without raw source snippets.
-
-**Requirements:** Python 3.11+, Git and Docker. Docker must be running; Node audits
-also require the exact pnpm version declared by the project. First-time setup and
-missing Docker images require downloads. pnpm audit sends dependency metadata to npm.
-No system-wide Python install or Docker socket mount is needed.
-
-For project-specific route policies:
-
-```bash
-./scan ~/DTAP --config projects/dtap.vapt.yml
-```
-
-| Terminal status | Meaning |
+| Status | Meaning |
 |---|---|
-| `DONE` | That stage finished; read its detail for applicability and limits |
-| `REVIEW` | Findings or a tool error need attention; inspect the terminal output and saved evidence |
-| `NOT RUN` | Missing prerequisites or unsupported coverage, not a pass |
+| `DONE` | That check finished; read its detail for limits |
+| `REVIEW` | Findings, or a tool error, to look at |
+| `NOT RUN` | A coverage gap, not a pass |
 
-This command checks **committed HEAD**, not unsaved/dirty files. It does not install
-Git hooks, change application code, provision cloud resources or start a live scan.
-It does not claim to check every vulnerability. Live staging checks remain separate,
-with explicit [scope approval](docs/pilot-checklist.md).
+Everything is saved privately under `.private/` and never overwritten. Findings are
+*suspected* until a person confirms them.
 
-If the CLI is already installed, `vapt scan /path/to/your-project` does the same work;
-add `--pdf` to also write `report.pdf` and `report.html` into the evidence folder.
-Use `NO_COLOR=1 ./scan /path/to/your-project` for uncolored output. Redirected output
-has no animated spinner.
-The terminal shows the MVK wordmark,
-and a one-word loading status such as `✻ Topsy-turvying… (37s · Static rules)`,
-picked from 60 words, with the actual task and elapsed time. Under it, a step
-track (`━━━━━ ━━━━━ ━━━━━ ─────  step 3 of 4`) shows which check is running; there
-are no invented percentages. The scan ends with a line like
-`✻ Cooked for 2m 5s · done 3:46 PM · 0 completed · 4 need attention` and a
-plain-English `※ recap:` of what was found and what to look at first.
-There are no artificial delays.
-The header switches to a compact wordmark in narrow terminals. Scan details stay
-left-aligned for readability, and the final summary has rounded borders and row
-separators. Run metadata and saved evidence use aligned label/value columns.
-Use `./scan /path/to/your-project --plain` for no colors or motion, or set
-`MVK_REDUCED_MOTION=1` to disable animation while keeping colors.
-Repository/evidence directories and generated result files are clickable OSC 8
-links in supporting terminals. Use your terminal's open-link gesture, often
-Ctrl+click. Unsupported terminals still show the path; remote-session links refer
-to the remote filesystem and might not open on your desktop.
-`--plain` and redirected output omit terminal hyperlinks.
+## Automatic checks
 
-If Semgrep reports processing errors, successfully returned matches are still
-saved and summarized. The static stage stays **REVIEW**, and its JSON records
-sanitized error types and the scanner exit code rather than raw source/error text.
+- **Weekly scan:** every Monday 08:00 PHT, GitHub Actions scans DTAP, PEMEDES and
+  Startup PH from this repo (nothing is committed to the app repos) and uploads a
+  PDF for each. Results: **Actions → Weekly security scan**. Needs the
+  `SCAN_REPOS_TOKEN` secret, a read-only token for those repos.
+- **Live staging:** `projects/<name>.standing-approval.yml` records the owner's
+  approval and an expiry date. While it's valid, scans of that project add the
+  read-only staging checks with no prompts; each run still gets its own one-hour
+  approval.
 
-## Weekly scans in GitHub Actions
-
-[`.github/workflows/weekly-scan.yml`](.github/workflows/weekly-scan.yml) runs the
-same committed-code scan as `./scan` every Monday at 08:00 PHT against the `main`
-branch of DTAP, PEMEDES and Startup PH. It runs from this toolkit repo, so nothing
-is committed to the app repos (pushing to their `main` triggers production deploys).
-
-- **Results:** this repo's **Actions** tab > **Weekly security scan**. A red job
-  means that project has findings to review; open it for the summary table, and
-  download the `scan-*` artifact for `report.pdf` plus the JSON evidence (kept
-  30 days). Secret values are redacted.
-- **Run it now:** Actions > Weekly security scan > **Run workflow**.
-- **Add a project:** add a `repo`/`config` entry to the workflow's matrix and grant
-  the token access to that repository.
-- **Setup (once):** the `SCAN_REPOS_TOKEN` repository secret must hold a
-  fine-grained token with read-only **Contents** access to the scanned repos.
-
-## What you can do
-
-| Capability | Scope |
-|---|---|
-| Check committed code | Gitleaks history checks, pnpm dependency audits and optional bundled Semgrep rules |
-| Assess approved staging paths | Header-policy checks, repeat verification and opt-in bounded public-exposure checks |
-| Compare endpoint permissions | Isolated DTAP test-account sessions, allowed-role controls and conservative response evidence |
-| Access IAP-protected staging | Interactive browser login or an explicitly provisioned keyless service account |
-| Review API authentication | Offline, heuristic review of committed Next.js route handlers |
-| Review Cloud Armor configuration | Read-only Cloud Run/backend/policy metadata, with explicit association and coverage gaps |
-| Produce private reports | Self-contained HTML, optional PDF and sanitized evidence figures |
-| Exercise the detector locally | HTTPS fixtures, ownership/workflow, browser XSS and real ModSecurity/CRS labs, plus a separate release challenge |
-
-Live role testing currently supports **DTAP's cookie-login contract only**.
-Record ownership, workflow and XSS checks are local-lab capabilities, not live
-assessment features. Bundled ZAP/Nuclei containers are dormant tools, not integrated
-scan runners or scheduled jobs.
-
-See [Cloud Armor and XSS](docs/cloud-armor-and-xss.md) for the new modules' commands,
-evidence requirements and limits. WAF configuration is not proof of application safety.
-The [local WAF lab](docs/cloud-armor-and-xss.md#local-modsecurity-and-owasp-crs-lab)
-verifies real request blocking without GCP resources; it does not verify Cloud Armor.
-
-## Step-by-step: use it in your terminal or VS Code
-
-This walkthrough uses **Linux/Bash** (Windows users: run it in WSL, or adapt the
-commands to PowerShell), Python **3.11+**, Git and access to this
-private repository. It creates a **sample report only**. You do not need Docker,
-Google credentials or a DTAP password, and it does not scan your application.
-
-### Step 1: open a terminal and enter the repository
-
-In **VS Code**, choose **Terminal > New Terminal** and use a Bash terminal.
-In an ordinary terminal, use the same commands.
-
-If you have not cloned the repository:
+## Without the menu
 
 ```bash
-git clone https://github.com/mattxslv/matt-vapt-kit.git
-cd matt-vapt-kit
+./scan ~/DTAP                      # same scan, no install needed
+vapt scan ~/DTAP --pdf             # with the CLI installed, plus a PDF
+vapt --help                        # every command
 ```
 
-If you already have it, open that folder in VS Code or enter its existing location,
-for example `cd ~/matt-vapt-kit`. Run the remaining commands from this folder.
+## More
 
-### Step 2: install once and enable the short commands
+[Getting started](docs/getting-started.md) ·
+[Reference](docs/reference.md) ·
+[Team pilot checklist](docs/pilot-checklist.md) ·
+[Cloud Armor and XSS labs](docs/cloud-armor-and-xss.md) ·
+[Contributing](CONTRIBUTING.md) ·
+[Security and evidence handling](SECURITY.md)
 
-Run the installer from the [Menu](#menu) section (`./install`, or `install.ps1`
-on Windows). It opens the menu when done; press `q` to quit it. Then activate
-the environment so the short commands work:
-
-```bash
-source .venv/bin/activate        # Windows PowerShell: .venv\Scripts\Activate.ps1
-```
-
-Now use **`vapt`** and **`vaptkit`** instead of typing `.venv/bin/vapt` every time.
-Activate it again whenever you open a new terminal.
-
-Prefer doing it by hand? `python3 -m venv .venv`, activate it, then
-`python -m pip install -e .` is exactly what the installer does.
-
-### Step 3: check that your local setup works
-
-```bash
-vapt --version
-vapt doctor --for html
-vapt validate templates/project.example.yml
-```
-
-| Output | What it means |
-|---|---|
-| `ready: true` | Your environment can generate HTML reports |
-| `configuration: valid` | The example YAML has the correct format |
-| `scan_authorized: false` | Expected: this example does not authorize a live scan |
-
-**None of these commands scans DTAP or finds new vulnerabilities.**
-
-### Step 4: generate the sample report
-
-```bash
-mkdir -p .private
-chmod 700 .private
-vapt report tests/fixtures/assessment.json \
-  --reviewed --html-only --output .private/demo-report
-```
-
-Expected output: `Report written to .private/demo-report/report.html`.
-This means the file was created successfully. **It does not open automatically.**
-If that output folder already exists, choose another name such as
-`.private/demo-report-002`; the toolkit never overwrites existing evidence.
-
-### Step 5: open the report in a browser
-
-On a Linux desktop:
-
-```bash
-xdg-open .private/demo-report/report.html
-```
-
-Alternatively, open the HTML file using your browser's **Open File** command.
-In VS Code, the file is at `.private/demo-report/report.html`; opening it in the
-editor shows HTML source, not necessarily the rendered report. For a remote/SSH
-workspace, download the file and open it on your local computer.
-
-The report must say **SYNTHETIC EXAMPLE**. These are demonstration findings, not
-results from your system.
-
-### Step 6: choose what you actually want to check
-
-| Your goal | Follow this guide |
-|---|---|
-| Check committed code or install automatic pre-push checks | [Code and Git checks](docs/reference.md#push-checks-no-prs) |
-| Run a real staging header or DTAP role assessment | [Staging walkthrough and approvals](docs/pilot-checklist.md#run-only-the-approved-scope) |
-| Generate PDF reports or troubleshoot setup | [Full setup guide](docs/getting-started.md) |
-| Exercise XSS or WAF detection without cloud resources | [Local labs](docs/cloud-armor-and-xss.md) |
-
-For a real assessment, `report` is the **last** step. First run an approved
-assessment with `vapt run` or `vapt roles`, then review and export its JSON.
-Running `report` against the sample fixture never tests your application.
-
-**Next time you open the terminal:**
-
-```bash
-cd ~/matt-vapt-kit
-source .venv/bin/activate
-vaptkit          # the menu; or vapt --help for the raw CLI
-```
-
-Or skip activation entirely: `./install` (or `install.ps1`) reopens the menu
-without reinstalling.
-
-Use your actual checkout path if it is elsewhere. No VS Code extension or AI
-skill is required. `deactivate` leaves the Python environment when you are done.
-
-For a configured pilot, `vapt doctor --for roles --config .private/project.yml`
-checks the relevant local dependencies. `vapt roles --prompt-passwords` supports
-hidden entry of missing QA passwords; approvals and QA email configuration are
-still required. Saved assessment summaries clearly separate findings from coverage
-gaps and unconfirmed cleanup.
-
-## Move from local practice to staging
-
-1. **Define the scope.** Verify the exact staging origin, owner, permitted paths,
-   expected role policy and possible login side effects.
-2. **Create a fresh approval.** The CLI binds it to the configuration digest and a
-   short time window. A project YAML file alone never authorizes a run.
-3. **Run and review.** Keep credentials and evidence private. Investigate findings,
-   coverage gaps and unconfirmed session cleanup.
-
-Follow the [team pilot checklist](docs/pilot-checklist.md) before a live run.
-Gateway access and application test-account access are separate requirements.
-The toolkit does not provision IAM, disable IAP, change an application or deploy it.
-
-## Read the result, not just the finding count
-
-| Result | Meaning |
-|---|---|
-| Confirmed finding | The check's evidence criteria were met; its stated scope still applies |
-| Suspected finding | Supporting evidence is incomplete and needs review |
-| Tested cell | The specified allowed, denied or violation criteria were assessed |
-| Blocked / inconclusive | Access or evidence was insufficient; this is not a passing check |
-| Not run / unsupported | No assessment was performed for that area |
-
-Local benchmarks and a narrow live staging pilot support supervised use. They do
-not establish a real-world accuracy percentage, full OWASP coverage or an absence
-of historical data leaks. See the [benchmark limitations](docs/reference.md#accuracy-benchmark-and-limitations).
-
-## Repository map
-
-| Location | Purpose |
-|---|---|
-| [`vaptkit/`](vaptkit/) | CLI, scope validation, checks, access adapters and reporting |
-| [`tests/`](tests/) | Routine local regressions and synthetic fixtures |
-| [`release_tests/`](release_tests/) | Separately executed, versioned challenge cases |
-| [`projects/`](projects/) | Internal project configurations, not standing approvals |
-| [`templates/`](templates/) | Safe starter configuration and application CI template |
-| [`docs/`](docs/) | Setup, team-pilot procedure and detailed reference |
-| [`.github/workflows/`](.github/workflows/) | Toolkit checks and release challenge; no live target scans |
-
-## Working on the toolkit
-
-```sh
-.venv/bin/python -m unittest discover -s tests -v
-PYTHONPATH=tests .venv/bin/python -m unittest discover -s release_tests -v
-```
-
-OpenSSL is required for local HTTPS coverage. The optional Juice Shop benchmark
-uses an isolated Docker container and is not part of the default run.
-See [contributing](CONTRIBUTING.md) for the full workflow.
-
-Keep credentials, approvals, reports and browser profiles out of Git. Do not post
-sensitive findings in public channels. See [security and evidence handling](SECURITY.md).
+Run the toolkit's own tests with `.venv/bin/python -m unittest discover -s tests`.
+Keep credentials, reports and approvals out of Git and public channels.

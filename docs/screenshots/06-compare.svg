@@ -19,104 +19,104 @@
         font-weight: 700;
     }
 
-    .terminal-576513164-matrix {
+    .terminal-567469193-matrix {
         font-family: Fira Code, monospace;
         font-size: 20px;
         line-height: 24.4px;
         font-variant-east-asian: full-width;
     }
 
-    .terminal-576513164-title {
+    .terminal-567469193-title {
         font-size: 18px;
         font-weight: bold;
         font-family: arial;
     }
 
-    .terminal-576513164-r1 { fill: #c5c8c6 }
-.terminal-576513164-r2 { fill: #c5c8c6;font-weight: bold }
-.terminal-576513164-r3 { fill: #d68b68;font-weight: bold }
-.terminal-576513164-r4 { fill: #d68b68 }
-.terminal-576513164-r5 { fill: #98a84b;font-weight: bold }
-.terminal-576513164-r6 { fill: #98a84b }
+    .terminal-567469193-r1 { fill: #c5c8c6 }
+.terminal-567469193-r2 { fill: #c5c8c6;font-weight: bold }
+.terminal-567469193-r3 { fill: #d68b68;font-weight: bold }
+.terminal-567469193-r4 { fill: #d68b68 }
+.terminal-567469193-r5 { fill: #98a84b;font-weight: bold }
+.terminal-567469193-r6 { fill: #98a84b }
     </style>
 
     <defs>
-    <clipPath id="terminal-576513164-clip-terminal">
+    <clipPath id="terminal-567469193-clip-terminal">
       <rect x="0" y="0" width="1121.3999999999999" height="389.4" />
     </clipPath>
-    <clipPath id="terminal-576513164-line-0">
+    <clipPath id="terminal-567469193-line-0">
     <rect x="0" y="1.5" width="1122.4" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-576513164-line-1">
+<clipPath id="terminal-567469193-line-1">
     <rect x="0" y="25.9" width="1122.4" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-576513164-line-2">
+<clipPath id="terminal-567469193-line-2">
     <rect x="0" y="50.3" width="1122.4" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-576513164-line-3">
+<clipPath id="terminal-567469193-line-3">
     <rect x="0" y="74.7" width="1122.4" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-576513164-line-4">
+<clipPath id="terminal-567469193-line-4">
     <rect x="0" y="99.1" width="1122.4" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-576513164-line-5">
+<clipPath id="terminal-567469193-line-5">
     <rect x="0" y="123.5" width="1122.4" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-576513164-line-6">
+<clipPath id="terminal-567469193-line-6">
     <rect x="0" y="147.9" width="1122.4" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-576513164-line-7">
+<clipPath id="terminal-567469193-line-7">
     <rect x="0" y="172.3" width="1122.4" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-576513164-line-8">
+<clipPath id="terminal-567469193-line-8">
     <rect x="0" y="196.7" width="1122.4" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-576513164-line-9">
+<clipPath id="terminal-567469193-line-9">
     <rect x="0" y="221.1" width="1122.4" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-576513164-line-10">
+<clipPath id="terminal-567469193-line-10">
     <rect x="0" y="245.5" width="1122.4" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-576513164-line-11">
+<clipPath id="terminal-567469193-line-11">
     <rect x="0" y="269.9" width="1122.4" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-576513164-line-12">
+<clipPath id="terminal-567469193-line-12">
     <rect x="0" y="294.3" width="1122.4" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-576513164-line-13">
+<clipPath id="terminal-567469193-line-13">
     <rect x="0" y="318.7" width="1122.4" height="24.65"/>
             </clipPath>
-<clipPath id="terminal-576513164-line-14">
+<clipPath id="terminal-567469193-line-14">
     <rect x="0" y="343.1" width="1122.4" height="24.65"/>
             </clipPath>
     </defs>
 
-    <rect fill="#292929" stroke="rgba(255,255,255,0.35)" stroke-width="1" x="1" y="1" width="1139" height="438.4" rx="8"/><text class="terminal-576513164-title" fill="#c5c8c6" text-anchor="middle" x="569" y="27">Option&#160;6:&#160;compare&#160;the&#160;last&#160;two&#160;scans&#160;(synthetic&#160;data)</text>
+    <rect fill="#292929" stroke="rgba(255,255,255,0.35)" stroke-width="1" x="1" y="1" width="1139" height="438.4" rx="8"/><text class="terminal-567469193-title" fill="#c5c8c6" text-anchor="middle" x="569" y="27">Option&#160;3:&#160;compare&#160;the&#160;last&#160;two&#160;scans&#160;(synthetic&#160;data)</text>
             <g transform="translate(26,22)">
             <circle cx="0" cy="0" r="7" fill="#ff5f57"/>
             <circle cx="22" cy="0" r="7" fill="#febc2e"/>
             <circle cx="44" cy="0" r="7" fill="#28c840"/>
             </g>
         
-    <g transform="translate(9, 41)" clip-path="url(#terminal-576513164-clip-terminal)">
+    <g transform="translate(9, 41)" clip-path="url(#terminal-567469193-clip-terminal)">
     
-    <g class="terminal-576513164-matrix">
-    <text class="terminal-576513164-r1" x="1122.4" y="20" textLength="12.2" clip-path="url(#terminal-576513164-line-0)">
-</text><text class="terminal-576513164-r2" x="0" y="44.4" textLength="854" clip-path="url(#terminal-576513164-line-1)">Comparing&#160;scan-20261007-091500-aaaaaa&#160;&#160;-&gt;&#160;&#160;scan-20261008-031244-bbbbbb</text><text class="terminal-576513164-r1" x="1122.4" y="44.4" textLength="12.2" clip-path="url(#terminal-576513164-line-1)">
-</text><text class="terminal-576513164-r1" x="1122.4" y="68.8" textLength="12.2" clip-path="url(#terminal-576513164-line-2)">
-</text><text class="terminal-576513164-r3" x="0" y="93.2" textLength="329.4" clip-path="url(#terminal-576513164-line-3)">New&#160;static-rule&#160;matches&#160;(1)</text><text class="terminal-576513164-r1" x="1122.4" y="93.2" textLength="12.2" clip-path="url(#terminal-576513164-line-3)">
-</text><text class="terminal-576513164-r4" x="0" y="117.6" textLength="475.8" clip-path="url(#terminal-576513164-line-4)">&#160;&#160;rules.hardcoded-secret:&#160;lib/mail.ts&#160;3</text><text class="terminal-576513164-r1" x="1122.4" y="117.6" textLength="12.2" clip-path="url(#terminal-576513164-line-4)">
-</text><text class="terminal-576513164-r1" x="1122.4" y="142" textLength="12.2" clip-path="url(#terminal-576513164-line-5)">
-</text><text class="terminal-576513164-r5" x="0" y="166.4" textLength="390.4" clip-path="url(#terminal-576513164-line-6)">Resolved&#160;static-rule&#160;matches&#160;(1)</text><text class="terminal-576513164-r1" x="1122.4" y="166.4" textLength="12.2" clip-path="url(#terminal-576513164-line-6)">
-</text><text class="terminal-576513164-r6" x="0" y="190.8" textLength="451.4" clip-path="url(#terminal-576513164-line-7)">&#160;&#160;rules.eval-usage:&#160;scripts/seed.js&#160;8</text><text class="terminal-576513164-r1" x="1122.4" y="190.8" textLength="12.2" clip-path="url(#terminal-576513164-line-7)">
-</text><text class="terminal-576513164-r1" x="1122.4" y="215.2" textLength="12.2" clip-path="url(#terminal-576513164-line-8)">
-</text><text class="terminal-576513164-r3" x="0" y="239.6" textLength="524.6" clip-path="url(#terminal-576513164-line-9)">API&#160;routes&#160;newly&#160;missing&#160;authentication&#160;(1)</text><text class="terminal-576513164-r1" x="1122.4" y="239.6" textLength="12.2" clip-path="url(#terminal-576513164-line-9)">
-</text><text class="terminal-576513164-r4" x="0" y="264" textLength="256.2" clip-path="url(#terminal-576513164-line-10)">&#160;&#160;/api/example/export</text><text class="terminal-576513164-r1" x="1122.4" y="264" textLength="12.2" clip-path="url(#terminal-576513164-line-10)">
-</text><text class="terminal-576513164-r1" x="1122.4" y="288.4" textLength="12.2" clip-path="url(#terminal-576513164-line-11)">
-</text><text class="terminal-576513164-r5" x="0" y="312.8" textLength="524.6" clip-path="url(#terminal-576513164-line-12)">API&#160;routes&#160;that&#160;now&#160;have&#160;authentication&#160;(1)</text><text class="terminal-576513164-r1" x="1122.4" y="312.8" textLength="12.2" clip-path="url(#terminal-576513164-line-12)">
-</text><text class="terminal-576513164-r6" x="0" y="337.2" textLength="268.4" clip-path="url(#terminal-576513164-line-13)">&#160;&#160;/api/example/reports</text><text class="terminal-576513164-r1" x="1122.4" y="337.2" textLength="12.2" clip-path="url(#terminal-576513164-line-13)">
-</text><text class="terminal-576513164-r1" x="1122.4" y="361.6" textLength="12.2" clip-path="url(#terminal-576513164-line-14)">
-</text><text class="terminal-576513164-r2" x="0" y="386" textLength="451.4" clip-path="url(#terminal-576513164-line-15)">Press&#160;Enter&#160;to&#160;go&#160;back&#160;to&#160;the&#160;menu...</text><text class="terminal-576513164-r1" x="1122.4" y="386" textLength="12.2" clip-path="url(#terminal-576513164-line-15)">
+    <g class="terminal-567469193-matrix">
+    <text class="terminal-567469193-r1" x="1122.4" y="20" textLength="12.2" clip-path="url(#terminal-567469193-line-0)">
+</text><text class="terminal-567469193-r2" x="0" y="44.4" textLength="854" clip-path="url(#terminal-567469193-line-1)">Comparing&#160;scan-20261007-091500-aaaaaa&#160;&#160;-&gt;&#160;&#160;scan-20261008-031244-bbbbbb</text><text class="terminal-567469193-r1" x="1122.4" y="44.4" textLength="12.2" clip-path="url(#terminal-567469193-line-1)">
+</text><text class="terminal-567469193-r1" x="1122.4" y="68.8" textLength="12.2" clip-path="url(#terminal-567469193-line-2)">
+</text><text class="terminal-567469193-r3" x="0" y="93.2" textLength="329.4" clip-path="url(#terminal-567469193-line-3)">New&#160;static-rule&#160;matches&#160;(1)</text><text class="terminal-567469193-r1" x="1122.4" y="93.2" textLength="12.2" clip-path="url(#terminal-567469193-line-3)">
+</text><text class="terminal-567469193-r4" x="0" y="117.6" textLength="475.8" clip-path="url(#terminal-567469193-line-4)">&#160;&#160;rules.hardcoded-secret:&#160;lib/mail.ts&#160;3</text><text class="terminal-567469193-r1" x="1122.4" y="117.6" textLength="12.2" clip-path="url(#terminal-567469193-line-4)">
+</text><text class="terminal-567469193-r1" x="1122.4" y="142" textLength="12.2" clip-path="url(#terminal-567469193-line-5)">
+</text><text class="terminal-567469193-r5" x="0" y="166.4" textLength="390.4" clip-path="url(#terminal-567469193-line-6)">Resolved&#160;static-rule&#160;matches&#160;(1)</text><text class="terminal-567469193-r1" x="1122.4" y="166.4" textLength="12.2" clip-path="url(#terminal-567469193-line-6)">
+</text><text class="terminal-567469193-r6" x="0" y="190.8" textLength="451.4" clip-path="url(#terminal-567469193-line-7)">&#160;&#160;rules.eval-usage:&#160;scripts/seed.js&#160;8</text><text class="terminal-567469193-r1" x="1122.4" y="190.8" textLength="12.2" clip-path="url(#terminal-567469193-line-7)">
+</text><text class="terminal-567469193-r1" x="1122.4" y="215.2" textLength="12.2" clip-path="url(#terminal-567469193-line-8)">
+</text><text class="terminal-567469193-r3" x="0" y="239.6" textLength="524.6" clip-path="url(#terminal-567469193-line-9)">API&#160;routes&#160;newly&#160;missing&#160;authentication&#160;(1)</text><text class="terminal-567469193-r1" x="1122.4" y="239.6" textLength="12.2" clip-path="url(#terminal-567469193-line-9)">
+</text><text class="terminal-567469193-r4" x="0" y="264" textLength="256.2" clip-path="url(#terminal-567469193-line-10)">&#160;&#160;/api/example/export</text><text class="terminal-567469193-r1" x="1122.4" y="264" textLength="12.2" clip-path="url(#terminal-567469193-line-10)">
+</text><text class="terminal-567469193-r1" x="1122.4" y="288.4" textLength="12.2" clip-path="url(#terminal-567469193-line-11)">
+</text><text class="terminal-567469193-r5" x="0" y="312.8" textLength="524.6" clip-path="url(#terminal-567469193-line-12)">API&#160;routes&#160;that&#160;now&#160;have&#160;authentication&#160;(1)</text><text class="terminal-567469193-r1" x="1122.4" y="312.8" textLength="12.2" clip-path="url(#terminal-567469193-line-12)">
+</text><text class="terminal-567469193-r6" x="0" y="337.2" textLength="268.4" clip-path="url(#terminal-567469193-line-13)">&#160;&#160;/api/example/reports</text><text class="terminal-567469193-r1" x="1122.4" y="337.2" textLength="12.2" clip-path="url(#terminal-567469193-line-13)">
+</text><text class="terminal-567469193-r1" x="1122.4" y="361.6" textLength="12.2" clip-path="url(#terminal-567469193-line-14)">
+</text><text class="terminal-567469193-r2" x="0" y="386" textLength="451.4" clip-path="url(#terminal-567469193-line-15)">Press&#160;Enter&#160;to&#160;go&#160;back&#160;to&#160;the&#160;menu...</text><text class="terminal-567469193-r1" x="1122.4" y="386" textLength="12.2" clip-path="url(#terminal-567469193-line-15)">
 </text>
     </g>
     </g>

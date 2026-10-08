@@ -9,18 +9,17 @@ you plan to use. None of the steps in the first-run walkthrough scans a live tar
 (Linux/macOS) or `powershell -ExecutionPolicy Bypass -File .\install.ps1` (Windows).
 It bootstraps the local Python environment, installs the toolkit, and opens the
 numbered menu. Re-running it later just reopens the menu. Windows support is not
-yet piloted; see the [README warning](../README.md#menu).
+yet piloted; see the [README warning](../README.md#install).
 
 **Want to check a repository immediately, no menu?** From the toolkit folder, use
 `./scan /path/to/your-project`. It bootstraps the local Python environment and runs
 all supported independent committed-code checks with progress and a final table.
 Docker and the project's exact pnpm version must already be available for their
-respective stages. See the [one-command guide](../README.md#one-command-in-your-terminal).
+respective stages. See [Without the menu](../README.md#without-the-menu).
 The sample-report walkthrough below is optional and does not scan a repository.
 
-For the shortest walkthrough with expected outputs, start with the
-[README's six steps](../README.md#step-by-step-use-it-in-your-terminal-or-vs-code).
-This page adds installation details and optional dependencies.
+This page walks through installation details, a sample report with expected
+outputs, and optional dependencies.
 
 ## Open the right terminal
 

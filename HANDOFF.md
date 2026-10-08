@@ -4,12 +4,12 @@
 
 ## What this session added
 
-- Menu option 6, "Compare the last two scans" (`show_compare`, `compare_scans`,
+- Menu option 3 (was 6), "Compare the last two scans" (`show_compare`, `compare_scans`,
   `scan_findings` in `menu.py`): diffs `static-findings.json` and
   `route-review.json` between the two most recent `.private/scan-*` folders,
   reporting new/resolved static-rule matches and new/resolved no-auth API
   routes. Needs 2+ scans to show anything.
-- Readiness check (menu option 3) now reports whether the Nuclei/ZAP Docker
+- Readiness check (menu option 6, was 3) now reports whether the Nuclei/ZAP Docker
   images used by local attack testing (option 5) are already pulled
   (`missing_local_attack_images`) and offers to download them up front, so
   the first attack-test run doesn't stall on an image pull mid-scan.

@@ -646,14 +646,14 @@ MENU = (
     ("Scan", (
         ("1", "Scan a project", "secrets, dependencies, code rules, API auth"),
         ("2", "Latest results", "summary table and PDF report"),
-        ("6", "Compare last two scans", "what is new and what got fixed"),
+        ("3", "Compare last two scans", "what is new and what got fixed"),
     )),
     ("Live checks", (
         ("4", "Quick staging check", "read-only headers, cookies, exposed files"),
         ("5", "Local attack testing", "Nuclei and ZAP against your localhost"),
     )),
     ("Setup", (
-        ("3", "Check this computer", "Python, Git, Docker, scanner images"),
+        ("6", "Check this computer", "Python, Git, Docker, scanner images"),
         ("7", "Protect git pushes", "block leaked secrets before each push"),
     )),
 )
@@ -723,8 +723,8 @@ def print_menu(console: Console) -> int:
 
 def main() -> int:
     console = Console(highlight=False, no_color=bool(os.environ.get("NO_COLOR")))
-    actions = {"1": run_scan, "2": show_latest, "3": check_ready,
-               "4": run_staging_check, "5": run_local_attack, "6": show_compare, "7": protect_pushes}
+    actions = {"1": run_scan, "2": show_latest, "3": show_compare,
+               "4": run_staging_check, "5": run_local_attack, "6": check_ready, "7": protect_pushes}
     if "--protect" in sys.argv[1:]:
         console.clear()
         print_header(console)

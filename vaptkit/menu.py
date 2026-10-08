@@ -526,7 +526,7 @@ def parse_selection(entry: str, count: int) -> list[int]:
             raise ToolError("Type numbers like 1 3 5 or 2-4, a for all, or b to go back.")
         first, last = int(start), int(end or start)
         if not 1 <= first <= last <= count:
-            raise ToolError(f"Pick numbers between 1 and {count}.")
+            raise ToolError(f"Pick numbers between 1 and {count}, separated by spaces (for example 1 2 3 4, or 1-4).")
         picked.update(range(first - 1, last))
     if not picked:
         raise ToolError("Type numbers like 1 3 5 or 2-4, a for all, or b to go back.")
@@ -549,7 +549,7 @@ def protect_pushes(console: Console) -> None:
         label = str(repo).replace(str(Path.home()), "~", 1)
         option(console, str(number), label + ("  (already protected)" if is_protected(repo) else ""))
     console.print(Text("\nProjects cloned later are not covered; come back to this option to add them.", style="dim"))
-    picked = retry_input(console, "\nProtect which? Numbers like 1 3 5, a for all, b to go back: ",
+    picked = retry_input(console, "\nProtect which? Numbers with spaces (1 3 5), a range (1-4), a for all, b to go back: ",
                          lambda entry: parse_selection(entry, len(repos)))
     if picked is None:
         return

@@ -10,6 +10,12 @@ from .process import ToolError, git, run
 GITLEAKS = "ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f"
 SEMGREP = "semgrep/semgrep@sha256:acaac22ffc7b7cc5926de0751b223bce0b2491c33d18422fa72f632c78d81198"
 SHA = re.compile(r"^[0-9a-f]{40,64}$")
+WINDOWS = os.name == "nt"
+
+
+def user_flag() -> list[str]:
+    # Docker Desktop on Windows runs containers in a Linux VM; there is no host uid/gid to map.
+    return [] if WINDOWS else ["--user", f"{os.getuid()}:{os.getgid()}"]
 
 
 def checked_revision(repo: Path, revision: str) -> str:
@@ -23,7 +29,7 @@ def docker_repo(repo: Path) -> list[str]:
     common = Path(git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir"))
     command = [
         "docker", "run", "--rm", "--network=none", "--cap-drop=ALL",
-        "--security-opt=no-new-privileges", "--user", f"{os.getuid()}:{os.getgid()}",
+        "--security-opt=no-new-privileges", *user_flag(),
         "-e", "HOME=/tmp",
         "-v", f"{repo}:{repo}:ro", "-w", str(repo),
     ]
@@ -85,7 +91,9 @@ def scan_history(repo: Path, sha: str, *, runner=None) -> None:
     execute = runner or run
     with tempfile.TemporaryDirectory(prefix="matt-vapt-history-") as directory:
         bare = Path(directory) / "history.git"
-        execute(["git", "clone", "--quiet", "--bare", "--shared", str(repo), str(bare)])
+        # --shared records the host object path, which a Linux container can't resolve on Windows.
+        shared = [] if WINDOWS else ["--shared"]
+        execute(["git", "clone", "--quiet", "--bare", *shared, str(repo), str(bare)])
         # Honor the committed .gitleaksignore (reviewed historical findings).
         ignore_blob = []
         try:
@@ -95,11 +103,27 @@ def scan_history(repo: Path, sha: str, *, runner=None) -> None:
             ignore_blob = ["--gitleaks-ignore-path", str(ignore_path)]
         except ToolError:
             pass
+        if WINDOWS:
+            execute(windows_history_command(directory, sha, bool(ignore_blob)))
+            return
         execute(docker_repo(repo) + [
             "-v", f"{directory}:{directory}:ro", "-w", str(bare),
             GITLEAKS, "git", str(bare), "--redact", "--no-banner",
             f"--log-opts=--no-textconv --no-ext-diff {sha}",
         ] + ignore_blob)
+
+
+def windows_history_command(directory: str, sha: str, has_ignore: bool) -> list[str]:
+    """Gitleaks over a standalone bare clone mounted at a fixed Linux path."""
+    return [
+        "docker", "run", "--rm", "--network=none", "--cap-drop=ALL",
+        "--security-opt=no-new-privileges", "-e", "HOME=/tmp",
+        # Mounted files are owned by another user inside the VM; git refuses them without this.
+        "-e", "GIT_CONFIG_COUNT=1", "-e", "GIT_CONFIG_KEY_0=safe.directory", "-e", "GIT_CONFIG_VALUE_0=*",
+        "-v", f"{directory}:/scan:ro", "-w", "/scan/history.git",
+        GITLEAKS, "git", "/scan/history.git", "--redact", "--no-banner",
+        f"--log-opts=--no-textconv --no-ext-diff {sha}",
+    ] + (["--gitleaks-ignore-path", "/scan/.gitleaksignore"] if has_ignore else [])
 
 
 def scan_static(repo: Path, sha: str, *, runner=None, json_output=False) -> None:
@@ -127,7 +151,7 @@ def scan_static(repo: Path, sha: str, *, runner=None, json_output=False) -> None
         execute([
             "docker", "run", "--rm", "--network=none", "--cap-drop=ALL",
             "--security-opt=no-new-privileges",
-            "--user", f"{os.getuid()}:{os.getgid()}", "-e", "HOME=/tmp",
+            *user_flag(), "-e", "HOME=/tmp",
             "-e", "SEMGREP_SEND_METRICS=off", "-e", "SEMGREP_ENABLE_VERSION_CHECK=0",
             "-v", f"{source}:/src:ro", "-v", f"{rules}:/rules:ro",
             "--entrypoint=semgrep", SEMGREP, "scan", "--config=/rules",

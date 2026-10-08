@@ -210,6 +210,9 @@ def show_latest(console: Console) -> None:
     option(console, "o", "Open this folder")
     option(console, "b", "Back")
     if ask(console, "\nChoose: ").lower() == "o":
+        if os.name == "nt":
+            os.startfile(folder)
+            return
         if not shutil.which("xdg-open"):
             console.print(Text("xdg-open is not available; open the folder above manually.", style="yellow"))
             pause(console)

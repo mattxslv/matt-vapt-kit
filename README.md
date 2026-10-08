@@ -49,10 +49,11 @@ checked during setup). The `-ExecutionPolicy Bypass` only applies to this one
 command; it does not change your system's script policy.
 
 > [!WARNING]
-> Native Windows has not completed a teammate pilot. The menu, scans and
-> reports are plain Python and are expected to work, but **local attack
-> testing (menu option 5) will not work on Windows** — it relies on
-> `docker run --network host`, which Docker Desktop on Windows does not
+> Native Windows has not completed a teammate pilot. Scans (option 1) need
+> Docker Desktop running; the scanner containers have Windows-specific
+> handling that was exercised on Linux, not yet on a real Windows machine.
+> **Local attack testing (menu option 5) will not work on Windows**: it relies
+> on `docker run --network host`, which Docker Desktop on Windows does not
 > support the way Linux does. Use WSL for full parity with the Linux
 > experience, or stick to options 1-4 and 6 on native Windows.
 

@@ -89,6 +89,28 @@ class PushTests(unittest.TestCase):
         with patch("vaptkit.checks.run", side_effect=process):
             check(self.repo, "HEAD", static=True)
 
+    def test_windows_docker_commands_use_linux_paths_and_no_host_uid(self):
+        commands = []
+
+        def process(command, **kwargs):
+            commands.append(command)
+            if command[:2] == ["git", "clone"]:
+                subprocess.run(command, check=True)
+
+        with patch("vaptkit.checks.WINDOWS", True), patch("vaptkit.checks.run", side_effect=process), \
+                patch("os.getuid", side_effect=AttributeError("Windows has no getuid")):
+            check(self.repo, "HEAD", static=True)
+        clone = next(command for command in commands if command[:2] == ["git", "clone"])
+        self.assertNotIn("--shared", clone)
+        for command in (command for command in commands if command[0] == "docker"):
+            self.assertNotIn("--user", command)
+            mounts = [command[index + 1] for index, value in enumerate(command) if value == "-v"]
+            self.assertTrue(all(mount.split(":")[-2].startswith("/") for mount in mounts), mounts)
+        history = next(command for command in commands if command[0] == "docker" and "git" in command)
+        self.assertIn("/scan/history.git", history)
+        self.assertIn("GIT_CONFIG_VALUE_0=*", history)
+        self.assertNotIn(str(self.repo), " ".join(history))
+
     def test_audit_uses_pushed_lockfile_not_working_tree(self):
         (self.repo / "package.json").write_text(json.dumps({"packageManager": "pnpm@10.27.0"}))
         (self.repo / "pnpm-lock.yaml").write_text("committed lockfile\n")

@@ -174,6 +174,9 @@
   no-login handlers, report link). Shares `prepare_project`/`scan_branches` with option 1.
   New "Quick start" group keeps the menu numbered 0-8 top to bottom (test enforces order).
 
+- v0.6.5: multi-branch runs print the logo only once (`scan(header=...)`); after scans,
+  `offer_open` asks r = reports / f = folders / Enter = skip (option 0 and single scans).
+
 Previous handoff (2026-10-07 menu/redesign work, DTAP finding) preserved below.
 
 Replaces the Oct 5 handoff below this line's content; that session's "pending" items

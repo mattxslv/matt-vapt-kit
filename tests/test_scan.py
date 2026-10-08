@@ -272,3 +272,24 @@ class ScanTests(unittest.TestCase):
         result = json.loads((self.root / "out/route-review.json").read_text())
         self.assertEqual(result["findings"][0]["verification"], "suspected")
         self.assertIn("not confirmed exploits", " ".join(self.stream.getvalue().split()))
+
+
+class HeaderOnceTests(unittest.TestCase):
+    def test_later_branch_scans_skip_the_logo(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repo = root / "repo"
+            repo.mkdir()
+            git(repo, "init", "-q")
+            git(repo, "config", "user.name", "Fixture")
+            git(repo, "config", "user.email", "fixture@example.invalid")
+            (repo / "a.txt").write_text("x")
+            git(repo, "add", ".")
+            git(repo, "commit", "-qm", "init")
+            for header, expected in ((True, True), (False, False)):
+                stream = io.StringIO()
+                console = Console(file=stream, force_terminal=False, width=100)
+                with patch("vaptkit.scan.shutil.which", return_value=None), patch(
+                        "vaptkit.scan.review", return_value={"summary": {"handlers": 0}, "findings": []}):
+                    scan(repo, output=root / f"out-{header}", console=console, header=header)
+                self.assertEqual("███" in stream.getvalue(), expected)

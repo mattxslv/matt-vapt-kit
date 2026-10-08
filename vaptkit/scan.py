@@ -205,7 +205,7 @@ def static_summary(raw: str, *, errors: list[dict] | None = None) -> list[dict]:
 
 def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = None,
          console: Console | None = None, plain=False, pdf=False, revision: str = "HEAD",
-         branch: str | None = None, live: bool = True) -> int:
+         branch: str | None = None, live: bool = True, header: bool = True) -> int:
     console = console or Console(highlight=False, no_color=plain or bool(os.environ.get("NO_COLOR")))
     animate = console.is_terminal and not plain and os.environ.get("MVK_REDUCED_MOTION") != "1"
     repo = Path(git(repo, "rev-parse", "--show-toplevel")).resolve()
@@ -224,7 +224,8 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
         parent.chmod(0o700)
         output = parent / ("scan-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6])
     create_output(output)
-    print_header(console)
+    if header:
+        print_header(console)
     links = console.is_terminal and not plain
     context = Table.grid(padding=(0, 2))
     context.add_column(style="dim", no_wrap=True)

@@ -179,7 +179,8 @@ def scan_branches(console: Console, repo: Path, selected: list[tuple[str, str]])
         try:
             # The live staging check is about the deployed site, not a branch, so run it once per run.
             scan(repo, config_path=config, output=output, console=console, revision=revision,
-                 branch=branch if len(selected) > 1 or revision != "HEAD" else None, live=index == 0)
+                 branch=branch if len(selected) > 1 or revision != "HEAD" else None, live=index == 0,
+                 header=index == 0)
         except KeyboardInterrupt:
             console.print(Text("\nScan stopped.", style=ACCENT))
             break
@@ -247,10 +248,7 @@ def full_scan(console: Console) -> None:
     if not pdf_available():
         console.print(Text(PDF_TOOLS_HINT, style=ACCENT))
     console.print(Text("Reports list findings; share them only with people approved to see them.", style="dim"))
-    if any(report for *_, report in reports) and ask(console, "\nOpen the reports now? (y/N): ").lower() == "y":
-        for *_, report in reports:
-            if report:
-                open_path(console, report)
+    offer_open(console, [report for *_, report in reports if report], [folder for _, folder, _ in reports])
     pause(console)
 
 
@@ -266,13 +264,21 @@ def open_path(console: Console, path: Path) -> None:
 PDF_TOOLS_HINT = "The PDF tools aren't installed, so only the HTML version was made. Re-run ./install (or install.ps1) to add them."
 
 
+def offer_open(console: Console, reports: list[Path], folders: list[Path]) -> None:
+    """Let the user open the report files, the folders holding all the evidence, or neither."""
+    plural = "s" if len(reports) > 1 else ""
+    choice = ask(console, f"\nOpen: r = report{plural}, f = folder{plural}, Enter = skip: ").lower()
+    for path in (reports if choice == "r" else folders if choice == "f" else []):
+        open_path(console, path)
+
+
 def show_report(console: Console, html: Path, pdf: Path | None, *, open_prompt: bool = True) -> None:
     console.print(Text("\nReport saved: ", style="bold") + path_link(pdf or html))
     if pdf is None:
         console.print(Text(PDF_TOOLS_HINT, style=ACCENT))
     console.print(Text("It lists findings; share it only with people approved to see them.", style="dim"))
-    if open_prompt and ask(console, "Open it now? (y/N): ").lower() == "y":
-        open_path(console, pdf or html)
+    if open_prompt:
+        offer_open(console, [pdf or html], [html.parent])
 
 
 def offer_scan_pdf(console: Console, folder: Path, *, confirm: bool = True, open_prompt: bool = True) -> None:

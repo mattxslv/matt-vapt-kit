@@ -3,6 +3,7 @@ import json
 import subprocess
 import tempfile
 import unittest
+from importlib.metadata import version
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -35,6 +36,7 @@ class ScanTests(unittest.TestCase):
             self.assertNotIn("│", stream.getvalue())
             self.assertNotIn("COMMITTED-CODE CHECKS", stream.getvalue())
             self.assertNotIn("to prevent spilling the beans :D", stream.getvalue())
+            self.assertIn(f"v{version('matt-vapt-kit')}", stream.getvalue())
             self.assertNotIn("\x1b", stream.getvalue())
 
     def test_loading_message_shows_word_and_elapsed_time_without_fake_progress(self):

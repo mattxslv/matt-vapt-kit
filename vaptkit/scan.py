@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import time
 import uuid
+from importlib.metadata import version
 from datetime import datetime, timezone
 from pathlib import Path
 from collections import Counter
@@ -146,10 +147,14 @@ def wordmark_lines() -> list[str]:
 
 def print_header(console: Console) -> None:
     lines = wordmark_lines()
-    if console.width < max(len(line) for line in lines) + 2:
+    label = f"v{version('matt-vapt-kit')}"
+    width = max(len(line) for line in lines)
+    if console.width < width + 2:
         content = Text("MVK", style=f"bold {ACCENT}", justify="center")
+        content.append(f" {label}", style="dim")
     else:
         content = Text("\n".join(lines), style=f"bold {ACCENT}")
+        content.append("\n" + label.rjust(width), style="dim")
     console.print()
     console.print(Align.center(content))
     console.print()

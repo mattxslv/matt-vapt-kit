@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 from vaptkit.process import ToolError, stream
 from vaptkit.menu import (
-    MENU, ago, compare_scans, container_target, find_repos, zap_alert_count, parse_selection, is_local_target, is_noisy_zap_line, local_url, missing_local_attack_images,
+    MENU, ago, branch_choices, compare_scans, container_target, find_repos, zap_alert_count, parse_selection, is_local_target, is_noisy_zap_line, local_url, missing_local_attack_images,
     retry_input, scan_findings, staging_config, staging_recap, available_memory_mb,
 )
 
@@ -302,3 +302,20 @@ class MenuLayoutTests(unittest.TestCase):
         self.assertEqual(ago(now - timedelta(minutes=5, seconds=10)), "5m ago")
         self.assertEqual(ago(now - timedelta(hours=3)), "3h ago")
         self.assertEqual(ago(now - timedelta(days=2, hours=5)), "2d ago")
+
+
+class BranchChoiceTests(unittest.TestCase):
+    def test_checkout_first_then_common_remote_branches(self):
+        import subprocess
+        from vaptkit.process import git
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", "-q", "--bare", str(root / "remote.git")], check=True)
+            work = root / "work"
+            subprocess.run(["git", "init", "-q", "-b", "staging", str(work)], check=True)
+            for args in (["config", "user.email", "t@example.invalid"], ["config", "user.name", "T"],
+                         ["commit", "-q", "--allow-empty", "-m", "one"], ["remote", "add", "origin", str(root / "remote.git")],
+                         ["push", "-q", "origin", "staging", "staging:main", "staging:feature-x"], ["fetch", "-q"]):
+                git(work, *args)
+            self.assertEqual(branch_choices(work), [("staging (your checkout)", "HEAD"), ("main", "origin/main")])
+            self.assertEqual(git(work, "rev-parse", "--abbrev-ref", "HEAD"), "staging")

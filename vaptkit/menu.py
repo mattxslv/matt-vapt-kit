@@ -111,6 +111,42 @@ def choose_project(console: Console) -> Path | None:
     return None
 
 
+COMMON_BRANCHES = ("main", "master", "staging", "develop", "dev")
+
+
+def refresh_branches(repo: Path) -> bool:
+    """git fetch without credential prompts, so a missing login can't hang the menu."""
+    try:
+        result = subprocess.run(["git", "-C", str(repo), "fetch", "--quiet", "--prune"], capture_output=True,
+                                timeout=60, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
+def branch_choices(repo: Path) -> list[tuple[str, str]]:
+    """[(label, revision)]: your checkout first, then common branches from origin, without checking anything out."""
+    current = git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+    choices = [(f"{current} (your checkout)" if current != "HEAD" else "your checkout", "HEAD")]
+    remote = set(git(repo, "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin").splitlines())
+    for name in COMMON_BRANCHES:
+        if name != current and f"origin/{name}" in remote:
+            choices.append((name, f"origin/{name}"))
+    return choices
+
+
+def pick_branches(console: Console, choices: list[tuple[str, str]]) -> list[tuple[str, str]] | None:
+    if len(choices) == 1:
+        return choices
+    console.print(Text("\nWhich branch?", style="bold"))
+    for number, (label, _) in enumerate(choices, start=1):
+        option(console, str(number), label)
+    option(console, "a", "All of the above, one report each")
+    picked = retry_input(console, "\nChoose [1] (or b to go back): ",
+                         lambda entry: [0] if not entry.strip() else parse_selection(entry, len(choices)))
+    return None if picked is None else [choices[index] for index in picked]
+
+
 def run_scan(console: Console) -> None:
     repo = choose_project(console)
     if repo is None:
@@ -122,20 +158,42 @@ def run_scan(console: Console) -> None:
         pause(console)
         return
     remember(repo)
+    console.print(Text("\nChecking the remote for the latest branches...", style="dim"))
+    if not refresh_branches(repo):
+        console.print(Text("Couldn't reach the remote; using the branches already on this computer.", style=ACCENT))
+    selected = pick_branches(console, branch_choices(repo))
+    if not selected:
+        return
     config = matching_config(repo)
     PRIVATE.mkdir(mode=0o700, exist_ok=True)
-    output = PRIVATE / ("scan-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6])
     console.clear()
-    try:
-        scan(repo, config_path=config, output=output, console=console)
-    except KeyboardInterrupt:
-        console.print(Text("\nScan stopped.", style=ACCENT))
-    except ToolError as error:
-        record_error("scan", str(error))
-        console.print(Text(f"\n{error}", style=ACCENT))
-        console.print(Text("If this looks like a problem with the kit, choose 8 to report it.", style="dim"))
-    else:
-        offer_scan_pdf(console, output)
+    finished = []
+    for index, (label, revision) in enumerate(selected):
+        output = PRIVATE / ("scan-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6])
+        if index:
+            console.rule(Text(f"Next: {label}", style="bold"), style="grey37")
+        try:
+            # The live staging check is about the deployed site, not a branch, so run it once per run.
+            scan(repo, config_path=config, output=output, console=console, revision=revision,
+                 branch=label.removesuffix(" (your checkout)") if len(selected) > 1 or revision != "HEAD" else None,
+                 live=index == 0)
+        except KeyboardInterrupt:
+            console.print(Text("\nScan stopped.", style=ACCENT))
+            break
+        except ToolError as error:
+            record_error("scan", str(error))
+            console.print(Text(f"\n{error}", style=ACCENT))
+            console.print(Text("If this looks like a problem with the kit, choose 8 to report it.", style="dim"))
+        else:
+            finished.append(output)
+    if len(finished) == 1:
+        offer_scan_pdf(console, finished[0])
+    elif finished:
+        if ask(console, f"\nMake PDF reports for all {len(finished)} branches? (y/N): ").lower() == "y":
+            for folder in finished:
+                offer_scan_pdf(console, folder, confirm=False, open_prompt=False)
+        console.print(Text("Tip: option 3 compares the last two scans, so it shows what differs between these branches.",
+                           style="dim"))
     pause(console)
 
 
@@ -151,16 +209,16 @@ def open_path(console: Console, path: Path) -> None:
 PDF_TOOLS_HINT = "The PDF tools aren't installed, so only the HTML version was made. Re-run ./install (or install.ps1) to add them."
 
 
-def show_report(console: Console, html: Path, pdf: Path | None) -> None:
+def show_report(console: Console, html: Path, pdf: Path | None, *, open_prompt: bool = True) -> None:
     console.print(Text("\nReport saved: ", style="bold") + path_link(pdf or html))
     if pdf is None:
         console.print(Text(PDF_TOOLS_HINT, style=ACCENT))
     console.print(Text("It lists findings; share it only with people approved to see them.", style="dim"))
-    if ask(console, "Open it now? (y/N): ").lower() == "y":
+    if open_prompt and ask(console, "Open it now? (y/N): ").lower() == "y":
         open_path(console, pdf or html)
 
 
-def offer_scan_pdf(console: Console, folder: Path, *, confirm: bool = True) -> None:
+def offer_scan_pdf(console: Console, folder: Path, *, confirm: bool = True, open_prompt: bool = True) -> None:
     existing = next((folder / name for name in ("report.pdf", "report.html") if (folder / name).is_file()), None)
     if existing:
         console.print(Text("\nThis scan already has a report: ") + path_link(existing))
@@ -174,7 +232,7 @@ def offer_scan_pdf(console: Console, folder: Path, *, confirm: bool = True) -> N
         if (folder / "report.html").is_file():
             console.print(Text("HTML report: ") + path_link(folder / "report.html"))
         return
-    show_report(console, html, pdf)
+    show_report(console, html, pdf, open_prompt=open_prompt)
 
 
 def latest_scan() -> Path | None:

@@ -204,12 +204,13 @@ def static_summary(raw: str, *, errors: list[dict] | None = None) -> list[dict]:
 
 
 def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = None,
-         console: Console | None = None, plain=False, pdf=False) -> int:
+         console: Console | None = None, plain=False, pdf=False, revision: str = "HEAD",
+         branch: str | None = None, live: bool = True) -> int:
     console = console or Console(highlight=False, no_color=plain or bool(os.environ.get("NO_COLOR")))
     animate = console.is_terminal and not plain and os.environ.get("MVK_REDUCED_MOTION") != "1"
     repo = Path(git(repo, "rev-parse", "--show-toplevel")).resolve()
-    sha = checked_revision(repo, "HEAD")
-    standing = standing_approval(config_path)
+    sha = checked_revision(repo, revision)
+    standing = standing_approval(config_path) if live else None
     total = 5 if standing else 4
     config = load_config(config_path) if config_path else {
         "project": re.sub(r"[^a-z0-9-]", "-", repo.name.lower()).strip("-")[:64] or "repository",
@@ -229,7 +230,10 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
     context.add_column(style="dim", no_wrap=True)
     context.add_column(overflow="fold")
     context.add_row("Repository", path_link(repo, enabled=links))
-    context.add_row("Commit", Text(sha[:12] + "  (working-tree changes excluded)"))
+    if branch:
+        context.add_row("Branch", Text(branch))
+    context.add_row("Commit", Text(sha[:12] + ("  (working-tree changes excluded)" if revision == "HEAD"
+                                               else "  (read from git; your checkout is untouched)")))
     context.add_row("Save to", path_link(output, enabled=links))
     console.print(context)
     console.print()
@@ -405,7 +409,7 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
                   "logged-in pages and role access", "record ownership", "approval workflows", "live XSS",
                   "Cloud Armor enforcement", "historical breach investigation"],
               "target": config.get("target", {}).get("url") if facts.get("staging_covered") else None,
-              "project": repo.name, "facts": facts, "recap": recap(repo.name, rows, facts)}
+              "project": repo.name, "branch": branch, "facts": facts, "recap": recap(repo.name, rows, facts)}
     write_private(output / "summary.json", json.dumps(result, indent=2))
     done = sum(row["status"] == "DONE" for row in rows)
     attention = len(rows) - done

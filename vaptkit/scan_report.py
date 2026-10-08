@@ -196,7 +196,7 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
     <div class="cover-logo">{lockup_svg()}</div>
     <p class="kicker">Committed-code security scan</p>
     <h1>{esc(project)}</h1>
-    <p class="cover-sub">Commit <span class="mono">{esc(summary["revision"][:12])}</span> · {len(summary["checks"])} check{"s" if len(summary["checks"]) != 1 else ""}</p>
+    <p class="cover-sub">{f'Branch <span class="mono">{esc(summary["branch"])}</span> · ' if summary.get("branch") else ""}Commit <span class="mono">{esc(summary["revision"][:12])}</span> · {len(summary["checks"])} check{"s" if len(summary["checks"]) != 1 else ""}</p>
   </div>
   <div class="cover-day">
     <dl class="cover-meta">

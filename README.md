@@ -24,12 +24,12 @@ VAPT.
 Needs Python 3.11+ on PATH and Docker running. Clone, then run one command:
 
 ```bash
-git clone --branch v0.6.2 https://github.com/mattxslv/matt-vapt-kit.git
+git clone --branch v0.6.3 https://github.com/mattxslv/matt-vapt-kit.git
 cd matt-vapt-kit
 ./install
 ```
 
-`--branch v0.6.2` pins the current [release](https://github.com/mattxslv/matt-vapt-kit/releases);
+`--branch v0.6.3` pins the current [release](https://github.com/mattxslv/matt-vapt-kit/releases);
 drop it to follow `main`.
 
 ![Linux install](docs/screenshots/01-install-linux.svg)
@@ -55,7 +55,9 @@ menu. Afterwards, `./install` or `vaptkit` just opens the menu.
 
 1. **Scan a project:** secrets in Git history, vulnerable dependencies (Node, PHP,
    .NET, Python and more), code rules (JavaScript/TypeScript, C#/ASP.NET
-   and web.config) and API routes without a login check (Next.js and ASP.NET). Projects with a standing approval (DTAP)
+   and web.config) and API routes without a login check (Next.js and ASP.NET). You can
+   scan your checkout, `main`, `staging` or all of them; other branches are read
+   straight from git, so your working folder is never switched. Projects with a standing approval (DTAP)
    also get read-only checks of their staging site. Ends with an optional PDF report.
 2. **Latest results:** the last scan's table; `p` makes a PDF.
 
@@ -116,6 +118,7 @@ Everything is saved privately under `.private/` and never overwritten. Findings 
 ```bash
 ./scan ~/DTAP                      # same scan, no install needed
 vapt scan ~/DTAP --pdf             # with the CLI installed, plus a PDF
+vapt scan ~/DTAP --revision origin/main   # another branch, without checking it out
 vapt --help                        # every command
 ```
 

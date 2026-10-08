@@ -160,6 +160,15 @@
   "couldn't run" warnings record too (`record_error`). Released as v0.6.2. Read
   reports with: gh issue list -R mattxslv/matt-vapt-kit --label pilot-report
 
+- Branch scanning (v0.6.3): option 1 fetches (GIT_TERMINAL_PROMPT=0) and offers your
+  checkout plus origin/main|master|staging|develop|dev, or all; non-checkout branches
+  are scanned by revision (`scan(revision=...)`, `vapt scan --revision`), live stage
+  runs once per run. First real run on DTAP (2026-10-08): main and staging diverged
+  7 months ago (staging +563 commits, main +20 hotfixes); main has 98 dependency vulns
+  (2 critical, 62 high) vs staging 15, and 28 vs 15 suspected unauthenticated
+  handlers. The earlier lead-evaluator/requirements auth finding is RESOLVED: the
+  route is gone from both branches.
+
 Previous handoff (2026-10-07 menu/redesign work, DTAP finding) preserved below.
 
 Replaces the Oct 5 handoff below this line's content; that session's "pending" items

@@ -1,6 +1,22 @@
 # Matt VAPT Kit — Handoff
 
-**Date:** 2026-10-07 (session via Claude Code)
+**Date:** 2026-10-08 (session via Claude Code)
+
+## What this session added
+
+- Menu option 6, "Compare the last two scans" (`show_compare`, `compare_scans`,
+  `scan_findings` in `menu.py`): diffs `static-findings.json` and
+  `route-review.json` between the two most recent `.private/scan-*` folders,
+  reporting new/resolved static-rule matches and new/resolved no-auth API
+  routes. Needs 2+ scans to show anything.
+- Readiness check (menu option 3) now reports whether the Nuclei/ZAP Docker
+  images used by local attack testing (option 5) are already pulled
+  (`missing_local_attack_images`) and offers to download them up front, so
+  the first attack-test run doesn't stall on an image pull mid-scan.
+- Tests added in `tests/test_menu.py`; 221 tests pass (`.venv/bin/python -m
+  unittest discover -s tests`).
+
+Previous handoff (2026-10-07 menu/redesign work, DTAP finding) preserved below.
 
 Replaces the Oct 5 handoff below this line's content; that session's "pending" items
 (exposure checks, role testing, accuracy benchmark, v0.5.0 release) are all in `main`.

@@ -44,6 +44,11 @@ class ScopeTests(unittest.TestCase):
     def setUp(self):
         self.config = load_config(ROOT / "projects/pemedes.vapt.yml")
         self.approval = approved(self.config)
+        # pemedes.vapt.yml uses iap-service-account access, which would otherwise make a
+        # real gcloud/IAM network call to build headers even when observe() is mocked below.
+        patcher = patch("vaptkit.service_login.ServiceAccountAccess.headers", return_value={})
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_valid_scope(self):
         validate_approval(self.config, self.approval)

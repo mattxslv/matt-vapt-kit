@@ -179,6 +179,23 @@ If Semgrep reports processing errors, successfully returned matches are still
 saved and summarized. The static stage stays **REVIEW**, and its JSON records
 sanitized error types and the scanner exit code rather than raw source/error text.
 
+## Weekly scans in GitHub Actions
+
+[`.github/workflows/weekly-scan.yml`](.github/workflows/weekly-scan.yml) runs the
+same committed-code scan as `./scan` every Monday at 08:00 PHT against the `main`
+branch of DTAP, PEMEDES and Startup PH. It runs from this toolkit repo, so nothing
+is committed to the app repos (pushing to their `main` triggers production deploys).
+
+- **Results:** this repo's **Actions** tab > **Weekly security scan**. A red job
+  means that project has findings to review; open it for the summary table, and
+  download the `scan-*` artifact for `summary.json`, `static-findings.json` and
+  `route-review.json` (kept 30 days). Secret values are redacted.
+- **Run it now:** Actions > Weekly security scan > **Run workflow**.
+- **Add a project:** add a `repo`/`config` entry to the workflow's matrix and grant
+  the token access to that repository.
+- **Setup (once):** the `SCAN_REPOS_TOKEN` repository secret must hold a
+  fine-grained token with read-only **Contents** access to the scanned repos.
+
 ## What you can do
 
 | Capability | Scope |

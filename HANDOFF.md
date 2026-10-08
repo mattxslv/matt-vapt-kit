@@ -30,6 +30,18 @@
   which also asks for the first Windows `install.ps1` run to be reported back
   before relying on it for other teammates.
 
+- README rewritten for the install scripts and all six menu options, with SVG
+  screenshots in `docs/screenshots/` rendered from the real menu code using
+  synthetic scan data (generator script was a throwaway in /tmp, not committed).
+- Weekly scan: `.github/workflows/weekly-scan.yml` in THIS repo scans
+  mattxslv/dtap, pemedes and startup-ph (`main`) every Monday 00:00 UTC.
+  Deliberately not placed in the app repos: pushing to their `main` triggers
+  production deploys (startup-ph `deploy-production.yml`, DTAP/PEMEDES Cloud
+  Build). Needs the `SCAN_REPOS_TOKEN` secret (fine-grained PAT, Contents
+  read-only on the 3 repos); the user creates it, it can't be made via gh.
+- New finding from a local dry run: **startup-ph has 29 possible secrets in its
+  git history** (untriaged, like DTAP's 74 and PEMEDES's 2).
+
 Previous handoff (2026-10-07 menu/redesign work, DTAP finding) preserved below.
 
 Replaces the Oct 5 handoff below this line's content; that session's "pending" items

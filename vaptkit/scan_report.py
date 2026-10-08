@@ -50,9 +50,15 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
         for row in summary["checks"]
     ], "No checks recorded.")
     leaks = facts.get("leaks")
-    leak_text = (f"{leaks} possible secrets were found in the Git history. Values are redacted and not stored. "
-                 "Rotate any real credential, then add reviewed false positives to .gitleaksignore."
-                 if leaks else "No possible secrets were reported, or the count was not recorded for this scan.")
+    history = next((row for row in summary["checks"] if stage(row) == "Secret history"), None)
+    if leaks:
+        leak_text = (f"{leaks} possible secrets were found in the Git history. Values are redacted and not stored. "
+                     "Rotate any real credential, then add reviewed false positives to .gitleaksignore.")
+    elif history and history["status"] == "DONE":
+        leak_text = "No possible secrets were found in the Git history."
+    else:
+        leak_text = ("The secret-history check did not finish cleanly or its count was not recorded; "
+                     "see the summary table above and re-run the scan.")
     static_rows = [(esc(item["rule"]), f'<code>{esc(item["path"])}</code>', esc(item["line"]))
                    for item in static.get("findings", [])]
     route_rows = [

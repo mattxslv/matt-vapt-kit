@@ -51,6 +51,10 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 
 ![Windows install](docs/screenshots/02-install-windows.svg)
 
+The installer also sets up the PDF report tools (Playwright and a one-time
+~150 MB browser download). If that download fails, reports are saved as HTML
+until you run the installer again.
+
 Python 3.11+ must already be installed and on PATH (from
 [python.org](https://www.python.org/downloads/), with "Add python.exe to PATH"
 checked during setup). The `-ExecutionPolicy Bypass` only applies to this one
@@ -79,9 +83,11 @@ on Windows, from this folder) for a numbered menu:
 1. **Scan a project for vulnerabilities** — recently scanned folders are listed
    for one-key reruns, and a matching `projects/*.vapt.yml` policy is picked by
    folder name (for example `~/DTAP` uses `dtap.vapt.yml`). Evidence is saved
-   under this toolkit's `.private/` directory.
+   under this toolkit's `.private/` directory. At the end it offers a **PDF
+   report** (summary, secret count, static matches, API routes without an auth
+   check, scope), saved next to the evidence as `report.pdf` and `report.html`.
 2. **See the latest scan results** — the most recent scan's check table, with a
-   link to its saved evidence folder.
+   link to its saved evidence folder, and `p` to make a PDF report of it.
 
    ![Latest scan results](docs/screenshots/04-latest-results.svg)
 3. **Check this computer is ready to scan** — local prerequisites (Python, Git,
@@ -93,8 +99,8 @@ on Windows, from this folder) for a numbered menu:
 4. **Quick staging check** — asks for a staging URL and your explicit
    permission, then builds a short-lived scope and approval automatically and
    runs the existing read-only header, cookie and exposed-file checks
-   (`vapt run` under the hood). Sites behind a login (for example Google IAP)
-   are not supported from this menu entry.
+   (`vapt run` under the hood), then offers a PDF report of the result. Sites
+   behind a login (for example Google IAP) are not supported from this menu entry.
 
    ![Quick staging check](docs/screenshots/07-staging-check.svg)
 5. **Local attack testing** — asks for a `localhost`/`127.0.0.1` URL and runs
@@ -184,7 +190,8 @@ Git hooks, change application code, provision cloud resources or start a live sc
 It does not claim to check every vulnerability. Live staging checks remain separate,
 with explicit [scope approval](docs/pilot-checklist.md).
 
-If the CLI is already installed, `vapt scan /path/to/your-project` does the same work.
+If the CLI is already installed, `vapt scan /path/to/your-project` does the same work;
+add `--pdf` to also write `report.pdf` and `report.html` into the evidence folder.
 Use `NO_COLOR=1 ./scan /path/to/your-project` for uncolored output. Redirected output
 has no animated spinner.
 The terminal shows a shield icon beside an MVK wordmark,
@@ -218,8 +225,8 @@ is committed to the app repos (pushing to their `main` triggers production deplo
 
 - **Results:** this repo's **Actions** tab > **Weekly security scan**. A red job
   means that project has findings to review; open it for the summary table, and
-  download the `scan-*` artifact for `summary.json`, `static-findings.json` and
-  `route-review.json` (kept 30 days). Secret values are redacted.
+  download the `scan-*` artifact for `report.pdf` plus the JSON evidence (kept
+  30 days). Secret values are redacted.
 - **Run it now:** Actions > Weekly security scan > **Run workflow**.
 - **Add a project:** add a `repo`/`config` entry to the workflow's matrix and grant
   the token access to that repository.

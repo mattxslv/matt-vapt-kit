@@ -77,6 +77,15 @@
   RootURL}}:<port>` (NUCLEI_SCRIPT in menu.py). Verified with decoy listeners on
   4040/9780: 0 requests to them, 10,811 to the target, 6,901 templates run.
 
+- PDF reports: new `vaptkit/scan_report.py` renders repo scans (same CSS/cover
+  as the staging report; no source snippets). Offered after options 1 and 4,
+  `p` in option 2, `vapt scan --pdf` (used by the weekly workflow, which now
+  installs `.[report]` + Chromium). summary.json now stores project, facts and
+  recap. Installers add `.[report]` and download Chromium (~150 MB) if it can't
+  launch; existing installs get it on their next run without the protect
+  prompt. Tested from a fresh clone with scratch HOME/XDG_CACHE_HOME/
+  XDG_STATE_HOME (this shell's XDG vars point at the real user dirs).
+
 Previous handoff (2026-10-07 menu/redesign work, DTAP finding) preserved below.
 
 Replaces the Oct 5 handoff below this line's content; that session's "pending" items

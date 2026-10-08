@@ -11,7 +11,7 @@ from unittest.mock import patch
 from rich.console import Console
 
 from vaptkit.process import ToolError, git
-from vaptkit.scan import LOADING_WORDS, LoadingMessage, duration, path_link, print_header, recap, scan, static_summary
+from vaptkit.scan import LOADING_WORDS, is_runtime_path, LoadingMessage, duration, path_link, print_header, recap, scan, static_summary
 
 
 REAL_RUN = subprocess.run
@@ -79,7 +79,7 @@ class ScanTests(unittest.TestCase):
                                     "high": True, "routes": 16})
         self.assertIn("DTAP has 74 possible secrets", text)
         self.assertIn("13 known dependency vulnerabilities (10 moderate | 3 high)", text)
-        self.assertIn("16 API routes", text)
+        self.assertIn("16 suspected API access-control findings", text)
         self.assertIn("Static rules did not run", text)
         self.assertIn("Next, go through the leaked secrets first", text)
         clean = recap("demo", [{"check": "1 / 4  Secret history", "status": "DONE", "detail": ""}], {})
@@ -109,7 +109,7 @@ class ScanTests(unittest.TestCase):
                                       "extra": {"lines": "PRIVATE_SOURCE_SENTINEL"}}], "errors": []})
         rows = static_summary(raw)
         self.assertEqual(rows, [{"path": "example.ts", "rule": "fixture.rule", "line": 12,
-                                 "verification": "suspected"}])
+                                 "verification": "suspected", "runtime": True}])
         self.assertNotIn("PRIVATE_SOURCE_SENTINEL", json.dumps(rows))
         for invalid in ('{"results":[],"errors":[{"message":"PRIVATE"}]}', "PRIVATE", '{"results":null}'):
             with self.assertRaises(ToolError) as error:
@@ -167,7 +167,7 @@ class ScanTests(unittest.TestCase):
         self.assertEqual(len(result["findings"]), 1)
         self.assertEqual(result["processing_errors"], [{"type": "ParseError"}])
         self.assertEqual(result["status"], "incomplete")
-        self.assertIn("1 static matches retained", self.stream.getvalue())
+        self.assertIn("coverage is", " ".join(self.stream.getvalue().split()))
         self.assertNotIn("PRIVATE_CODE", saved + self.stream.getvalue())
 
     def setUp(self):
@@ -293,3 +293,50 @@ class HeaderOnceTests(unittest.TestCase):
                         "vaptkit.scan.review", return_value={"summary": {"handlers": 0}, "findings": []}):
                     scan(repo, output=root / f"out-{header}", console=console, header=header)
                 self.assertEqual("███" in stream.getvalue(), expected)
+
+
+class RuntimePathTests(unittest.TestCase):
+    def test_scripts_migrations_tests_and_docs_are_not_runtime(self):
+        for path in ("scripts/migrate.js", "migrations/shell-scripts/add.js", "db/migrations/001.ts",
+                     "tests/api.test.ts", "app/api/users/route.test.ts", "docs/example.js", "src/__tests__/a.ts"):
+            self.assertFalse(is_runtime_path(path), path)
+
+    def test_app_code_is_runtime(self):
+        for path in ("app/api/users/route.ts", "lib/ssl-config.ts", "components/form.tsx", "src/scripts.ts"):
+            self.assertTrue(is_runtime_path(path), path)
+
+    def test_partial_parsing_is_recorded_as_its_own_kind(self):
+        errors = []
+        static_summary(json.dumps({"results": [], "errors": [
+            {"type": ["PartialParsing", [{"path": "/src/a.tsx"}]], "message": "x"}, {"type": "Timeout"}]}), errors=errors)
+        self.assertEqual(errors, [{"type": "PartialParsing"}, {"type": "Timeout"}])
+
+
+class LiveStageTests(unittest.TestCase):
+    def test_unreachable_target_is_not_run_with_the_reason(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repo = root / "repo"
+            repo.mkdir()
+            git(repo, "init", "-q")
+            git(repo, "config", "user.name", "Fixture")
+            git(repo, "config", "user.email", "fixture@example.invalid")
+            (repo / "a.txt").write_text("x")
+            git(repo, "add", ".")
+            git(repo, "commit", "-qm", "init")
+            config = root / "demo.vapt.yml"
+            config.write_text((Path(__file__).resolve().parents[1] / "templates/project.example.yml").read_text())
+            stream = io.StringIO()
+            unreachable = {"observations": [], "findings": [], "exposure": [],
+                           "errors": [{"path": "/", "kind": "transport", "message": "DNS resolution failed; remaining requests stopped."}]}
+            with patch("vaptkit.scan.shutil.which", return_value=None), \
+                    patch("vaptkit.scan.review", return_value={"summary": {"handlers": 0}, "findings": []}), \
+                    patch("vaptkit.scan.standing_approval", return_value={"approved_by": "owner", "active": True,
+                                                                           "expires_on": __import__("datetime").date(2099, 1, 1)}), \
+                    patch("vaptkit.scan.run_read_only", return_value=unreachable):
+                scan(repo, config_path=config, output=root / "out", console=Console(file=stream, width=200))
+            summary = json.loads((root / "out/summary.json").read_text())
+        live = summary["checks"][-1]
+        self.assertEqual(live["status"], "NOT RUN")
+        self.assertIn("DNS resolution failed", live["detail"])
+        self.assertIn("live staging", summary["not_tested"])

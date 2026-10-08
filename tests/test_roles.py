@@ -17,6 +17,8 @@ from vaptkit.roles import (
 
 def configuration():
     config = load_config(ROOT / "projects/dtap.vapt.yml")
+    # These tests exercise the direct cookie-login path, not the IAP gateway the real project now sits behind.
+    config.pop("access", None)
     config["role_testing"]["accounts"] = [config["role_testing"]["accounts"][0],
                                          config["role_testing"]["accounts"][3]]
     return config

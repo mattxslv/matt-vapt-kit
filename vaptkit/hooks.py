@@ -133,12 +133,12 @@ def protect(repo: Path, local: str, remote: str | None) -> None:
         except (ToolError, OSError) as error:
             warn("the dependency audit", error)
             return
-        counts = report["severity"] if report else {}
+        counts = report["runtime_severity"] if report else {}
         serious = counts.get("critical", 0) + counts.get("high", 0)
         if serious:
             worst = ", ".join(list(dict.fromkeys(f"{entry['package']} {entry['version']}"
-                                                 for entry in report["top"]))[:3])
-            raise Findings(f"{serious} high/critical dependency vulnerabilities in the pushed lockfiles "
+                                                 for entry in report["top"] if entry["scope"] != "dev"))[:3])
+            raise Findings(f"{serious} high/critical vulnerabilities in runtime dependencies of the pushed lockfiles "
                            f"({severity_text(counts)}), e.g. {worst}. Update them, then push again.")
 
 

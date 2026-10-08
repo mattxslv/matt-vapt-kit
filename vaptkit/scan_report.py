@@ -15,6 +15,7 @@ from .report import FORMAT_ID, PHT, TLP_COLOR, esc
 STATUS = {"DONE": ("done", "Done"), "REVIEW": ("review", "Needs review"),
           "NOT RUN": ("gap", "Not run"), "CANCELLED": ("gap", "Cancelled")}
 LOCATION_LIMIT = 120
+SCOPE_LABEL = {"runtime": "Runtime", "dev": "Dev only", "unknown": "Not classified"}
 ROUTE_LIMIT = 300
 
 
@@ -52,9 +53,9 @@ def next_steps(summary: dict, facts: dict, static_count: int, route_count: int) 
     if audit and audit["status"] == "REVIEW":
         steps.append(("Update the vulnerable dependencies.", audit["detail"]))
     if route_count:
-        steps.append((f"Check that {route_count} API handler{'s verify' if route_count != 1 else ' verifies'} the login.",
-                      "No session or token check was found in their code. Add one inside the handler, or record "
-                      "why the route is meant to be public."))
+        steps.append((f"Fix {route_count} API access-control finding{'s' if route_count != 1 else ''}.",
+                      "Each handler either lacks a login check or changes a record chosen by a user ID from the request "
+                      "without checking it belongs to the signed-in user. Section on API access control lists them."))
     if static_count:
         steps.append((f"Review {static_count} code-rule match{'es' if static_count != 1 else ''}.",
                       "Each is a pattern worth a second look, not a confirmed vulnerability. Section 3 groups them by rule."))
@@ -88,7 +89,9 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
                        if not handler["authentication"] and not handler.get("public") and not handler.get("stub")]
     findings = static.get("findings", [])
     steps = "".join(f"<li><div><strong>{esc(title)}</strong><span>{esc(detail)}</span></div></li>"
-                    for title, detail in next_steps(summary, facts, len(findings), len(unauthenticated)))
+                    for title, detail in next_steps(summary, facts,
+                                                    sum(item.get("runtime", True) for item in findings),
+                                                    len(routes.get("findings", []))))
     checks = "".join(
         f'<tr><td class="check">{esc(stage(row))}</td><td class="state">{chip(row["status"])}</td>'
         f'<td>{esc(row["detail"])}</td></tr>' for row in summary["checks"])
@@ -110,33 +113,58 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
                    "See the table in section 1 and run the scan again.</p>")
 
     messages = rule_messages()
-    grouped = {}
-    for item in findings:
-        grouped.setdefault(item["rule"], []).append(item)
-    rule_sections = []
-    for rule, items in sorted(grouped.items(), key=lambda pair: -len(pair[1])):
-        locations = "".join(f'<li>{esc(item["path"])}<span class="line">:{esc(item["line"])}</span></li>'
-                            for item in items[:LOCATION_LIMIT])
-        more = (f'<p class="more">{len(items) - LOCATION_LIMIT} more locations are listed in static-findings.json.</p>'
-                if len(items) > LOCATION_LIMIT else "")
-        title = messages.get(rule, rule)
+
+    def rule_groups(items: list[dict]) -> str:
+        grouped = {}
+        for item in items:
+            grouped.setdefault(item["rule"], []).append(item)
+        sections = []
+        for rule, matches in sorted(grouped.items(), key=lambda pair: -len(pair[1])):
+            locations = "".join(f'<li>{esc(item["path"])}<span class="line">:{esc(item["line"])}</span></li>'
+                                for item in matches[:LOCATION_LIMIT])
+            more = (f'<p class="more">{len(matches) - LOCATION_LIMIT} more locations are listed in static-findings.json.</p>'
+                    if len(matches) > LOCATION_LIMIT else "")
+            sections.append(
+                f'<div class="rule-group"><div class="rule-head"><h3>{esc(messages.get(rule, rule))}</h3>'
+                f'<span class="count">{len(matches)}</span></div><p class="rule-id mono">{esc(rule)}</p>'
+                f'<ul class="locations">{locations}</ul>{more}</div>')
+        return "".join(sections)
+
+    runtime_findings = [item for item in findings if item.get("runtime", True)]
+    offline_findings = [item for item in findings if not item.get("runtime", True)]
+    rule_sections = [rule_groups(runtime_findings)] if runtime_findings else []
+    if offline_findings:
         rule_sections.append(
-            f'<div class="rule-group"><div class="rule-head"><h3>{esc(title)}</h3>'
-            f'<span class="count">{len(items)}</span></div><p class="rule-id mono">{esc(rule)}</p>'
-            f'<ul class="locations">{locations}</ul>{more}</div>')
+            f'<h3>Outside the running app ({len(offline_findings)})</h3><p class="muted">One-off scripts, migrations, '
+            f'tests and docs. They never run in the deployed app, so they are listed for completeness only.</p>'
+            + rule_groups(offline_findings))
     static_html = "".join(rule_sections) or '<p class="lede">No code-rule matches were recorded.</p>'
+    if offline_findings and not runtime_findings:
+        static_html = '<p class="lede">No matches in the running app.</p>' + static_html
 
     route_rows = "".join(
         f'<tr><td class="state"><span class="chip method">{esc(handler["method"])}</span></td>'
         f'<td><code>{esc(route["path"])}</code></td><td><code>{esc(route.get("file", ""))}</code></td></tr>'
         for route, handler in unauthenticated[:ROUTE_LIMIT])
+    ownership = [item for item in routes.get("findings", []) if item["title"].startswith("Handler changes a record")]
+    ownership_html = ""
+    if ownership:
+        rows = "".join(f'<tr><td><code>{esc(item["path"])}</code></td><td>{esc(item["impact"])}</td></tr>' for item in ownership)
+        ownership_html = (f'<h3>Changes someone else\'s record ({len(ownership)})</h3><p>These handlers write using a user '
+                          'ID taken from the request and never compare it with the signed-in user. Take the ID from the '
+                          'session, or check ownership or role, before writing.</p>'
+                          f'<table><thead><tr><th>Route</th><th>Detail</th></tr></thead><tbody>{rows}</tbody></table>')
     if unauthenticated:
         more = (f'<p class="more">{len(unauthenticated) - ROUTE_LIMIT} more are listed in route-review.json.</p>'
                 if len(unauthenticated) > ROUTE_LIMIT else "")
         routes_html = ('<table><thead><tr><th>Method</th><th>Route</th><th>File</th></tr></thead>'
                        f"<tbody>{route_rows}</tbody></table>{more}")
     else:
-        routes_html = '<p class="lede">Every API handler that was reviewed has an authentication check in code.</p>'
+        protected = routes.get("summary", {}).get("middleware_protected", 0)
+        routes_html = ('<p class="lede">Every API handler that was reviewed requires a login'
+                       + (f" ({protected} through the app's middleware rather than their own code)" if protected else "")
+                       + ".</p>")
+    routes_html = ownership_html + routes_html
 
     dependencies = read(folder, "dependency-audit.json")
     dependency_html = ""
@@ -145,16 +173,17 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
         rows = "".join(
             f'<tr><td class="check">{esc(entry["package"])} <span class="muted">{esc(entry["version"])}</span></td>'
             f'<td class="state"><span class="chip {band_chip[entry["severity"]]}">{esc(entry["severity"])}</span></td>'
-            f'<td><code>{esc(entry["id"])}</code></td><td>{esc(entry["ecosystem"])}</td></tr>'
+            f'<td><code>{esc(entry["id"])}</code></td><td>{esc(SCOPE_LABEL.get(entry.get("scope"), "Runtime"))}</td></tr>'
             for entry in dependencies["top"][:ROUTE_LIMIT])
         listed = ", ".join(f"<code>{esc(path)}</code>" for path in dependencies["lockfiles"])
-        body = (f'<table><thead><tr><th>Package</th><th>Severity</th><th>Advisory</th><th>Ecosystem</th></tr></thead>'
+        body = (f'<table><thead><tr><th>Package</th><th>Severity</th><th>Advisory</th><th>Used in</th></tr></thead>'
                 f"<tbody>{rows}</tbody></table>" if rows else
                 '<p class="lede">No known vulnerabilities in these lockfiles.</p>')
         dependency_html = f"""<section class="chapter">
   <header class="chapter-head"><p class="eyebrow">§§</p><h2>Vulnerable dependencies</h2></header>
   <p class="lede">Known advisories for the exact package versions pinned in {listed}, from the public OSV
-  database. Update high and critical ones first; the advisory ID explains the fix.</p>
+  database. "Dev only" packages (tests, build tools) don't ship in the running app; fix runtime high and
+  critical ones first. The advisory ID explains the fix.</p>
   {body}
 </section>
 """
@@ -232,7 +261,7 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
 </section>
 
 <section class="chapter page">
-  <header class="chapter-head"><p class="eyebrow">§§</p><h2>API routes without a login check</h2></header>
+  <header class="chapter-head"><p class="eyebrow">§§</p><h2>API access control</h2></header>
   <p class="lede">Handlers where no session or token check was found in the code. Middleware may still protect
   some of them, so confirm each one before treating it as a vulnerability.</p>
   {routes_html}

@@ -26,7 +26,8 @@ from rich.text import Text
 from .assessment import create_output, write_private
 from .checks import audit_commit, checked_revision, lockfiles, scan_history, scan_static, severity_text
 from .config import load_config
-from .live import run_read_only, standing_approval_path, staging_counts, staging_recap, standing_approval
+from .live import (NotCovered, browser_sign_in_possible, run_read_only, standing_approval_path, staging_counts,
+                   staging_recap, standing_approval)
 from .process import ToolError, git
 from .routes import review
 
@@ -109,7 +110,7 @@ def recap(project: str, rows: list[dict], facts: dict) -> str:
         elif stage == "Static rules" and facts.get("static"):
             found.append(f"{facts['static']} static-rule matches")
         elif stage == "API authentication review" and facts.get("routes"):
-            found.append(f"{facts['routes']} API routes that may be missing auth checks")
+            found.append(f"{facts['routes']} suspected API access-control findings")
         elif stage == "Live staging (read-only)" and facts.get("staging"):
             live = facts["staging"]
             issues = live["confirmed"] + live["suspected"] + live["exposed"]
@@ -130,7 +131,7 @@ def recap(project: str, rows: list[dict], facts: dict) -> str:
     elif facts.get("high"):
         text += " Next, update the packages marked high in the dependency audit."
     elif facts.get("routes"):
-        text += " Next, open route-review.json and confirm each flagged route checks the login and role."
+        text += " Next, open route-review.json and confirm each flagged route checks the login, role and record owner."
     elif facts.get("static"):
         text += " Next, open static-findings.json and check each match."
     elif skipped:
@@ -168,6 +169,19 @@ def path_link(path: Path, label: str | None = None, *, enabled=True) -> Text:
                 style=Style(underline=True, link=resolved.as_uri()) if enabled else None)
 
 
+NON_RUNTIME_DIRS = {"scripts", "script", "migrations", "migration", "seed", "seeds", "tests", "test", "__tests__",
+                    "e2e", "cypress", "docs", "doc", "examples", "example", "fixtures", "tools"}
+NON_RUNTIME_FILE = re.compile(r"\.(test|spec)\.[cm]?[jt]sx?$|(^|/)(jest|vitest|playwright)\.config\.")
+
+
+def is_runtime_path(path: str) -> bool:
+    """False for one-off scripts, migrations, tests and docs, which never run inside the deployed app."""
+    parts = Path(path).parts
+    return not (parts and parts[0].lower() in NON_RUNTIME_DIRS
+                or any(part.lower() in {"migrations", "__tests__", "fixtures"} for part in parts[:-1])
+                or NON_RUNTIME_FILE.search(path))
+
+
 def static_summary(raw: str, *, errors: list[dict] | None = None) -> list[dict]:
     if len(raw) > 20_000_000:
         raise ToolError("Static output exceeded the size limit; results need a narrower review.")
@@ -183,6 +197,8 @@ def static_summary(raw: str, *, errors: list[dict] | None = None) -> list[dict]:
         if errors is not None:
             for error in processing_errors:
                 kind = error.get("type", "ProcessingError")
+                if isinstance(kind, list) and kind and kind[0] == "PartialParsing":
+                    kind = "PartialParsing"
                 if not isinstance(kind, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,79}", kind):
                     kind = "ProcessingError"
                 errors.append({"type": kind})
@@ -197,7 +213,8 @@ def static_summary(raw: str, *, errors: list[dict] | None = None) -> list[dict]:
                     or len(path) > 500 or Path(path).is_absolute() or ".." in Path(path).parts
                     or type(line) is not int or line < 1):
                 raise ValueError
-            rows.append({"rule": rule, "path": path, "line": line, "verification": "suspected"})
+            rows.append({"rule": rule, "path": path, "line": line, "verification": "suspected",
+                         "runtime": is_runtime_path(path)})
         return rows
     except (ValueError, KeyError, TypeError, AttributeError):
         raise ToolError("Static output was invalid; raw contents withheld.") from None
@@ -239,8 +256,9 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
     console.print(context)
     console.print()
     if standing and standing["active"]:
-        scope = (f"Committed code, plus read-only checks of {config['target']['url']} under the standing approval "
-                 f"until {standing['expires_on']:%Y-%m-%d}. No logins, attack payloads or cloud changes.")
+        gateway = " (signing in through IAP; header checks only)" if config.get("access") else ""
+        scope = (f"Committed code, plus read-only checks of {config['target']['url']}{gateway} under the standing "
+                 f"approval until {standing['expires_on']:%Y-%m-%d}. No app logins, attack payloads or cloud changes.")
     else:
         scope = "Committed code only. No live target requests, logins or cloud changes."
     console.print("Scope  ", Text(scope), style="dim")
@@ -285,6 +303,8 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
                 }, indent=2))
                 console.print(Text("Partial summary: ") + path_link(output / "summary.json", enabled=links))
                 raise
+            except NotCovered as error:
+                row = {"check": name, "status": "NOT RUN", "detail": str(error)}
             except (ToolError, OSError, subprocess.CalledProcessError) as error:
                 detail = str(error) if isinstance(error, ToolError) else "Tool operation failed; raw details withheld."
                 row = {"check": name, "status": "REVIEW", "detail": detail}
@@ -314,21 +334,26 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
         if report is None:
             return "No packages found in the committed lockfiles."
         write_private(output / "dependency-audit.json", json.dumps({"revision": sha, **report}, indent=2))
-        counts = report["severity"]
-        serious = counts["critical"] + counts["high"]
+        counts, runtime = report["severity"], report["runtime_severity"]
+        serious = runtime["critical"] + runtime["high"]
+        dev_serious = counts["critical"] + counts["high"] - serious
         facts.update(vulnerabilities=report["vulnerabilities"], severity=severity_text(counts), high=bool(serious))
         for entry in report["top"][:8]:
-            console.print(Text(f"  {entry['severity']:<8} {entry['package']} {entry['version']}  {entry['id']}",
-                               style=ACCENT if entry["severity"] in ("critical", "high") else "dim"))
+            dev = "  (dev only)" if entry["scope"] == "dev" else ""
+            console.print(Text(f"  {entry['severity']:<8} {entry['package']} {entry['version']}  {entry['id']}{dev}",
+                               style=ACCENT if entry["severity"] in ("critical", "high") and not dev else "dim"))
         if len(report["top"]) > 8:
             console.print(Text(f"  + {len(report['top']) - 8} more", style="dim"))
         lockfile_note = f"{len(report['lockfiles'])} lockfile{'s' if len(report['lockfiles']) != 1 else ''}"
+        dev_note = (f" {dev_serious} high/critical are in dev-only packages (tests, build tools) that don't ship."
+                    if dev_serious else "")
         if serious:
             raise ToolError(f"{report['vulnerabilities']} known vulnerabilities in {report['packages']} packages "
-                            f"({severity_text(counts)}) across {lockfile_note}. Update the high and critical ones first.")
+                            f"({severity_text(counts)}) across {lockfile_note}; {serious} high/critical in runtime "
+                            f"dependencies, update those first.{dev_note}")
         if report["vulnerabilities"]:
-            return (f"{report['vulnerabilities']} lower-severity vulnerabilities ({severity_text(counts)}) across "
-                    f"{lockfile_note}; none high or critical.")
+            return (f"{report['vulnerabilities']} known vulnerabilities ({severity_text(counts)}) across {lockfile_note}; "
+                    f"none high or critical in runtime dependencies.{dev_note}")
         return f"No known vulnerabilities in {lockfile_note}."
     found_lockfiles = lockfiles(listing)
     stage(f"2 / {total}  Dependency audit", dependencies,
@@ -342,26 +367,38 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
             raise ToolError("Static scanner could not complete; no passing result recorded.") from None
         processing_errors = []
         findings = static_summary(result.stdout, errors=processing_errors)
-        facts["static"] = len(findings)
-        incomplete = bool(processing_errors) or result.returncode not in (0, 1) or (result.returncode == 1 and not findings)
+        runtime = [item for item in findings if item["runtime"]]
+        offline = len(findings) - len(runtime)
+        facts["static"] = len(runtime)
+        # Partial parsing (one JSX snippet skipped) still scans the rest of the file; only real failures leave gaps.
+        hard_errors = [error for error in processing_errors if error["type"] != "PartialParsing"]
+        partial = len(processing_errors) - len(hard_errors)
+        incomplete = bool(hard_errors) or result.returncode not in (0, 1) or (result.returncode == 1 and not findings)
         write_private(output / "static-findings.json", json.dumps({
             "revision": sha, "findings": findings, "processing_errors": processing_errors,
             "scanner_exit_code": result.returncode, "status": "incomplete" if incomplete else "completed",
             "note": "Static matches only, not confirmed vulnerabilities. Source snippets are deliberately omitted.",
         }, indent=2))
-        counts = Counter(item["rule"] for item in findings)
+        counts = Counter(item["rule"] for item in runtime)
         for rule, count in counts.most_common():
             console.print(Text(f"  {count} matches  {rule}", style=ACCENT))
-            locations = list(dict.fromkeys(f"{item['path']}:{item['line']}" for item in findings if item["rule"] == rule))
+            locations = list(dict.fromkeys(f"{item['path']}:{item['line']}" for item in runtime if item["rule"] == rule))
             for location in locations[:3]:
                 console.print(Text("    " + location, style="dim"))
             if len(locations) > 3:
                 console.print(Text(f"    + {len(locations) - 3} more locations in static-findings.json", style="dim"))
+        outside = (f" {offline} more in scripts, migrations, tests or docs, which aren't part of the running app."
+                   if offline else "")
+        partly = f" {partial} file{'s were' if partial != 1 else ' was'} only partly parsed." if partial else ""
+        if offline:
+            console.print(Text(f"  {offline} matches outside the running app (scripts, migrations, tests, docs)", style="dim"))
         if incomplete:
-            raise ToolError(f"{len(findings)} static matches retained; {len(processing_errors)} processing errors "
-                            f"(scanner exit {result.returncode}). Coverage incomplete. See static-findings.json.")
-        if findings:
-            raise ToolError(f"{len(findings)} static matches across {len(counts)} rules. Full locations: static-findings.json. These require review.")
+            raise ToolError(f"{len(runtime)} matches in the running app;{outside} {len(hard_errors)} files couldn't be "
+                            f"scanned (scanner exit {result.returncode}), so coverage is incomplete. See static-findings.json.")
+        if runtime:
+            raise ToolError(f"{len(runtime)} matches in the running app across {len(counts)} rules.{outside}{partly} "
+                            "Full locations: static-findings.json. These require review.")
+        return f"No matches in the running app.{outside}{partly}".strip()
     stage(f"3 / {total}  Static rules", lambda: scan_static(repo, sha, runner=static_command, json_output=True), docker_gap)
 
     def routes():
@@ -370,15 +407,35 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
         summary = result["summary"]
         count = len(result["findings"])
         facts["routes"] = count
+        ownership = summary.get("ownership", 0)
+        protected = summary.get("middleware_protected", 0)
+        via_middleware = f" {protected} handlers are protected by the middleware rather than in their own code." if protected else ""
         if count:
-            raise ToolError(f"{count} suspected API authentication findings. Review route-review.json; these are not confirmed exploits.")
+            parts = [f"{count - ownership} without a login check" if count - ownership else "",
+                     f"{ownership} that change a record chosen by a user ID from the request" if ownership else ""]
+            raise ToolError("Suspected access-control findings: " + " and ".join(part for part in parts if part)
+                            + f".{via_middleware} Review route-review.json; these are not confirmed exploits.")
         if not summary["handlers"]:
             return "No supported Next.js or ASP.NET handlers found; route review is not applicable."
-        return f"{summary['handlers']} handlers reviewed; no suspected authentication gaps reported."
+        return f"{summary['handlers']} handlers reviewed; no suspected access-control gaps.{via_middleware}"
     stage(f"4 / {total}  API authentication review", routes)
 
     def staging():
-        result = run_read_only(config, standing, output / "staging")
+        url = config["target"]["url"]
+        config_name = config_path.name if config_path else "the project config"
+        try:
+            result = run_read_only(config, standing, output / "staging")
+        except NotCovered:
+            raise
+        except ToolError as error:
+            if config.get("access"):
+                raise NotCovered(f"Couldn't sign in to {url} through IAP ({error}). Only accounts on the staging "
+                                 "IAP allow-list can run this check.") from None
+            raise
+        if not result.get("observations"):
+            reason = result["errors"][0]["message"] if result["errors"] else "no response."
+            raise NotCovered(f"Couldn't reach {url}: {reason} Nothing was checked. If the site moved, update "
+                             f"target.url in projects/{config_name}.")
         counts = staging_counts(result)
         facts["staging"] = counts
         facts["staging_covered"] = bool(result.get("observations"))
@@ -389,6 +446,9 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
         expired = (None if standing["active"] else
                    f"The standing approval expired on {standing['expires_on']:%Y-%m-%d}; renew it in "
                    f"projects/{standing_approval_path(config_path).name} to resume live checks.")
+        if not expired and config.get("access", {}).get("type") == "iap-browser" and not browser_sign_in_possible():
+            expired = ("Staging is behind IAP and needs a browser sign-in, which isn't possible in this automated "
+                       "run. Run the scan from the menu on a desktop to include it.")
         stage(f"5 / {total}  Live staging (read-only)", staging, expired)
     table = Table(title="Assessment summary", title_style="bold", header_style="bold",
                   box=box.ROUNDED, border_style="grey50", show_lines=True, padding=(0, 1))

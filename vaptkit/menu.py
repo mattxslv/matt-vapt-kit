@@ -240,17 +240,21 @@ def full_scan(console: Console) -> None:
         reports.append((branch, folder, pdf if pdf else html if html.is_file() else None))
     table = Table(title=f"Full scan · {repo.name}", title_style="bold", header_style="bold",
                   box=box.ROUNDED, border_style="grey50", padding=(0, 1))
-    for column in ("Branch", "Needs attention", "Secrets", "High/critical deps", "No login check", "Report"):
+    for column in ("Branch", "Needs attention", "Secrets", "High/critical deps (runtime)", "Access control", "Report"):
         table.add_column(column, overflow="fold")
     for branch, folder, report in reports:
         summary = json.loads((folder / "summary.json").read_text())
         facts = summary.get("facts", {})
         attention = sum(row["status"] != "DONE" for row in summary["checks"])
         audit = folder / "dependency-audit.json"
-        severity = json.loads(audit.read_text())["severity"] if audit.is_file() else {}
-        serious = severity.get("critical", 0) + severity.get("high", 0)
+        audit_data = json.loads(audit.read_text()) if audit.is_file() else {}
+        runtime = audit_data.get("runtime_severity", audit_data.get("severity", {}))
+        total = audit_data.get("severity", {})
+        serious = runtime.get("critical", 0) + runtime.get("high", 0)
+        dev_only = total.get("critical", 0) + total.get("high", 0) - serious
         table.add_row(branch, Text(str(attention), style=ACCENT if attention else "green"),
-                      str(facts.get("leaks", 0)), str(serious), str(facts.get("routes", 0)),
+                      str(facts.get("leaks", 0)), f"{serious}" + (f" (+{dev_only} dev)" if dev_only else ""),
+                      str(facts.get("routes", 0)),
                       path_link(report, report.name) if report else Text("not made", style=ACCENT))
     console.print()
     console.print(table)

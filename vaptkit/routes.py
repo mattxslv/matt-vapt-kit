@@ -336,6 +336,65 @@ def is_stub(body: str) -> bool:
     return not calls and "await " not in re.sub(r"await\s+(?:routeParams|params|context\.params)", "", body)
 
 
+MIDDLEWARE_FILES = ("middleware.ts", "middleware.js", "src/middleware.ts", "src/middleware.js")
+ROLE_RULE = re.compile(r"\[\s*/(\^\\/api(?:\\.|\[[^\]\n]*\]|[^/\\\n])*)/[a-z]*\s*,")
+USER_ID_NAMES = r"(?:userId|user_id|employeeId|employee_id|staffId|accountId|account_id|ownerId|profileId)"
+ID_FROM_REQUEST = re.compile(
+    r"\{[^}]*\b" + USER_ID_NAMES + r"\b[^}]*\}\s*=\s*(?:await\s+)?(?:body|data|payload|json|input|\w*\.json\(\))"
+    r"|\b(?:body|data|payload|json|input|query|params)\??\.\s*" + USER_ID_NAMES + r"\b"
+    r"|searchParams\.get\(\s*['\"]" + USER_ID_NAMES + r"['\"]"
+)
+SESSION_ID = r"(?:session|auth\w*|currentUser|user|token|payload|decoded|claims)\??\.(?:user\??\.)?(?:id|user_id|userId|sub)\b"
+COMPARES_TO_SESSION = re.compile(
+    SESSION_ID + r"[^;\n]*(?:===|!==|==|!=)|(?:===|!==|==|!=)[^;\n]*" + SESSION_ID
+    + r"|=\s*(?:await\s+)?" + SESSION_ID
+)
+WRITES = re.compile(r"\b(?:UPDATE|INSERT\s+INTO|DELETE\s+FROM)\b|\.(?:update|insert|delete|upsert|destroy)\s*\(")
+PUBLIC_LIST = re.compile(r"\b\w*[Pp]ublic\w*\s*(?::[^=\n]*)?=\s*\[([^\]]*)\]")
+QUOTED = re.compile(r"['\"`]([^'\"`\s]+)['\"`]")
+
+
+def middleware_model(tree) -> dict | None:
+    """What Next.js middleware enforces before any handler runs: public paths, a login gate, and role rules.
+
+    Follows middleware.ts and the modules it imports (two levels). Recognizes a public-routes array, a 401 for
+    requests without a valid token, and [/^\\/api\\/.../, roles] rules. Returns None when there is no middleware.
+    """
+    entry = next((path for path in MIDDLEWARE_FILES if path in tree.files), None)
+    if entry is None:
+        return None
+    files, frontier = [entry], [entry]
+    for _ in range(2):
+        found = []
+        for path in frontier:
+            for spec, _name in imports(tree.read(path)).values():
+                target = tree.resolve(path, spec)
+                if target and target not in files:
+                    files.append(target)
+                    found.append(target)
+        frontier = found
+    text = "\n".join(tree.read(path) for path in files)
+    public = [item for block in PUBLIC_LIST.findall(text) for item in QUOTED.findall(block) if item.startswith("/")]
+    rules = []
+    for source in ROLE_RULE.findall(text):
+        try:
+            rules.append(re.compile(source.replace("\\/", "/")))
+        except re.error:
+            continue
+    return {"files": files, "public": public, "rules": rules,
+            "login_gate": bool(public) and re.search(r"\b401\b", text) is not None}
+
+
+def middleware_protection(model: dict | None, path: str) -> tuple[bool, bool, bool]:
+    """(public, authenticated, role-checked) for a route path according to the middleware model."""
+    if model is None:
+        return False, False, False
+    sample = re.sub(r"\{[^}]+\}", "x", path)
+    public = any(sample == prefix or sample.startswith(prefix.rstrip("/") + "/") for prefix in model["public"])
+    role = any(rule.search(sample) for rule in model["rules"])
+    return public, (model["login_gate"] and not public) or role, role
+
+
 def matches_any(path: str, patterns: list[str]) -> bool:
     for pattern in patterns:
         if pattern.endswith("*") and path.startswith(pattern[:-1]):
@@ -372,19 +431,35 @@ def review(repo: Path, config: dict, revision: str = "HEAD") -> dict:
         and not any(f.startswith(prefix) for prefix in excluded)
     )
     routes, findings = [], []
+    model = middleware_model(tree)
     for file in files:
         source = tree.read(file)
         route = {"path": route_path(file), "file": file, "handlers": []}
+        mw_public, mw_authn, mw_authz = middleware_protection(model, route["path"])
         for method, body in handlers(source).items():
             authn, authz = analyzer.body_signals(file, body, 0, {(file, method)})
-            is_public = matches_any(route["path"], public)
+            is_public = matches_any(route["path"], public) or mw_public
             stub = is_stub(body)
-            route["handlers"].append({
-                "method": method, "authentication": authn, "authorization": authz,
-                "public": is_public, "stub": stub,
-            })
+            handler = {"method": method, "authentication": authn or mw_authn, "authorization": authz or mw_authz,
+                       "public": is_public, "stub": stub}
+            if (mw_authn and not authn) or (mw_authz and not authz):
+                handler["middleware"] = True
+            route["handlers"].append(handler)
+            authn, authz = handler["authentication"], handler["authorization"]
             if is_public or stub:
                 continue
+            # Admin endpoints exist to act on other users' records; their role gate is the control that matters.
+            admin_endpoint = "/admin/" in route["path"] + "/" or matches_any(route["path"], privileged)
+            if (authn and not admin_endpoint and ID_FROM_REQUEST.search(body) and WRITES.search(body)
+                    and not COMPARES_TO_SESSION.search(body)):
+                findings.append(finding(
+                    route, method, "Handler changes a record chosen by a user ID from the request",
+                    "high",
+                    "The handler writes using a user ID taken from the request body or query and never compares it "
+                    "with the signed-in user, so any user who can reach it may change someone else's record.",
+                    "Take the user ID from the session, or check that the requested ID belongs to the signed-in "
+                    "user (or that their role allows it) before writing.",
+                ))
             if not authn:
                 findings.append(finding(
                     route, method, "API handler has no authentication check in code",
@@ -433,7 +508,11 @@ def review(repo: Path, config: dict, revision: str = "HEAD") -> dict:
             "route_files": len(routes), "handlers": total,
             "no_authentication": sum(1 for f in findings if f["title"].startswith("API handler has no")),
             "missing_role_check": sum(1 for f in findings if f["title"].startswith("Privileged")),
+            "ownership": sum(1 for f in findings if f["title"].startswith("Handler changes a record")),
+            "middleware_protected": sum(1 for route in routes for handler in route["handlers"] if handler.get("middleware")),
         },
+        "middleware": {"files": model["files"], "login_gate": model["login_gate"],
+                       "role_rules": len(model["rules"]), "public_paths": model["public"]} if model else None,
         "routes": routes, "findings": findings,
         "note": "Static source review of one committed revision. Findings are suspected until confirmed by an approved live test.",
     }

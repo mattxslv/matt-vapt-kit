@@ -180,6 +180,19 @@
 - v0.6.6: the project picker (options 0/1) lists recent projects first, marked, then
   every other Git repo found under home (`project_list`, reuses `find_repos`).
 
+- v0.7.0 accuracy pass after the first real DTAP triage (another AI reviewed ~140 flags,
+  1 real: prod /api/evaluator/profile PUT trusts body userId). Changes: Next.js middleware
+  model (routes.middleware_model), ownership check (ID_FROM_REQUEST + WRITES without
+  COMPARES_TO_SESSION, admin paths exempt), static matches split runtime vs
+  scripts/migrations/tests (is_runtime_path) with PartialParsing as a note, dependency
+  runtime/dev scopes (checks.dependency_scopes, report runtime_severity), live stage
+  NOT RUN via live.NotCovered when unreachable, DTAP target -> dtap-test run.app behind
+  IAP (access iap-browser, remember_login; skipped when no display or CI). Result on
+  DTAP: main 1 access-control flag (the real bug), staging 0; code rules 3/2 runtime.
+  Role tests now pop `access` from the DTAP config fixture (it opened a real browser).
+  Remaining: the 2 example tokens need a .gitleaksignore in the DTAP repo; first IAP
+  sign-in must be done by the user from the menu.
+
 Previous handoff (2026-10-07 menu/redesign work, DTAP finding) preserved below.
 
 Replaces the Oct 5 handoff below this line's content; that session's "pending" items

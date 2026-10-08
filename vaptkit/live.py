@@ -1,5 +1,7 @@
 """Read-only staging checks: header/cookie observations and a short exposed-file list, never attack payloads."""
 import json
+import os
+import sys
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -9,6 +11,17 @@ from .assessment import approval_template, assess
 from .process import ToolError
 
 RUN_WINDOW = timedelta(hours=1)
+
+
+class NotCovered(ToolError):
+    """The live check couldn't look at the target at all, so it's a coverage gap rather than a finding."""
+
+
+def browser_sign_in_possible() -> bool:
+    """IAP browser sign-in needs a desktop; automated runs (CI, SSH without a display) can't do it."""
+    if os.environ.get("CI"):
+        return False
+    return sys.platform != "linux" or bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
 
 
 def standing_approval_path(config_path: Path) -> Path:
@@ -42,7 +55,8 @@ def run_read_only(config: dict, standing: dict, output: Path) -> dict:
         "approved_by": standing["approved_by"],
         "starts_at": now.isoformat(),
         "expires_at": (now + RUN_WINDOW).isoformat(),
-        "exposure_checks": True,
+        # Exposure checks are only allowed against unauthenticated targets; behind IAP, headers only.
+        "exposure_checks": not config.get("access"),
         "paths": ["/"],
     })
     path, _ = assess(config, approval, output)

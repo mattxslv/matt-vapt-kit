@@ -83,7 +83,10 @@ are not automatically fixed or ignored.
 The dependency audit uses OSV-Scanner on the committed lockfiles: npm, yarn, pnpm and
 bun for Node; Composer for PHP; NuGet (`.csproj`, `packages.config`, `packages.lock.json`) for .NET; pip, Poetry, Pipenv and uv for Python; Go, Maven,
 Gradle, Ruby and Rust. Lockfiles under `node_modules/`, `vendor/` and virtualenvs are
-skipped. No package manager needs to be installed. Package names and versions (not
+skipped. No package manager needs to be installed. Each vulnerable package is classified
+from the lockfile as runtime or dev-only (pnpm: reachable from `dependencies`; npm: the
+`dev` flag; Composer: `packages-dev`); only runtime high/critical results make the step
+REVIEW or block a push. Packages that can't be classified (yarn, NuGet) count as runtime. Package names and versions (not
 source code) are sent to osv.dev; the other Docker scans have no network access.
 
 Installation preserves executable hooks in the previous hooks directory and chains
@@ -117,6 +120,9 @@ or comprehensive OWASP coverage**. Findings require triage.
 | web.config / appsettings | debug compilation on, customErrors Off, request validation off, passwords in connection strings |
 
 The JavaScript rules skip bundled libraries (`*.min.js`, `wwwroot/lib*`, `Scripts/jquery*`).
+Matches in `scripts/`, `migrations/`, `tests/`, `docs/` and `*.test.*` files are listed as
+outside the running app and don't make the step REVIEW. Files Semgrep only partly parsed
+(for example JSX text containing `&`) are noted but don't count as missing coverage.
 On nopCommerce (about 3,700 C# files) the C# rules report three SQL strings built from
 configuration values and one developer error page enabled by a config flag, all worth review.
 
@@ -243,6 +249,14 @@ patterns live under `review` in the toolkit project config. Helper tracing is bo
 and heuristic, not a full TypeScript control-flow analysis. Every source-review
 finding remains **suspected** until checked against middleware and live authorized
 behavior. Seeing an auth helper does not prove that every execution path enforces it.
+
+**Next.js middleware** is modeled: the kit follows `middleware.ts` into the modules it
+imports and recognizes a public-routes array, a 401 for requests without a valid token,
+and `[/^\/api\/.../, roles]` role rules. Handlers covered by them count as protected
+("protected by the middleware" in the summary) instead of being flagged. Handlers that
+**write using a user ID taken from the request** (body, query or JSON) without comparing
+it to the signed-in user are flagged as possibly changing someone else's record; admin
+endpoints (`/admin/` paths and `privileged_prefixes`) are exempt.
 
 **ASP.NET (C#)** is reviewed in the same run. Controllers (MVC and Web API, Core and
 .NET Framework) are protected by `[Authorize]` on the action, the controller or any base

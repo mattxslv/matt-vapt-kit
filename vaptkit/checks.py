@@ -5,6 +5,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+import yaml
+
 from .process import ToolError, git, run
 
 GITLEAKS = "ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f"
@@ -68,23 +70,75 @@ def severity_band(score: str) -> str:
     return "critical" if value >= 9 else "high" if value >= 7 else "medium" if value >= 4 else "low"
 
 
-def summarize_osv(report: dict) -> dict:
+def pnpm_runtime(lock: dict) -> set[tuple[str, str]]:
+    """(name, version) reachable from the importers' runtime and optional dependencies in a pnpm lockfile."""
+    def base(version) -> str:
+        return str(version).split("(")[0]
+
+    graph = {}
+    for key, info in (lock.get("snapshots") or lock.get("packages") or {}).items():
+        name, _, version = key.lstrip("/").split("(")[0].rpartition("@")
+        info = info or {}
+        graph[(name, version)] = {**info.get("dependencies", {}), **info.get("optionalDependencies", {})}
+    queue = []
+    for importer in (lock.get("importers") or {".": lock}).values():
+        for name, spec in {**(importer.get("dependencies") or {}), **(importer.get("optionalDependencies") or {})}.items():
+            queue.append((name, base(spec["version"] if isinstance(spec, dict) else spec)))
+    seen = set()
+    while queue:
+        item = queue.pop()
+        if item not in seen:
+            seen.add(item)
+            queue.extend((name, base(version)) for name, version in graph.get(item, {}).items())
+    return seen
+
+
+def dependency_scopes(root: Path, lockfile: str):
+    """A function (name, version) -> "runtime" | "dev" | "unknown" for one committed lockfile."""
+    path, name = root / lockfile, Path(lockfile).name
+    try:
+        if name == "pnpm-lock.yaml":
+            runtime = pnpm_runtime(yaml.safe_load(path.read_text()) or {})
+            return lambda package, version: "runtime" if (package, version) in runtime else "dev" if runtime else "unknown"
+        if name in ("package-lock.json", "npm-shrinkwrap.json"):
+            entries = json.loads(path.read_text()).get("packages", {})
+            scoped = {(key.rpartition("node_modules/")[2], info.get("version")): bool(info.get("dev"))
+                      for key, info in entries.items() if key}
+            return lambda package, version: ("unknown" if (package, version) not in scoped
+                                             else "dev" if scoped[(package, version)] else "runtime")
+        if name == "composer.lock":
+            dev = {item["name"] for item in json.loads(path.read_text()).get("packages-dev", [])}
+            return lambda package, version: "dev" if package in dev else "runtime"
+    except (OSError, ValueError, yaml.YAMLError, AttributeError, TypeError):
+        pass
+    return lambda package, version: "unknown"
+
+
+def summarize_osv(report: dict, scopes: dict | None = None) -> dict:
     counts = dict.fromkeys(SEVERITIES, 0)
+    runtime_counts = dict.fromkeys(SEVERITIES, 0)
     top, packages = [], 0
     for result in report.get("results", []):
+        source = result.get("source", {}).get("path", "").removeprefix("/src/")
+        scope_of = (scopes or {}).get(source, lambda package, version: "unknown")
         for item in result.get("packages", []):
             groups = item.get("groups", [])
             if groups:
                 packages += 1
             for group in groups:
                 band = severity_band(group.get("max_severity"))
-                counts[band] += 1
                 package = item["package"]
+                scope = scope_of(package["name"], package.get("version", ""))
+                counts[band] += 1
+                if scope != "dev":
+                    runtime_counts[band] += 1
                 top.append({"package": package["name"], "version": package.get("version", ""),
                             "ecosystem": package.get("ecosystem", ""), "id": group["ids"][0], "severity": band,
-                            "score": group.get("max_severity") or ""})
-    top.sort(key=lambda entry: (SEVERITIES.index(entry["severity"]), entry["package"]))
-    return {"vulnerabilities": sum(counts.values()), "packages": packages, "severity": counts, "top": top}
+                            "score": group.get("max_severity") or "", "scope": scope})
+    # Runtime (and unclassified) first: dev-only packages never ship in the running app.
+    top.sort(key=lambda entry: (entry["scope"] == "dev", SEVERITIES.index(entry["severity"]), entry["package"]))
+    return {"vulnerabilities": sum(counts.values()), "packages": packages, "severity": counts,
+            "runtime_severity": runtime_counts, "top": top}
 
 
 def severity_text(counts: dict) -> str:
@@ -116,6 +170,7 @@ def audit_commit(repo: Path, sha: str) -> dict | None:
             ], capture_output=True, text=True, check=False)
         except OSError:
             raise ToolError("Cannot start docker; install it before continuing.") from None
+        scopes = {path: dependency_scopes(root, path) for path in found}
     if result.returncode == 128:
         return None
     if result.returncode not in (0, 1):
@@ -124,7 +179,7 @@ def audit_commit(repo: Path, sha: str) -> dict | None:
         report = json.loads(result.stdout) if result.stdout.strip() else {}
     except ValueError:
         raise ToolError("The dependency scanner returned unreadable output.") from None
-    return {**summarize_osv(report), "lockfiles": found}
+    return {**summarize_osv(report, scopes), "lockfiles": found}
 
 
 def check(repo: Path, revision: str, *, static: bool = False) -> None:
@@ -136,11 +191,11 @@ def check(repo: Path, revision: str, *, static: bool = False) -> None:
     if report is None:
         print("Dependency audit: not applicable (no supported lockfile at this commit).")
     else:
-        serious = report["severity"]["critical"] + report["severity"]["high"]
+        serious = report["runtime_severity"]["critical"] + report["runtime_severity"]["high"]
         print(f"Dependency audit: {report['vulnerabilities']} known vulnerabilities in {len(report['lockfiles'])} "
               f"lockfile(s) ({severity_text(report['severity']) or 'none'}).")
         if serious:
-            raise ToolError(f"{serious} high/critical dependency vulnerabilities; update those packages.")
+            raise ToolError(f"{serious} high/critical vulnerabilities in runtime dependencies; update those packages.")
     if static:
         scan_static(repo, sha)
 

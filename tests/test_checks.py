@@ -6,7 +6,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from vaptkit.checks import audit_commit, check, checked_revision, lockfiles, pushed_updates, severity_band, summarize_osv
+from vaptkit.checks import (audit_commit, check, checked_revision, dependency_scopes, lockfiles, pnpm_runtime,
+                            pushed_updates, severity_band, summarize_osv)
 from vaptkit.hooks import Findings, install, protect, uninstall
 from vaptkit.process import ToolError, git
 
@@ -192,7 +193,8 @@ class HookProtectTests(unittest.TestCase):
                 patch("vaptkit.hooks.scan_history", side_effect=FileNotFoundError("docker")), \
                 patch("vaptkit.hooks.audit_commit", return_value={
                     "severity": {"critical": 0, "high": 1, "medium": 0, "low": 0, "unknown": 0},
-                    "top": [{"package": "lodash", "version": "4.17.20"}]}) as audit:
+                    "runtime_severity": {"critical": 0, "high": 1, "medium": 0, "low": 0, "unknown": 0},
+                    "top": [{"package": "lodash", "version": "4.17.20", "scope": "runtime"}]}) as audit:
             with self.assertRaises(Findings):
                 protect(Path("."), "b" * 40, "a" * 40)
         audit.assert_called_once()
@@ -208,3 +210,38 @@ class HookProtectTests(unittest.TestCase):
                 patch("vaptkit.hooks.audit_commit", return_value=None) as audit:
             protect(Path("."), "b" * 40, "a" * 40)
         audit.assert_called_once()
+
+
+class DependencyScopeTests(unittest.TestCase):
+    def test_pnpm_runtime_follows_only_runtime_dependencies(self):
+        lock = {"importers": {".": {"dependencies": {"next": {"specifier": "^15", "version": "15.5.4(react@19.0.0)"}},
+                                    "devDependencies": {"handlebars": {"specifier": "^4", "version": "4.7.8"}}}},
+                "snapshots": {"next@15.5.4(react@19.0.0)": {"dependencies": {"postcss": "8.4.31"}},
+                              "postcss@8.4.31": {}, "handlebars@4.7.8": {"dependencies": {"minimist": "1.2.8"}},
+                              "minimist@1.2.8": {}}}
+        self.assertEqual(pnpm_runtime(lock), {("next", "15.5.4"), ("postcss", "8.4.31")})
+
+    def test_scopes_for_npm_composer_and_pnpm_lockfiles(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "package-lock.json").write_text(json.dumps({"packages": {
+                "": {}, "node_modules/express": {"version": "4.17.1"},
+                "node_modules/jest/node_modules/braces": {"version": "3.0.2", "dev": True}}}))
+            (root / "composer.lock").write_text(json.dumps({"packages": [{"name": "guzzle"}],
+                                                            "packages-dev": [{"name": "phpunit"}]}))
+            npm, composer = dependency_scopes(root, "package-lock.json"), dependency_scopes(root, "composer.lock")
+            self.assertEqual(npm("express", "4.17.1"), "runtime")
+            self.assertEqual(npm("braces", "3.0.2"), "dev")
+            self.assertEqual(npm("left-pad", "1.0.0"), "unknown")
+            self.assertEqual(composer("phpunit", "9"), "dev")
+            self.assertEqual(composer("guzzle", "7"), "runtime")
+
+    def test_dev_only_vulnerabilities_do_not_count_as_runtime(self):
+        summary = summarize_osv({"results": [{"source": {"path": "/src/pnpm-lock.yaml"}, "packages": [
+            {"package": {"name": "handlebars", "version": "4.7.8"}, "groups": [{"ids": ["A"], "max_severity": "9.8"}]},
+            {"package": {"name": "next", "version": "15.5.4"}, "groups": [{"ids": ["B"], "max_severity": "7.5"}]},
+        ]}]}, {"pnpm-lock.yaml": lambda name, version: "dev" if name == "handlebars" else "runtime"})
+        self.assertEqual(summary["severity"]["critical"], 1)
+        self.assertEqual(summary["runtime_severity"]["critical"], 0)
+        self.assertEqual(summary["runtime_severity"]["high"], 1)
+        self.assertEqual(summary["top"][0]["package"], "next")

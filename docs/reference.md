@@ -113,16 +113,12 @@ or comprehensive OWASP coverage**. Findings require triage.
 | Language | Rules |
 |---|---|
 | JavaScript / TypeScript | disabled TLS verification, dynamic code evaluation, interpolated shell commands |
-| PHP / Laravel | raw SQL built from variables, shell commands built from variables, uploads saved under the client's filename, hardcoded passwords/keys/tokens, debug mode switched on in code |
 | C# / ASP.NET | SQL built from strings (SqlCommand, CommandText, EF raw SQL), processes started with built strings, uploads saved under the client's filename, hardcoded passwords/keys/connection-string passwords, developer error page outside development |
 | web.config / appsettings | debug compilation on, customErrors Off, request validation off, passwords in connection strings |
 
-The PHP rules skip Blade templates, `lang/`, `tests/` and (for SQL) `database/migrations/`.
 The JavaScript rules skip bundled libraries (`*.min.js`, `wwwroot/lib*`, `Scripts/jquery*`).
 On nopCommerce (about 3,700 C# files) the C# rules report three SQL strings built from
 configuration values and one developer error page enabled by a config flag, all worth review.
-On the official Laravel starter they report nothing; on a large open-source Laravel app
-(BookStack, about 1,800 PHP files) they report six raw-SQL locations, all worth review.
 
 **Deployment is unchanged.** Cloud Build may deploy concurrently with these checks.
 A failed advisory GitHub Action does not stop that deployment. A real release gate

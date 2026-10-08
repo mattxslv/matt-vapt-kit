@@ -145,8 +145,9 @@
   minimal APIs incl. groups and lambda attributes. Tuned on nopCommerce (620/620
   admin actions protected), eShop, eShopOnWeb. Real finding seen while tuning:
   nopCommerce Brevo plugin `ImportContacts` has no auth at all. User asked NOT to
-  build the Laravel route review ("they don't use it here"); the PHP code rules from
-  925e68c are still on GitHub pending the user's call on removing them.
+  build the Laravel route review ("they don't use it here") and then had the PHP
+  code rules removed (rules/php.yml, tests/semgrep/php.php). Composer lockfiles are
+  still read by the generic OSV dependency audit.
 
 Previous handoff (2026-10-07 menu/redesign work, DTAP finding) preserved below.
 

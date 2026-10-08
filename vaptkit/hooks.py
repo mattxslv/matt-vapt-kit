@@ -98,7 +98,8 @@ def leak_runner(command, **kwargs):
     code = subprocess.run(command, check=False).returncode
     if code == LEAK_EXIT_CODE:
         raise Findings("Possible secrets in the commits being pushed (shown above, values redacted). "
-                       "Remove them, rotate any real key, then push again.")
+                       "Remove them, rotate any real key, then push again. "
+                       "If it's a false positive, add its fingerprint to .gitleaksignore.")
     if code:
         raise ToolError(f"the secret scan did not complete (exit {code})")
 
@@ -134,7 +135,7 @@ def protect(repo: Path, local: str, remote: str | None) -> None:
                      leak_exit_code=LEAK_EXIT_CODE, verbose=True)
     except Findings:
         raise
-    except ToolError as error:
+    except (ToolError, OSError) as error:
         warn("the secret scan", error)
     changed = set(git(repo, "log", "--name-only", "--format=", *revisions.split()).splitlines())
     if changed & DEPENDENCY_FILES:
@@ -143,7 +144,7 @@ def protect(repo: Path, local: str, remote: str | None) -> None:
             audit_commit(repo, local, runner=audit_runner)
         except Findings:
             raise
-        except ToolError as error:
+        except (ToolError, OSError) as error:
             warn("the dependency audit", error)
 
 
@@ -165,8 +166,7 @@ def main() -> int:
         return 0
     except Findings as error:
         print(f"MVK: push blocked. {error}", file=sys.stderr)
-        print("MVK: if this is a false positive, add it to .gitleaksignore; "
-              "in an emergency, git push --no-verify skips the check.", file=sys.stderr)
+        print("MVK: in an emergency, git push --no-verify skips the check.", file=sys.stderr)
         return 1
     except (ToolError, OSError, ValueError) as error:
         warn("the push check", error)

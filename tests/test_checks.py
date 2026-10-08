@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from vaptkit.checks import audit_commit, check, checked_revision, pushed_updates
-from vaptkit.hooks import Findings, audit_runner, install, uninstall
+from vaptkit.hooks import Findings, audit_runner, install, protect, uninstall
 from vaptkit.process import ToolError, git
 
 
@@ -153,3 +153,17 @@ class HookAuditTests(unittest.TestCase):
             with self.assertRaises(ToolError) as caught:
                 self.audit(stdout)
             self.assertNotIsInstance(caught.exception, Findings)
+
+
+class HookProtectTests(unittest.TestCase):
+    def test_dependency_audit_still_runs_when_the_secret_scan_cannot_start(self):
+        def fake_git(repo, *args):
+            return "1" if args[0] == "rev-list" else "package.json\nsrc/app.ts"
+
+        with patch("vaptkit.hooks.push_revisions", return_value="a..b"), \
+                patch("vaptkit.hooks.git", side_effect=fake_git), \
+                patch("vaptkit.hooks.scan_history", side_effect=FileNotFoundError("docker")), \
+                patch("vaptkit.hooks.audit_commit", side_effect=Findings("1 high")) as audit:
+            with self.assertRaises(Findings):
+                protect(Path("."), "b" * 40, "a" * 40)
+        audit.assert_called_once()

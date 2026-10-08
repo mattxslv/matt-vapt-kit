@@ -2,6 +2,9 @@
 import contextlib
 import getpass
 import io
+import platform
+import traceback
+import webbrowser
 import json
 import os
 import re
@@ -10,6 +13,7 @@ import subprocess
 import sys
 import uuid
 from datetime import datetime, timedelta, timezone
+from importlib.metadata import version
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -25,6 +29,7 @@ from .config import ConfigError, load_config
 from .doctor import diagnose
 from .hooks import install as install_hook
 from .live import staging_recap
+from .support import diagnostics, issue_url, record_error, repo_slug, sanitize
 from .process import ToolError, git, stream
 from .report import generate as generate_report
 from .scan import ACCENT, path_link, print_header, scan
@@ -126,7 +131,9 @@ def run_scan(console: Console) -> None:
     except KeyboardInterrupt:
         console.print(Text("\nScan stopped.", style=ACCENT))
     except ToolError as error:
+        record_error("scan", str(error))
         console.print(Text(f"\n{error}", style=ACCENT))
+        console.print(Text("If this looks like a problem with the kit, choose 8 to report it.", style="dim"))
     else:
         offer_scan_pdf(console, output)
     pause(console)
@@ -615,13 +622,17 @@ def protect_pushes(console: Console) -> None:
     pause(console)
 
 
-def check_ready(console: Console) -> None:
-    result = diagnose("push")
-    rows = [(check["name"], check["ready"], check["detail"]) for check in result["checks"]]
+def readiness_rows() -> tuple[list[tuple[str, bool, str]], bool]:
+    rows = [(check["name"], check["ready"], check["detail"]) for check in diagnose("push")["checks"]]
     docker_running = False
     if shutil.which("docker"):
         docker_running = subprocess.run(["docker", "info"], capture_output=True).returncode == 0
         rows.append(("docker running", docker_running, "Docker is running." if docker_running else "Start Docker first."))
+    return rows, docker_running
+
+
+def check_ready(console: Console) -> None:
+    rows, docker_running = readiness_rows()
     console.print()
     for name, ready, detail in rows:
         mark = Text("  OK    ", style="bold green") if ready else Text("  MISSING ", style=f"bold {ACCENT}")
@@ -641,6 +652,30 @@ def check_ready(console: Console) -> None:
     pause(console)
 
 
+def report_problem(console: Console) -> None:
+    console.print(Text("Report a problem", style="bold"))
+    console.print(Text("Collects diagnostics only: versions, your setup and the last error. No findings, code or "
+                       "secrets, and your username is hidden. You'll see everything before it's sent.", style="dim"))
+    rows, _ = readiness_rows()
+    protected = sum(is_protected(Path(entry)) for entry in load_recent())
+    report = diagnostics(rows, protected)
+    console.print()
+    console.print(Text(report, style="dim"))
+    what = ask(console, "\nWhat were you doing when it went wrong? (one line, Enter to skip): ")
+    body = (f"## What happened\n{sanitize(what)}\n\n" if what else "") + report
+    PRIVATE.mkdir(mode=0o700, exist_ok=True)
+    saved = PRIVATE / ("problem-report-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S") + ".md")
+    saved.write_text(body)
+    console.print(Text("\nSaved a copy: ") + path_link(saved))
+    if ask(console, "Open it as a GitHub issue for the maintainer? (Y/n): ").lower() in ("", "y", "yes"):
+        title = "Pilot problem: " + (sanitize(what)[:80] if what else f"v{version('matt-vapt-kit')} on {platform.system()}")
+        if webbrowser.open(issue_url(repo_slug(KIT), title, body)):
+            console.print(Text("Your browser opened the issue. Check it and press Submit.", style="green"))
+        else:
+            console.print(Text("Couldn't open a browser; send the saved copy above in chat instead.", style=ACCENT))
+    pause(console)
+
+
 MENU = (
     ("Scan", (
         ("1", "Scan a project", "secrets, dependencies, code rules, API auth"),
@@ -654,6 +689,7 @@ MENU = (
     ("Setup", (
         ("6", "Check this computer", "Python, Git, Docker, scanner images"),
         ("7", "Protect git pushes", "block leaked secrets before each push"),
+        ("8", "Report a problem", "send diagnostics to the maintainer"),
     )),
 )
 
@@ -723,7 +759,8 @@ def print_menu(console: Console) -> int:
 def main() -> int:
     console = Console(highlight=False, no_color=bool(os.environ.get("NO_COLOR")))
     actions = {"1": run_scan, "2": show_latest, "3": show_compare,
-               "4": run_staging_check, "5": run_local_attack, "6": check_ready, "7": protect_pushes}
+               "4": run_staging_check, "5": run_local_attack, "6": check_ready, "7": protect_pushes,
+               "8": report_problem}
     if "--protect" in sys.argv[1:]:
         console.clear()
         print_header(console)
@@ -744,3 +781,7 @@ def main() -> int:
         except (KeyboardInterrupt, EOFError):
             console.print()
             return 0
+        except Exception:
+            record_error(f"menu option {choice}", traceback.format_exc())
+            console.print(Text("\nSomething went wrong and was recorded. Choose 8 to report it.", style=ACCENT))
+            pause(console)

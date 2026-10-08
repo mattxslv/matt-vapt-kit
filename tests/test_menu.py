@@ -293,7 +293,7 @@ class ZapAlertCountTests(unittest.TestCase):
 class MenuLayoutTests(unittest.TestCase):
     def test_every_action_appears_exactly_once_in_the_menu(self):
         keys = [key for _, items in MENU for key, _, _ in items]
-        self.assertEqual(sorted(keys), ["1", "2", "3", "4", "5", "6", "7"])
+        self.assertEqual(sorted(keys), ["1", "2", "3", "4", "5", "6", "7", "8"])
 
     def test_ago_uses_the_largest_whole_unit(self):
         from datetime import datetime, timedelta, timezone

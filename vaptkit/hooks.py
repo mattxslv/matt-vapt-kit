@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .checks import WINDOWS, audit_commit, is_lockfile, pushed_updates, scan_history, severity_text
 from .process import ToolError, git, run
+from .support import record_error
 
 MARKER = "# matt-vapt-kit managed hook"
 LEAK_EXIT_CODE = 42
@@ -105,6 +106,7 @@ def leak_runner(command, **kwargs):
 
 
 def warn(stage: str, error: Exception) -> None:
+    record_error(f"push protection: {stage}", str(error))
     print(f"MVK: {stage} was skipped because it could not run ({error}). "
           "Run vaptkit option 6 to check your setup.", file=sys.stderr)
 

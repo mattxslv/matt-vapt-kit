@@ -24,12 +24,12 @@ VAPT.
 Needs Python 3.11+ on PATH and Docker running. Clone, then run one command:
 
 ```bash
-git clone --branch v0.6.1 https://github.com/mattxslv/matt-vapt-kit.git
+git clone --branch v0.6.2 https://github.com/mattxslv/matt-vapt-kit.git
 cd matt-vapt-kit
 ./install
 ```
 
-`--branch v0.6.1` pins the current [release](https://github.com/mattxslv/matt-vapt-kit/releases);
+`--branch v0.6.2` pins the current [release](https://github.com/mattxslv/matt-vapt-kit/releases);
 drop it to follow `main`.
 
 ![Linux install](docs/screenshots/01-install-linux.svg)
@@ -82,6 +82,10 @@ menu. Afterwards, `./install` or `vaptkit` just opens the menu.
    `git push --no-verify` skips it in an emergency.
 
    ![Protect your git pushes](docs/screenshots/09-protect.svg)
+8. **Report a problem:** collects diagnostics (versions, setup, the last error; no
+   findings, code or secrets, username hidden), shows them to you, then opens a
+   pre-filled GitHub issue for the maintainer and saves a copy. Crashes and failed
+   scans point here automatically.
 
 Screenshots use the real menu code with made-up data, never real findings.
 

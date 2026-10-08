@@ -453,8 +453,11 @@ def assess(config: dict, approval: dict, output: Path, baseline: dict | None = N
         from . import recon
         # dns_hygiene/subdomains already treat DNS and crt.sh failures as "nothing found",
         # not an assessment failure - they are best-effort third-party lookups, not the target.
+        # scan_ports does touch the target, so it only runs once the earlier stages are clean,
+        # same as every other check in this function that talks to the target.
+        open_ports = recon.scan_ports(public_addresses(host)[0]) if not errors else []
         passive_recon = {"dns": recon.dns_hygiene(host), "subdomains": recon.subdomains(host),
-                         "technologies": technologies}
+                         "technologies": technologies, "open_ports": open_ports}
     if gateway_session:
         gateway_session.clear()
     result = {

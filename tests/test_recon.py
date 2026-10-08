@@ -3,7 +3,7 @@ import struct
 import unittest
 from unittest.mock import patch
 
-from vaptkit.recon import dmarc_policy, dns_hygiene, fingerprint, parse_txt_response, subdomains
+from vaptkit.recon import dmarc_policy, dns_hygiene, fingerprint, parse_txt_response, scan_ports, subdomains
 
 
 def build_txt_response(txt_values: list[str]) -> bytes:
@@ -74,6 +74,31 @@ class SubdomainsTests(unittest.TestCase):
 
         with patch("vaptkit.recon.http.client.HTTPSConnection", return_value=Connection()):
             self.assertEqual(subdomains("example.invalid"), ["api.example.invalid"])
+
+
+class ScanPortsTests(unittest.TestCase):
+    def test_only_connectable_ports_are_reported(self):
+        class FakeSocket:
+            def __init__(self, *a, **k): pass
+            def __enter__(self): return self
+            def __exit__(self, *a): pass
+            def settimeout(self, value): pass
+            def connect_ex(self, address):
+                return 0 if address[1] in (80, 443) else 111
+
+        with patch("vaptkit.recon.socket.socket", return_value=FakeSocket()):
+            self.assertEqual(scan_ports("203.0.113.5", ports=(22, 80, 443, 3306)), [80, 443])
+
+    def test_no_open_ports_returns_empty_list(self):
+        class FakeSocket:
+            def __init__(self, *a, **k): pass
+            def __enter__(self): return self
+            def __exit__(self, *a): pass
+            def settimeout(self, value): pass
+            def connect_ex(self, address): return 111
+
+        with patch("vaptkit.recon.socket.socket", return_value=FakeSocket()):
+            self.assertEqual(scan_ports("203.0.113.5", ports=(22, 3306)), [])
 
 
 class FingerprintTests(unittest.TestCase):

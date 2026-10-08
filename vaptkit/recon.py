@@ -1,9 +1,12 @@
-"""Passive, non-target reconnaissance: subdomains, DMARC/SPF hygiene and tech fingerprinting.
+"""Passive, non-target reconnaissance: subdomains, DMARC/SPF hygiene, tech fingerprinting and ports.
 
-None of this sends traffic to the application itself (subdomains and DNS hygiene only talk to
-public third-party services - certificate transparency logs and public DNS resolvers), so unlike
-exposure.py it does not need an approval or scope check to run. Tech fingerprinting reuses the
-homepage response the staging check already fetched instead of making its own request.
+Subdomains and DNS hygiene only talk to public third-party services (certificate transparency
+logs and public DNS resolvers), not the target, so unlike exposure.py they do not need an approval
+or scope check to run. Tech fingerprinting reuses the homepage response the staging check already
+fetched instead of making its own request. Port scanning does touch the target (a plain TCP
+connect, no payload, to a short list of common ports - the same thing `nmap -p- -A -sV -Pn` looks
+for) so it is gated by the caller behind the same approval and public-address check as everything
+else that talks to the target.
 """
 import http.client
 import json
@@ -14,6 +17,21 @@ import struct
 
 DNS_SERVERS = ("8.8.8.8", "1.1.1.1")
 CRT_SH_HOST = "crt.sh"
+COMMON_PORTS = (
+    21, 22, 23, 25, 53, 80, 110, 135, 139, 143, 443, 445, 465, 587, 993, 995,
+    1433, 1521, 3000, 3306, 3389, 5432, 5900, 6379, 8000, 8080, 8443, 8888, 9200, 27017,
+)
+
+
+def scan_ports(ip: str, ports: tuple[int, ...] = COMMON_PORTS, *, timeout: float = 1.0) -> list[int]:
+    """Open TCP ports on `ip` from a short, common-service list - a plain connect, no payload sent."""
+    open_ports = []
+    for port in ports:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(timeout)
+            if sock.connect_ex((ip, port)) == 0:
+                open_ports.append(port)
+    return open_ports
 
 
 def dns_txt(name: str, *, timeout: float = 5.0) -> list[str]:

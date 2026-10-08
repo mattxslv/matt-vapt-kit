@@ -134,6 +134,7 @@ class AccuracyBenchmark(unittest.TestCase):
             # not the loopback test server this benchmark otherwise pins every connection to.
             patch("vaptkit.recon.dns_hygiene", return_value={"spf_present": False, "dmarc_present": False, "dmarc_policy": None}),
             patch("vaptkit.recon.subdomains", return_value=[]),
+            patch("vaptkit.recon.scan_ports", return_value=[]),
         ):
             self.stack.enter_context(mock)
 

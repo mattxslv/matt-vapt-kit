@@ -150,6 +150,8 @@ def staging_recap(result: dict) -> str:
             notes.append("no DMARC record")
         if recon["technologies"]:
             notes.append("detected: " + ", ".join(recon["technologies"]))
+        if recon["open_ports"]:
+            notes.append(f"open ports: {', '.join(str(port) for port in recon['open_ports'])}")
         if notes:
             text += " Recon: " + "; ".join(notes) + "."
     return text

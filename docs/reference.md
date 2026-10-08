@@ -306,12 +306,32 @@ returns success but changes neither record is reported as suspected, not confirm
 and gateway access work exactly as for the role matrix above; it is not a generic tool, only the
 configured DTAP cookie-login contract.
 
-### Approved DTAP role matrix
+### Approved role matrix
 
-`vapt roles` supports the existing DTAP cookie login contract only. It is not a
-generic login crawler and it does not support PEMEDES role login.
+`vapt roles` (adapter `session-login-v1`) reads the login shape entirely from
+`role_testing.login` in the project config: a login path, logout path, the field
+names holding email/password in the request and email/role in the response
+identity, and whether the session is a cookie (`cookie_names`) or a bearer token
+read from a JSON path in the login response (`token_path`, `header`). It is not a
+generic login crawler for arbitrary auth flows (SSO redirects, OAuth2/PKCE, MFA
+are out of scope by design, for safety as much as complexity), but it is not tied
+to any one app either: it is proven against two real, differently-shaped logins.
+
+| | DTAP | PEMEDES-shaped example |
+|---|---|---|
+| Login path | `/api/auth/signin` | `/api/auth/cloudsql/signin` |
+| Session | Cookies (`auth-token`, `session-bind`) | Bearer token (`session.access_token`) |
+| Role field | `user_type` | `role` |
+
+See `projects/dtap.vapt.yml` for the cookie shape and
+`tests/test_roles_bearer_login.py` for a complete bearer-token config, taken
+directly from PEMEDES's own `signin` route and auth module (not yet wired into
+`projects/pemedes.vapt.yml` as a live config -- its exact account IDs and
+identity nesting have not been confirmed against a real login response).
+
 The account aliases distinguish the two evaluators while keeping both in the
-`evaluator` role. Testing two accounts does not by itself test record ownership.
+`evaluator` role. Testing two accounts does not by itself test record ownership;
+see [two-account ownership checks](#two-account-ownership-checks) for that.
 
 ```sh
 mkdir -m 700 .private

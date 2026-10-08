@@ -10,7 +10,7 @@ from vaptkit.config import load_config
 from vaptkit.process import ToolError
 from vaptkit.report import render, validate_result
 from vaptkit.roles import (
-    BODY_LIMIT, LOGIN, LOGOUT, collect_cookies, matches_shape, response_quality,
+    BODY_LIMIT, collect_cookies, matches_shape, response_quality,
     role_outcome, run, template, validate,
 )
 
@@ -22,6 +22,11 @@ def configuration():
     config["role_testing"]["accounts"] = [config["role_testing"]["accounts"][0],
                                          config["role_testing"]["accounts"][3]]
     return config
+
+
+LOGIN = configuration()["role_testing"]["login"]["login_path"]
+LOGOUT = configuration()["role_testing"]["login"]["logout_path"]
+COOKIE_NAMES = configuration()["role_testing"]["login"]["session"]["cookie_names"]
 
 
 def approval_for(config):
@@ -324,7 +329,7 @@ class RoleTests(unittest.TestCase):
                        "auth-token=x; Path=/; Secure; HttpOnly; Domain=outside.invalid",
                        "auth-token=x; Path=/nested; Secure; HttpOnly"):
             with self.subTest(cookie=cookie), self.assertRaises(ToolError):
-                collect_cookies({"set-cookie": [cookie]}, "test.dtap.dict.gov.ph")
+                collect_cookies({"set-cookie": [cookie]}, "test.dtap.dict.gov.ph", COOKIE_NAMES)
 
     def test_failed_logout_marks_incomplete(self):
         base = Application()

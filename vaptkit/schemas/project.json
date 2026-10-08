@@ -163,12 +163,13 @@
       "additionalProperties": false,
       "required": [
         "adapter",
+        "login",
         "accounts",
         "routes"
       ],
       "properties": {
         "adapter": {
-          "const": "dtap-cookie-v1"
+          "const": "session-login-v1"
         },
         "accounts": {
           "type": "array",
@@ -246,6 +247,99 @@
                   ]
                 }
               }
+            }
+          }
+        },
+        "login": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "login_path",
+            "logout_path",
+            "identity_path",
+            "email_field",
+            "role_field",
+            "session"
+          ],
+          "properties": {
+            "login_path": {
+              "type": "string",
+              "pattern": "^/[!-~]*$"
+            },
+            "logout_path": {
+              "type": "string",
+              "pattern": "^/[!-~]*$"
+            },
+            "identity_path": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 4,
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              }
+            },
+            "email_field": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "role_field": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "session": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "type",
+                    "cookie_names"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "cookie"
+                    },
+                    "cookie_names": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 4,
+                      "items": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "type",
+                    "token_path"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "bearer"
+                    },
+                    "token_path": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 4,
+                      "items": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                      }
+                    },
+                    "header": {
+                      "enum": [
+                        "Authorization",
+                        "Proxy-Authorization"
+                      ]
+                    }
+                  }
+                }
+              ]
             }
           }
         }

@@ -1,4 +1,9 @@
-"""Bounded DTAP cookie-session role checks using explicitly approved staging accounts."""
+"""Bounded session-login role checks using explicitly approved staging accounts.
+
+The login shape (path, request/response field names, and whether the session is a cookie or a
+bearer token) comes entirely from the project's role_testing.login config, not from any one app.
+Verified against two real, differently-shaped apps: DTAP (cookie session, user_type role field)
+and a PEMEDES-shaped bearer-token login (access_token in the response body, role field)."""
 import http.client
 import getpass
 import json
@@ -21,10 +26,8 @@ from .exposure import content_class
 from .process import ToolError
 from .service_login import ServiceAccountAccess
 
-LOGIN = "/api/auth/signin"
-LOGOUT = "/api/auth/signout"
 BODY_LIMIT = 65536
-COOKIE_NAMES = ("auth-token", "session-bind")
+TOKEN_PATTERN = re.compile(r"[A-Za-z0-9._~+/-]{1,2048}=*")
 
 
 def template(config: dict) -> dict:
@@ -37,8 +40,8 @@ def template(config: dict) -> dict:
 
 def validate(config: dict, approval: dict) -> None:
     settings = config.get("role_testing")
-    if not settings or settings["adapter"] != "dtap-cookie-v1":
-        raise ToolError("Role checks require the DTAP cookie adapter.")
+    if not settings or settings["adapter"] != "session-login-v1":
+        raise ToolError("Role checks require a configured session-login-v1 role_testing adapter.")
     if config.get("access") and config["access"]["type"] not in ("iap-browser", "iap-service-account"):
         raise ToolError("Role checks support browser or keyless IAP gateway access, not bearer access.")
     if not isinstance(approval, dict) or approval.get("role_login") is not True or approval.get("method") != "GET":
@@ -59,7 +62,7 @@ def validate(config: dict, approval: dict) -> None:
     for path in approval["paths"]:
         if path not in routes or not selected_roles.intersection(routes[path]["allowed_roles"]):
             raise ToolError("Every approved route needs a configured allowed-role positive control.")
-    for path in (LOGIN, LOGOUT):
+    for path in (settings["login"]["login_path"], settings["login"]["logout_path"]):
         if any(path.startswith(prefix) for prefix in config["scope"]["excluded_prefixes"]):
             raise ToolError("Role sign-in or sign-out is excluded by project scope.")
 
@@ -89,7 +92,7 @@ def credentials(config: dict, approval: dict, *, prompt_passwords=False) -> dict
                     try:
                         with warnings.catch_warnings():
                             warnings.simplefilter("error", getpass.GetPassWarning)
-                            password = getpass.getpass(f"DTAP QA password ({name}, input hidden): ")
+                            password = getpass.getpass(f"QA password ({name}, input hidden): ")
                     except (getpass.GetPassWarning, EOFError, KeyboardInterrupt):
                         raise ToolError("Hidden password entry unavailable or cancelled; no assessment started.") from None
                     validate(config, approval)
@@ -141,36 +144,70 @@ def response_quality(status: int, headers: dict, body: bytes, shape: dict, accou
     return "matched"
 
 
-def sign_in(call, secrets: dict, account_id: str, account: dict, host: str, session: dict) -> dict:
+def dig(value, path: list[str]):
+    for key in path:
+        if not isinstance(value, dict) or key not in value:
+            return None
+        value = value[key]
+    return value
+
+
+def extract_session(headers: dict, body: bytes, host: str, login: dict) -> dict:
+    """The session as {"type": "cookie", "values": {...}} or {"type": "bearer", "header": ..., "token": ...}."""
+    spec = login["session"]
+    if spec["type"] == "cookie":
+        return {"type": "cookie", "values": collect_cookies(headers, host, spec["cookie_names"])}
+    identity = json_object(body) if content_class(headers) == "json" else None
+    token = dig(identity, spec["token_path"]) if identity else None
+    valid = isinstance(token, str) and token and TOKEN_PATTERN.fullmatch(token)
+    return {"type": "bearer", "header": spec.get("header", "Authorization"), "token": token if valid else None}
+
+
+def session_complete(session: dict, login: dict) -> bool:
+    if session["type"] == "cookie":
+        return set(session["values"]) == set(login["session"]["cookie_names"])
+    return bool(session.get("token"))
+
+
+def sign_in(call, secrets: dict, account_id: str, account: dict, host: str, login: dict, session: dict) -> dict:
     """POST login into `session` (mutated before any validation, so the caller can still log out if validation
     then fails) and return the parsed identity."""
-    status, headers, body = call("POST", LOGIN, body=json.dumps(secrets[account_id]).encode())
+    status, headers, body = call("POST", login["login_path"], body=json.dumps(secrets[account_id]).encode())
     session.clear()
-    session.update(collect_cookies(headers, host))
+    session.update(extract_session(headers, body, host, login))
     if not 200 <= status < 300:
-        raise HTTPStop(LOGIN, status)
+        raise HTTPStop(login["login_path"], status)
     identity = json_object(body) if content_class(headers) == "json" else None
-    user = identity.get("user") if identity else None
-    if (not isinstance(user, dict) or not isinstance(user.get("email"), str)
-            or user["email"].lower() != secrets[account_id]["email"].lower()
-            or user.get("user_type") != account["role"] or (identity and identity.get("error"))
-            or set(session) != set(COOKIE_NAMES)):
-        raise ToolError("Login identity, role or required session cookies did not match; values withheld.")
+    user = dig(identity, login["identity_path"]) if identity else None
+    email_field, role_field = login["email_field"], login["role_field"]
+    if (not isinstance(user, dict) or not isinstance(user.get(email_field), str)
+            or user[email_field].lower() != secrets[account_id]["email"].lower()
+            or user.get(role_field) != account["role"] or (identity and identity.get("error"))
+            or not session_complete(session, login)):
+        raise ToolError("Login identity, role or required session did not match; values withheld.")
     return identity
 
 
-def sign_out(call, account_id: str, session: dict, cleanup: list, error_record, stop_cleanup: bool) -> None:
+def has_session(session: dict) -> bool:
+    """False for an empty/never-established session (no cookies were set, or no bearer token was issued)."""
+    if not session:
+        return False
+    return bool(session["values"]) if session["type"] == "cookie" else bool(session.get("token"))
+
+
+def sign_out(call, account_id: str, session: dict, cleanup: list, error_record, stop_cleanup: bool,
+            logout_path: str) -> None:
     """POST logout and record whether it was acknowledged; never raises, so callers can run it in `finally`.
 
     An unacknowledged sign-out is recorded as an error (not just a cleanup note), so the report cannot be marked
     completed while a session may still be live.
     """
-    if not session or stop_cleanup:
+    if not has_session(session) or stop_cleanup:
         if not any(item["account"] == account_id for item in cleanup):
             cleanup.append({"account": account_id, "status": "unconfirmed"})
         return
     try:
-        status, headers, body = call("POST", LOGOUT, session, body=b"{}")
+        status, headers, body = call("POST", logout_path, session, body=b"{}")
         acknowledged = (200 <= status < 300 and content_class(headers) == "json"
                         and (json_object(body) or {}).get("success") is True)
         cleanup.append({"account": account_id, "status": "acknowledged" if acknowledged else "unconfirmed"})
@@ -199,13 +236,13 @@ def role_outcome(record: dict, controls: set[str]) -> str:
     return "inconclusive"
 
 
-def collect_cookies(headers: dict, host: str) -> dict[str, str]:
+def collect_cookies(headers: dict, host: str, cookie_names: tuple) -> dict[str, str]:
     result = {}
     try:
         for value in headers.get("set-cookie", []):
             parsed = SimpleCookie()
             parsed.load(value)
-            for name in COOKIE_NAMES:
+            for name in cookie_names:
                 if name not in parsed:
                     continue
                 cookie = parsed[name]
@@ -231,16 +268,17 @@ def run(config: dict, approval: dict, output: Path, *, prompt_passwords=False) -
     expires = utc(approval["expires_at"])
     timeout = approval.get("request_timeout_seconds", 10)
     settings = config["role_testing"]
+    login = settings["login"]
     accounts = {item["id"]: item for item in settings["accounts"]}
     routes = {item["path"]: item for item in settings["routes"]}
     records, requests, errors, cleanup = [], [], [], []
-    active_path = LOGIN
+    active_path = login["login_path"]
     first = True
     stop_cleanup = False
     gateway_headers = {}
     gateway_session = None
 
-    def call(method, path, cookies=None, body=None):
+    def call(method, path, session=None, body=None):
         nonlocal active_path, first, stop_cleanup
         active_path = path
         if not first:
@@ -250,11 +288,13 @@ def run(config: dict, approval: dict, output: Path, *, prompt_passwords=False) -
             validate(config, approval)
             access = gateway_session.headers() if gateway_session else gateway_headers
             headers = {"Accept": "application/json", "Cache-Control": "no-cache", **access}
-            if cookies:
+            if session and session["type"] == "cookie":
                 headers["Cookie"] = "; ".join(
                     ([access["Cookie"]] if access.get("Cookie") else [])
-                    + [f"{name}={value}" for name, value in cookies.items()]
+                    + [f"{name}={value}" for name, value in session["values"].items()]
                 )
+            elif session and session["type"] == "bearer" and session.get("token"):
+                headers[session["header"]] = f"Bearer {session['token']}"
             if body is not None:
                 headers["Content-Type"] = "application/json"
             status, received, data = request(
@@ -270,7 +310,7 @@ def run(config: dict, approval: dict, output: Path, *, prompt_passwords=False) -
             raise HTTPStop(path, status)
         return status, received, data
 
-    def inspect(account_id, role, cookies=None):
+    def inspect(account_id, role, session=None):
         nonlocal stop_cleanup
         for path in approval["paths"]:
             route = routes[path]
@@ -281,7 +321,7 @@ def run(config: dict, approval: dict, output: Path, *, prompt_passwords=False) -
             records.append(record)
             for attempt in range(2):
                 try:
-                    status, headers, body = call("GET", path, cookies)
+                    status, headers, body = call("GET", path, session)
                 except HTTPStop as error:
                     attempts.append({"status": error.status, "content_class": "none",
                                      "shape_matched": False, "evidence_quality": "blocked"})
@@ -313,10 +353,10 @@ def run(config: dict, approval: dict, output: Path, *, prompt_passwords=False) -
             account = accounts[account_id]
             session = {}
             try:
-                sign_in(call, secrets, account_id, account, host, session)
+                sign_in(call, secrets, account_id, account, host, login, session)
                 inspect(account_id, account["role"], session)
             finally:
-                sign_out(call, account_id, session, cleanup, error_record, stop_cleanup)
+                sign_out(call, account_id, session, cleanup, error_record, stop_cleanup, login["logout_path"])
                 session.clear()
             if errors:
                 break
@@ -369,7 +409,7 @@ def run(config: dict, approval: dict, output: Path, *, prompt_passwords=False) -
         "role_accounts": ["anonymous"] + approval["role_accounts"], "role_observations": records,
         "role_cleanup": cleanup,
         "coverage": {"data_exposure": "not_tested", "unauthorized_access": "tested" if not errors else "not_tested",
-                     "note": "GET-only endpoint role matrix with anonymous and isolated DTAP cookie sessions. "
+                     "note": "GET-only endpoint role matrix with anonymous and isolated per-account sessions. "
                              "POST was limited to approved sign-in and sign-out. Login can create sessions, audit "
                              "records and login counters. No business records were intentionally changed. "
                              "Only status, content class and JSON-shape booleans were retained. "
@@ -380,7 +420,7 @@ def run(config: dict, approval: dict, output: Path, *, prompt_passwords=False) -
                              "Sign-out acknowledgement is not proof of server-side session revocation."
                              + (" Google IAP access was configured for every matrix request, including the "
                                 "application-anonymous control. Public access outside IAP was not tested. "
-                                "DTAP sign-out does not revoke gateway credentials."
+                                "Application sign-out does not revoke gateway credentials."
                                 if config.get("access") else "")
                              + (" Keyless IAP signing was configured through Google IAM Credentials; those requests are outside "
                                 "the application matrix request count."

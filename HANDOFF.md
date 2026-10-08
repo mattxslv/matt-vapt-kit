@@ -258,6 +258,35 @@
     retry). Re-applied via the Edit tool and confirmed with grep before moving on. Worth remembering
     if a future multi-step python-heredoc edit to the same file in one Bash call silently reverts.
 
+- Generalized role/ownership testing (user: "i want this to be universal not just for a
+  specific repo or project"). roles.py/ownership.py were hardcoded to one login shape:
+  fixed LOGIN="/api/auth/signin"/LOGOUT paths, fixed COOKIE_NAMES, hardcoded identity
+  fields "user"/"email"/"user_type". New adapter session-login-v1 reads all of this from
+  role_testing.login in the project config: login_path, logout_path, identity_path,
+  email_field, role_field, and session (type: cookie + cookie_names, or type: bearer +
+  token_path + header). dtap.vapt.yml migrated to it (schema updated, same runtime
+  behavior -- all 298 existing tests pass unchanged after the migration). Proved
+  genericity against a SECOND real, differently-shaped app rather than just renaming
+  constants: verified PEMEDES's actual signin route and auth.ts
+  (app/api/auth/cloudsql/signin/route.ts -- different path, {user, session.access_token}
+  response, no Set-Cookie at all, role field named "role" not "user_type") and wrote
+  tests/test_roles_bearer_login.py, a complete bearer-token config shaped exactly like
+  it, which passes through the identical roles.py code with zero DTAP-specific branches.
+  Caught and fixed a real bug along the way: sign_out()'s "was a session ever
+  established" check used to be `if not session` on a plain cookie dict (empty dict is
+  falsy); once session became a wrapped {"type":..., "values"/"token":...} dict for the
+  bearer case, that wrapper is always truthy even with no actual token, so a failed
+  bearer login would have still attempted a sign-out call. Added has_session() to check
+  the payload, not just the wrapper; two existing DTAP tests
+  (test_login_denial_is_not_retried, test_iap_redirect_or_denial_is_not_a_passing_matrix)
+  caught this immediately. NOT done: a real pemedes.vapt.yml role_testing/ownership_checks
+  section -- deliberately did not invent PEMEDES's exact account IDs or full identity
+  JSON nesting beyond what was directly verified in its code; wiring that for real needs
+  someone to confirm it against an actual PEMEDES login response first. Also deliberately
+  out of scope: SSO/OAuth2/MFA login flows -- the adapter only covers direct JSON
+  credential POST -> cookie-or-bearer session, by design (safety/complexity), documented
+  in docs/reference.md.
+
 Previous handoff (2026-10-07 menu/redesign work, DTAP finding) preserved below.
 
 Replaces the Oct 5 handoff below this line's content; that session's "pending" items

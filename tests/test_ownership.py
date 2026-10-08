@@ -8,7 +8,6 @@ from test_assessment import ROOT, approved
 from vaptkit.config import load_config
 from vaptkit.process import ToolError
 from vaptkit.ownership import run, template, validate
-from vaptkit.roles import LOGIN, LOGOUT
 
 ENV = {"DTAP_EVALUATOR_EMAIL": "fixture-eval@example.invalid", "DTAP_EVALUATOR2_EMAIL": "fixture-eval2@example.invalid",
       "DTAP_QA_PASSWORD": "SYNTHETIC_PASSWORD_SENTINEL"}
@@ -21,6 +20,10 @@ def configuration():
     config["role_testing"]["accounts"] = [item for item in config["role_testing"]["accounts"]
                                           if item["id"] in ("evaluator", "evaluator-2")]
     return config
+
+
+LOGIN = configuration()["role_testing"]["login"]["login_path"]
+LOGOUT = configuration()["role_testing"]["login"]["logout_path"]
 
 
 def approval_for(config):

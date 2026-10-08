@@ -39,7 +39,7 @@ def template(config: dict) -> dict:
 def validate(config: dict, approval: dict) -> None:
     checks = {item["id"]: item for item in config.get("ownership_checks", [])}
     settings = config.get("role_testing")
-    if not checks or not settings or settings["adapter"] != "dtap-cookie-v1":
+    if not checks or not settings or settings["adapter"] != "session-login-v1":
         raise ToolError("Ownership checks require configured role_testing accounts and ownership_checks entries.")
     if config.get("access") and config["access"]["type"] not in ("iap-browser", "iap-service-account"):
         raise ToolError("Ownership checks support browser or keyless IAP gateway access, not bearer access.")
@@ -63,7 +63,7 @@ def validate(config: dict, approval: dict) -> None:
             raise ToolError(f"Ownership check {check_id!r} needs two distinct configured accounts.")
         if check["write_path"] not in approval["paths"] or check.get("read_path", check["write_path"]) not in approval["paths"]:
             raise ToolError(f"Ownership check {check_id!r} needs its read and write paths in the approved paths.")
-    for path in ("/api/auth/signin", "/api/auth/signout"):
+    for path in (settings["login"]["login_path"], settings["login"]["logout_path"]):
         if any(path.startswith(prefix) for prefix in config["scope"]["excluded_prefixes"]):
             raise ToolError("Role sign-in or sign-out is excluded by project scope.")
 
@@ -90,15 +90,16 @@ def run(config: dict, approval: dict, output: Path, *, prompt_passwords: bool = 
     host = urlsplit(config["target"]["url"]).hostname
     expires = utc(approval["expires_at"])
     timeout = approval.get("request_timeout_seconds", 10)
+    login = config["role_testing"]["login"]
     accounts = {item["id"]: item for item in config["role_testing"]["accounts"]}
     requests_log, errors, cleanup, results = [], [], [], []
-    active_path = "/api/auth/signin"
+    active_path = login["login_path"]
     first = True
     stop_cleanup = False
     gateway_headers = {}
     gateway_session = None
 
-    def call(method, path, cookies=None, body=None):
+    def call(method, path, session=None, body=None):
         nonlocal active_path, first, stop_cleanup
         active_path = path
         if not first:
@@ -108,11 +109,13 @@ def run(config: dict, approval: dict, output: Path, *, prompt_passwords: bool = 
             validate(config, approval)
             access = gateway_session.headers() if gateway_session else gateway_headers
             headers = {"Accept": "application/json", "Cache-Control": "no-cache", **access}
-            if cookies:
+            if session and session["type"] == "cookie":
                 headers["Cookie"] = "; ".join(
                     ([access["Cookie"]] if access.get("Cookie") else [])
-                    + [f"{name}={value}" for name, value in cookies.items()]
+                    + [f"{name}={value}" for name, value in session["values"].items()]
                 )
+            elif session and session["type"] == "bearer" and session.get("token"):
+                headers[session["header"]] = f"Bearer {session['token']}"
             if body is not None:
                 headers["Content-Type"] = "application/json"
             status, received, data = request(
@@ -128,8 +131,8 @@ def run(config: dict, approval: dict, output: Path, *, prompt_passwords: bool = 
             raise HTTPStop(path, status)
         return status, received, data
 
-    def read_value(path: str, cookies: dict, field: list[str]):
-        status, headers, body = call("GET", path, cookies)
+    def read_value(path: str, session: dict, field: list[str]):
+        status, headers, body = call("GET", path, session)
         value = json_object(body) if content_class(headers) == "json" else None
         if not 200 <= status < 300 or value is None:
             raise ToolError(f"Could not establish a baseline for {path}; refusing to run the ownership probe.")
@@ -169,7 +172,7 @@ def run(config: dict, approval: dict, output: Path, *, prompt_passwords: bool = 
             return 200 <= status < 300
 
         try:
-            target_identity = sign_in(call, secrets, target_id, target, host, target_session)
+            target_identity = sign_in(call, secrets, target_id, target, host, login, target_session)
             target_user_id = dig(target_identity, ["user", "id"])
             if not isinstance(target_user_id, str) or not target_user_id:
                 raise ToolError(f"Login response for {target_id} did not include a usable user id.")
@@ -179,7 +182,7 @@ def run(config: dict, approval: dict, output: Path, *, prompt_passwords: bool = 
                                 "restore it manually before running this check again.")
 
             try:
-                acting_identity = sign_in(call, secrets, acting_id, acting, host, acting_session)
+                acting_identity = sign_in(call, secrets, acting_id, acting, host, login, acting_session)
                 acting_user_id = dig(acting_identity, ["user", "id"])
                 # Read the actor's own value too: if a properly scoped endpoint instead writes to the actor's own
                 # record, that still needs restoring, and it is the evidence that distinguishes "fixed" from
@@ -192,7 +195,7 @@ def run(config: dict, approval: dict, output: Path, *, prompt_passwords: bool = 
                 if acting_changed:
                     acting_restored = write_as(acting_session, acting_user_id, acting_baseline)
             finally:
-                sign_out(call, acting_id, acting_session, cleanup, error_record, stop_cleanup)
+                sign_out(call, acting_id, acting_session, cleanup, error_record, stop_cleanup, login["logout_path"])
                 acting_session.clear()
             after = read_value(read_path, target_session, read_field) if probe_accepted else baseline
             changed = after == probe_value
@@ -222,7 +225,7 @@ def run(config: dict, approval: dict, output: Path, *, prompt_passwords: bool = 
                 except (ToolError, OSError, http.client.HTTPException) as error:
                     error_record(error)
             record["restored"] = restored and acting_restored
-            sign_out(call, target_id, target_session, cleanup, error_record, stop_cleanup)
+            sign_out(call, target_id, target_session, cleanup, error_record, stop_cleanup, login["logout_path"])
             target_session.clear()
 
     try:

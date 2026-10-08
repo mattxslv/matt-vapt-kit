@@ -66,3 +66,34 @@ class RunReadOnlyTests(unittest.TestCase):
         counts = staging_counts({"findings": [], "errors": [],
                                  "exposure": [{"path": "/.env", "exposed": True}, {"path": "/x", "exposed": False}]})
         self.assertEqual(counts["exposed"], 1)
+
+
+class RegressionTests(unittest.TestCase):
+    def test_status_is_read_even_when_the_runner_stops_on_401(self):
+        from vaptkit.live import run_regressions
+
+        def fake_run(config, standing, output, paths=None):
+            path = paths[0]
+            if path == "/api/debug":
+                return {"observations": [], "errors": [{"path": path, "message": "HTTP 401: credential not accepted."}]}
+            return {"observations": [{"path": path, "status": 404}], "errors": []}
+
+        checks = [{"name": "debug", "path": "/api/debug", "expect": [404]},
+                  {"name": "env", "path": "/.env", "expect": [404, 307]}]
+        with patch("vaptkit.live.run_read_only", side_effect=fake_run):
+            results = run_regressions({}, {"active": True}, checks, Path("/tmp/unused"))
+        self.assertEqual([(item["path"], item["status"], item["ok"]) for item in results],
+                         [("/api/debug", 401, False), ("/.env", 404, True)])
+
+    def test_regression_file_needs_paths_and_expected_status(self):
+        from vaptkit.live import regression_checks
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "demo.vapt.yml"
+            config.write_text("project: demo\n")
+            (Path(directory) / "demo.regressions.yml").write_text(
+                "checks:\n  - {name: debug, path: /api/debug, expect_status: 404}\n")
+            self.assertEqual(regression_checks(config), [{"name": "debug", "path": "/api/debug", "expect": [404]}])
+            (Path(directory) / "demo.regressions.yml").write_text("checks:\n  - {name: broken, path: api/debug}\n")
+            with self.assertRaises(ToolError):
+                regression_checks(config)
+            self.assertEqual(regression_checks(None), [])

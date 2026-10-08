@@ -26,8 +26,9 @@ from rich.text import Text
 from .assessment import create_output, write_private
 from .checks import audit_commit, checked_revision, history_findings, lockfiles, scan_static, severity_text
 from .config import load_config
-from .live import (NotCovered, browser_sign_in_possible, run_read_only, standing_approval_path, staging_counts,
-                   staging_recap, standing_approval)
+from .live import (NotCovered, Partial, browser_sign_in_possible, regression_checks, regressions_path,
+                   run_read_only, run_regressions, standing_approval_path, staging_counts, staging_recap,
+                   standing_approval)
 from .process import ToolError, git
 from .routes import Tree, review
 from .usage import SOURCE as SOURCE_FILE, reachable_files
@@ -306,11 +307,13 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
                 raise
             except NotCovered as error:
                 row = {"check": name, "status": "NOT RUN", "detail": str(error)}
+            except Partial as error:
+                row = {"check": name, "status": "PARTIAL", "detail": str(error)}
             except (ToolError, OSError, subprocess.CalledProcessError) as error:
                 detail = str(error) if isinstance(error, ToolError) else "Tool operation failed; raw details withheld."
                 row = {"check": name, "status": "REVIEW", "detail": detail}
         rows.append(row)
-        color = {"DONE": "green", "REVIEW": ACCENT, "NOT RUN": ACCENT}[row["status"]]
+        color = {"DONE": "green", "REVIEW": ACCENT, "NOT RUN": ACCENT, "PARTIAL": ACCENT}[row["status"]]
         state = Table.grid(padding=(0, 2))
         state.add_column(no_wrap=True)
         state.add_column(overflow="fold")
@@ -478,9 +481,30 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
         counts = staging_counts(result)
         facts["staging"] = counts
         facts["staging_covered"] = bool(result.get("observations"))
+        checks = regression_checks(config_path)
+        regressions = run_regressions(config, standing, checks, output / "staging-regressions") if checks else []
+        write_private(output / "regressions.json", json.dumps(regressions, indent=2))
+        failed = [item for item in regressions if not item["ok"]]
+        facts["regressions_failed"] = len(failed)
+        requests = len(result.get("observations", [])) + len(regressions)
+        for item in regressions:
+            got = item["status"] if item["status"] is not None else "no response"
+            console.print(Text(f"  {'ok  ' if item['ok'] else 'FAIL'}  {item['path']}  got {got}, expected "
+                               f"{'/'.join(map(str, item['expect']))}  · {item['name']}",
+                               style="dim" if item["ok"] else ACCENT))
+        problems = []
+        if failed:
+            problems.append(f"{len(failed)} of {len(regressions)} past-finding regression checks failed: " + "; ".join(
+                f"{item['path']} returned {item['status'] if item['status'] is not None else 'no response'} "
+                f"(expected {'/'.join(map(str, item['expect']))})" for item in failed[:4]) + ".")
         if counts["confirmed"] or counts["suspected"] or counts["exposed"] or counts["errors"]:
-            raise ToolError(staging_recap(result) + " Evidence: staging/assessment.json.")
-        return staging_recap(result)
+            problems.append(staging_recap(result))
+        if problems:
+            raise ToolError(" ".join(problems) + " Evidence: staging/ and regressions.json.")
+        if not regressions:
+            raise Partial(f"Only {requests} request{'s' if requests != 1 else ''} checked ({staging_recap(result)}) "
+                          f"Add past findings to projects/{regressions_path(config_path).name} so each scan re-checks them.")
+        return f"{staging_recap(result)} All {len(regressions)} past-finding regression checks passed ({requests} requests)."
     if standing:
         expired = (None if standing["active"] else
                    f"The standing approval expired on {standing['expires_on']:%Y-%m-%d}; renew it in "

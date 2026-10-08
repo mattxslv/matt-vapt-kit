@@ -13,7 +13,7 @@ from .process import ToolError
 from .report import FORMAT_ID, PHT, TLP_COLOR, esc
 
 STATUS = {"DONE": ("done", "Done"), "REVIEW": ("review", "Needs review"),
-          "NOT RUN": ("gap", "Not run"), "CANCELLED": ("gap", "Cancelled")}
+          "NOT RUN": ("gap", "Not run"), "CANCELLED": ("gap", "Cancelled"), "PARTIAL": ("gap", "Partial")}
 LOCATION_LIMIT = 120
 SCOPE_LABEL = {"runtime": "Runtime", "dev": "Dev only", "unused": "Unused dependency", "unknown": "Not classified"}
 ROUTE_LIMIT = 300

@@ -1,6 +1,7 @@
 """Read-only staging checks: header/cookie observations and a short exposed-file list, never attack payloads."""
 import json
 import os
+import re
 import sys
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -15,6 +16,35 @@ RUN_WINDOW = timedelta(hours=1)
 
 class NotCovered(ToolError):
     """The live check couldn't look at the target at all, so it's a coverage gap rather than a finding."""
+
+
+class Partial(ToolError):
+    """The live check ran but covered too little to call it done."""
+
+
+# One path per approval: the runner stops a run at the first 401/403/redirect (a safety rule we keep), and for a
+# regression check that status is the answer being measured, so each check gets its own run.
+PATHS_PER_APPROVAL = 1
+HTTP_STATUS = re.compile(r"HTTP (\d{3})")
+
+
+def regressions_path(config_path: Path) -> Path:
+    return config_path.with_name(config_path.name.replace(".vapt.yml", ".regressions.yml"))
+
+
+def regression_checks(config_path: Path | None) -> list[dict]:
+    """Past findings to re-check on every live scan: [{name, path, expect: [status, ...]}]."""
+    if config_path is None or not regressions_path(config_path).is_file():
+        return []
+    data = yaml.safe_load(regressions_path(config_path).read_text()) or {}
+    checks = []
+    for item in data.get("checks", []):
+        path, expect = item.get("path"), item.get("expect_status")
+        if not isinstance(path, str) or not path.startswith("/") or not expect:
+            raise ToolError(f"{regressions_path(config_path).name}: every check needs a path and expect_status.")
+        checks.append({"name": item.get("name", path), "path": path,
+                       "expect": expect if isinstance(expect, list) else [expect]})
+    return checks
 
 
 def browser_sign_in_possible() -> bool:
@@ -45,7 +75,7 @@ def standing_approval(config_path: Path | None) -> dict | None:
     return {**record, "active": date.today() <= record["expires_on"]}
 
 
-def run_read_only(config: dict, standing: dict, output: Path) -> dict:
+def run_read_only(config: dict, standing: dict, output: Path, paths: list[str] | None = None) -> dict:
     """Run the existing read-only checks under a fresh one-hour approval derived from the standing approval."""
     if not standing.get("active"):
         raise ToolError("The standing approval has expired.")
@@ -56,11 +86,30 @@ def run_read_only(config: dict, standing: dict, output: Path) -> dict:
         "starts_at": now.isoformat(),
         "expires_at": (now + RUN_WINDOW).isoformat(),
         # Exposure checks are only allowed against unauthenticated targets; behind IAP, headers only.
-        "exposure_checks": not config.get("access"),
-        "paths": ["/"],
+        "exposure_checks": not config.get("access") and paths is None,
+        "paths": paths or ["/"],
     })
     path, _ = assess(config, approval, output)
     return json.loads(path.read_text())
+
+
+def run_regressions(config: dict, standing: dict, checks: list[dict], output: Path) -> list[dict]:
+    """Request each regression path (HEAD, read-only) and compare its status with the expected one."""
+    results = []
+    for index in range(0, len(checks), PATHS_PER_APPROVAL):
+        batch = checks[index:index + PATHS_PER_APPROVAL]
+        result = run_read_only(config, standing, output.with_name(f"{output.name}-{index // PATHS_PER_APPROVAL + 1}"),
+                               paths=[check["path"] for check in batch])
+        statuses = {item["path"]: item.get("status") for item in result.get("observations", [])}
+        errors = {item["path"]: item.get("message") for item in result.get("errors", [])}
+        for check in batch:
+            status = statuses.get(check["path"])
+            stopped = HTTP_STATUS.search(errors.get(check["path"]) or "")
+            if status is None and stopped:
+                status = int(stopped[1])
+            results.append({**check, "status": status, "error": errors.get(check["path"]),
+                            "ok": status in check["expect"]})
+    return results
 
 
 def staging_counts(result: dict) -> dict:

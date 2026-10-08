@@ -88,7 +88,7 @@
 
 - Design pass: loading view shows a shimmer word + real 4-step track (fake
   code lines removed). Main menu grouped (Scan / Live checks / Setup) with
-  hints and a status line (`MENU`, `print_menu`, `status_line` in menu.py);
+  hints and a status line, left-aligned (`MENU`, `print_menu`, `status_line` in menu.py);
   logo untouched. Repo-scan PDF redesigned: `assets/scan-report.css`, dark cover
   with inline block-art logo (`vaptkit/brand.py`), "What to do first" list,
   rules grouped with their yml messages, running header/footer via CSS

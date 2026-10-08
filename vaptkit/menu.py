@@ -730,13 +730,15 @@ def menu_block(hints: bool = True) -> Table:
     return grid
 
 
+MENU_MARGIN = 2
+
+
 def print_menu(console: Console) -> int:
-    """Draw the grouped menu centered under the logo; returns the left margin used, for the prompt."""
+    """Draw the grouped menu left-aligned under the logo; returns the left margin used, for the prompt."""
+    margin = MENU_MARGIN
     block = menu_block()
-    if console.measure(block).maximum > console.width:
+    if console.measure(block).maximum + margin > console.width:
         block = menu_block(hints=False)
-    width = min(console.measure(block).maximum, console.width)
-    margin = max(0, (console.width - width) // 2)
     console.print(Padding(block, (0, 0, 0, margin)))
     console.print()
     console.print(Padding(status_line(), (0, 0, 0, margin)))

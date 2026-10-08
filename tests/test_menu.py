@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 from vaptkit.process import ToolError, stream
 from vaptkit.menu import (
-    compare_scans, container_target, is_local_target, is_noisy_zap_line, local_url, missing_local_attack_images,
+    compare_scans, container_target, find_repos, parse_selection, is_local_target, is_noisy_zap_line, local_url, missing_local_attack_images,
     retry_input, scan_findings, staging_config, staging_recap, available_memory_mb,
 )
 
@@ -254,3 +254,26 @@ class ContainerTargetTests(unittest.TestCase):
             self.assertEqual(container_target("http://127.0.0.1:8080"), ("http://host.docker.internal:8080", []))
             self.assertEqual(container_target("http://localhost:3000/app?x=1"),
                              ("http://host.docker.internal:3000/app?x=1", []))
+
+
+class FindReposTests(unittest.TestCase):
+    def test_finds_projects_but_skips_dependency_and_hidden_folders(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for folder in ("work/dtap", "pemedes", "work/dtap/node_modules/lib", "node_modules/pkg",
+                           ".cache/repo", "a/b/c/d/e/too-deep"):
+                (root / folder / ".git").mkdir(parents=True)
+            found = {path.relative_to(root).as_posix() for path in find_repos(root)}
+            self.assertEqual(found, {"work/dtap", "pemedes"})
+
+
+class ParseSelectionTests(unittest.TestCase):
+    def test_all_numbers_commas_and_ranges(self):
+        self.assertEqual(parse_selection("a", 3), [0, 1, 2])
+        self.assertEqual(parse_selection("1 3", 3), [0, 2])
+        self.assertEqual(parse_selection("1,2-3", 4), [0, 1, 2])
+
+    def test_out_of_range_or_garbage_raises(self):
+        for entry in ("0", "5", "x", "", "3-1"):
+            with self.assertRaises(ToolError, msg=entry):
+                parse_selection(entry, 4)

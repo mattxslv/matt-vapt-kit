@@ -15,12 +15,18 @@ if (-not (Test-Path $venvPython)) {
     & python -m venv (Join-Path $kitDir ".venv")
 }
 
+$firstInstall = $false
 & $venvPython -c "import rich, vaptkit.menu" 2>$null
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Installing the toolkit and terminal dependencies (downloads Python packages)."
     & $venvPython -m pip install --quiet -e $kitDir
+    $firstInstall = $true
 }
 
-Write-Host "Installed. Launching the menu..."
-& $venvVaptkit @args
+if ($firstInstall) {
+    Write-Host "Installed. Next, choose which projects to protect on every git push..."
+    & $venvVaptkit --protect @args
+} else {
+    & $venvVaptkit @args
+}
 exit $LASTEXITCODE

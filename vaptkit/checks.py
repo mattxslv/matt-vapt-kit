@@ -87,13 +87,18 @@ def check(repo: Path, revision: str, *, static: bool = False) -> None:
         scan_static(repo, sha)
 
 
-def scan_history(repo: Path, sha: str, *, runner=None) -> None:
+def scan_history(repo: Path, sha: str, *, runner=None, revisions: str | None = None,
+                 leak_exit_code: int | None = None, verbose: bool = False) -> None:
+    """Gitleaks over the history reachable from sha, or only over `revisions` (git log arguments)."""
     execute = runner or run
+    revisions = revisions or sha
     with tempfile.TemporaryDirectory(prefix="matt-vapt-history-") as directory:
         bare = Path(directory) / "history.git"
         # --shared records the host object path, which a Linux container can't resolve on Windows.
         shared = [] if WINDOWS else ["--shared"]
-        execute(["git", "clone", "--quiet", "--bare", *shared, str(repo), str(bare)])
+        # A mirror keeps remote-tracking refs, so revisions such as "--not --remotes" still resolve.
+        kind = "--bare" if revisions == sha else "--mirror"
+        execute(["git", "clone", "--quiet", kind, *shared, str(repo), str(bare)])
         # Honor the committed .gitleaksignore (reviewed historical findings).
         ignore_blob = []
         try:
@@ -103,17 +108,19 @@ def scan_history(repo: Path, sha: str, *, runner=None) -> None:
             ignore_blob = ["--gitleaks-ignore-path", str(ignore_path)]
         except ToolError:
             pass
+        exit_code = [f"--exit-code={leak_exit_code}"] if leak_exit_code is not None else []
+        exit_code += ["--verbose"] if verbose else []
         if WINDOWS:
-            execute(windows_history_command(directory, sha, bool(ignore_blob)))
+            execute(windows_history_command(directory, revisions, bool(ignore_blob)) + exit_code)
             return
         execute(docker_repo(repo) + [
             "-v", f"{directory}:{directory}:ro", "-w", str(bare),
             GITLEAKS, "git", str(bare), "--redact", "--no-banner",
-            f"--log-opts=--no-textconv --no-ext-diff {sha}",
-        ] + ignore_blob)
+            f"--log-opts=--no-textconv --no-ext-diff {revisions}",
+        ] + ignore_blob + exit_code)
 
 
-def windows_history_command(directory: str, sha: str, has_ignore: bool) -> list[str]:
+def windows_history_command(directory: str, revisions: str, has_ignore: bool) -> list[str]:
     """Gitleaks over a standalone bare clone mounted at a fixed Linux path."""
     return [
         "docker", "run", "--rm", "--network=none", "--cap-drop=ALL",
@@ -122,7 +129,7 @@ def windows_history_command(directory: str, sha: str, has_ignore: bool) -> list[
         "-e", "GIT_CONFIG_COUNT=1", "-e", "GIT_CONFIG_KEY_0=safe.directory", "-e", "GIT_CONFIG_VALUE_0=*",
         "-v", f"{directory}:/scan:ro", "-w", "/scan/history.git",
         GITLEAKS, "git", "/scan/history.git", "--redact", "--no-banner",
-        f"--log-opts=--no-textconv --no-ext-diff {sha}",
+        f"--log-opts=--no-textconv --no-ext-diff {revisions}",
     ] + (["--gitleaks-ignore-path", "/scan/.gitleaksignore"] if has_ignore else [])
 
 
@@ -160,12 +167,13 @@ def scan_static(repo: Path, sha: str, *, runner=None, json_output=False) -> None
         ] + (["--json"] if json_output else []) + ["/src"])
 
 
-def pushed_commits(lines: str) -> list[str]:
-    commits = set()
+def pushed_updates(lines: str) -> list[tuple[str, str | None]]:
+    """(local sha, remote sha or None for a new ref) for each ref a push creates or updates."""
+    updates = set()
     for line in lines.splitlines():
         fields = line.split()
         if len(fields) != 4 or not SHA.fullmatch(fields[1]) or not SHA.fullmatch(fields[3]):
             raise ToolError("Invalid pre-push ref input.")
         if set(fields[1]) != {"0"}:
-            commits.add(fields[1])
-    return sorted(commits)
+            updates.add((fields[1], None if set(fields[3]) == {"0"} else fields[3]))
+    return sorted(updates, key=lambda update: (update[0], update[1] or ""))

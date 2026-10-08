@@ -6,8 +6,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from vaptkit.checks import audit_commit, check, checked_revision, pushed_commits
-from vaptkit.hooks import install, uninstall
+from vaptkit.checks import audit_commit, check, checked_revision, pushed_updates
+from vaptkit.hooks import Findings, audit_runner, install, uninstall
 from vaptkit.process import ToolError, git
 
 
@@ -17,9 +17,10 @@ class PushTests(unittest.TestCase):
         lines = f"refs/heads/main {one} refs/heads/main {two}\n"
         lines += f"refs/tags/v1 {one} refs/tags/v1 {zero}\n"
         lines += f"(delete) {zero} refs/heads/old {one}\n"
-        self.assertEqual(pushed_commits(lines), [one])
+        lines += f"refs/heads/new {one} refs/heads/new {zero}\n"
+        self.assertEqual(pushed_updates(lines), [(one, None), (one, two)])
         with self.assertRaises(ToolError):
-            pushed_commits("untrusted garbage")
+            pushed_updates("untrusted garbage")
 
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
@@ -132,3 +133,23 @@ class PushTests(unittest.TestCase):
             "vaptkit.checks.run", side_effect=audit
         ):
             audit_commit(self.repo, git(self.repo, "rev-parse", "HEAD"))
+
+
+class HookAuditTests(unittest.TestCase):
+    def audit(self, stdout):
+        with patch("vaptkit.hooks.subprocess.run") as run:
+            run.return_value = subprocess.CompletedProcess([], 1, stdout=stdout, stderr="")
+            audit_runner(["pnpm", "audit"])
+
+    def test_high_or_critical_blocks(self):
+        with self.assertRaises(Findings):
+            self.audit(json.dumps({"metadata": {"vulnerabilities": {"high": 1, "critical": 0}}}))
+
+    def test_only_low_or_moderate_passes(self):
+        self.audit(json.dumps({"metadata": {"vulnerabilities": {"low": 4, "moderate": 2}}}))
+
+    def test_audit_errors_are_not_findings(self):
+        for stdout in ("not json", json.dumps({"error": {"code": "ENOTFOUND"}})):
+            with self.assertRaises(ToolError) as caught:
+                self.audit(stdout)
+            self.assertNotIsInstance(caught.exception, Findings)

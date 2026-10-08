@@ -9,9 +9,14 @@ if [ ! -x "$kit_dir/.venv/bin/python" ]; then
     printf '%s\n' "First run: creating the toolkit's local Python environment."
     python3 -m venv "$kit_dir/.venv"
 fi
+first_install=0
 if ! "$kit_dir/.venv/bin/python" -c 'import rich, vaptkit.menu' >/dev/null 2>&1; then
     printf '%s\n' "Installing the toolkit and terminal dependencies (downloads Python packages)."
     "$kit_dir/.venv/bin/python" -m pip install --quiet -e "$kit_dir"
+    first_install=1
 fi
-printf '%s\n' "Installed. Launching the menu..."
+if [ "$first_install" = 1 ]; then
+    printf '%s\n' "Installed. Next, choose which projects to protect on every git push..."
+    exec "$kit_dir/.venv/bin/vaptkit" --protect "$@"
+fi
 exec "$kit_dir/.venv/bin/vaptkit" "$@"

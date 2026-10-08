@@ -42,6 +42,27 @@
 - New finding from a local dry run: **startup-ph has 29 possible secrets in its
   git history** (untriaged, like DTAP's 74 and PEMEDES's 2).
 
+- Terminal header is now just the shield + MVK lockup (caption removed). Logo,
+  README banner and social preview in `docs/brand/` are drawn from that same
+  block art.
+- Windows: Docker scan stages skip `--user` (no `os.getuid`) and gitleaks uses a
+  standalone bare clone mounted at `/scan`; option 5 targets
+  `host.docker.internal` instead of `--network host`. Exercised on Linux only;
+  this laptop's ufw blocks container-to-host traffic, so option 5's Windows
+  network path is untested end to end.
+- Push protection (menu option 7, and offered automatically on first
+  `./install`/`install.ps1`): discovers Git repos under the home folder
+  (`find_repos`, depth 4, skips hidden/node_modules), multi-select or `a` for
+  all, installs the existing per-repo pre-push hook. The hook now checks only the
+  commits being pushed (`remote..local`, or `local --not --remotes` for new refs,
+  using a `--mirror` clone so remote refs resolve), blocks on new leaks
+  (gitleaks `--exit-code=42`) or high/critical audit results (only when
+  package.json/pnpm-lock.yaml changed in the push), and warns but allows the push
+  when a check can't run. Verified end to end in a scratch repo: old pushed leak
+  doesn't block, new leak blocks with file/line/commit, new branch scans only its
+  commits, missing Docker warns and allows. Windows hook chaining uses sh wrapper
+  scripts instead of symlinks; untested on real Windows.
+
 Previous handoff (2026-10-07 menu/redesign work, DTAP finding) preserved below.
 
 Replaces the Oct 5 handoff below this line's content; that session's "pending" items

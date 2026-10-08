@@ -1,10 +1,13 @@
 """Numbered terminal menu for the committed-code scan and its results."""
+import contextlib
 import getpass
+import io
 import json
 import os
 import re
 import shutil
 import subprocess
+import sys
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -19,6 +22,7 @@ from rich.text import Text
 from .assessment import approval_template, assess
 from .config import ConfigError, load_config
 from .doctor import diagnose
+from .hooks import install as install_hook
 from .process import ToolError, git, stream
 from .scan import path_link, print_header, scan
 
@@ -27,6 +31,8 @@ PRIVATE = KIT / ".private"
 PROJECTS = KIT / "projects"
 RECENT_LIMIT = 8
 WINDOWS = os.name == "nt"
+SEARCH_DEPTH = 4
+SKIP_DIRS = {"node_modules", "AppData", "Library", "snap", "venv", "site-packages", "vendor", "go", "Downloads"}
 
 
 def recent_file() -> Path:
@@ -484,6 +490,88 @@ def missing_local_attack_images() -> list[str]:
             if subprocess.run(["docker", "image", "inspect", image], capture_output=True).returncode != 0]
 
 
+def find_repos(root: Path, depth: int = SEARCH_DEPTH) -> list[Path]:
+    """Git projects under root, newest activity first, without descending into a project once found."""
+    found = []
+    def walk(folder: Path, level: int) -> None:
+        try:
+            entries = list(os.scandir(folder))
+        except OSError:
+            return
+        if any(entry.name == ".git" for entry in entries):
+            found.append(folder)
+            return
+        if level == depth:
+            return
+        for entry in entries:
+            if entry.is_dir(follow_symlinks=False) and not entry.name.startswith(".") and entry.name not in SKIP_DIRS:
+                walk(Path(entry.path), level + 1)
+    walk(root, 0)
+    return sorted(found, key=lambda repo: (repo / ".git").stat().st_mtime, reverse=True)
+
+
+def is_protected(repo: Path) -> bool:
+    return (repo / ".git" / "matt-vapt-hooks").is_dir()
+
+
+def parse_selection(entry: str, count: int) -> list[int]:
+    """'a' for all, or numbers like '1 3 5' / '1,3' / '2-4'; returns zero-based indexes."""
+    entry = entry.strip().lower()
+    if entry in ("a", "all"):
+        return list(range(count))
+    picked = set()
+    for part in entry.replace(",", " ").split():
+        start, _, end = part.partition("-")
+        if not start.isdigit() or (end and not end.isdigit()):
+            raise ToolError("Type numbers like 1 3 5 or 2-4, a for all, or b to go back.")
+        first, last = int(start), int(end or start)
+        if not 1 <= first <= last <= count:
+            raise ToolError(f"Pick numbers between 1 and {count}.")
+        picked.update(range(first - 1, last))
+    if not picked:
+        raise ToolError("Type numbers like 1 3 5 or 2-4, a for all, or b to go back.")
+    return sorted(picked)
+
+
+def protect_pushes(console: Console) -> None:
+    console.print(Text("Push protection", style="bold"))
+    console.print(Text("Before each git push, checks the new commits for leaked secrets and, if dependencies "
+                       "changed, for high/critical vulnerable packages. Findings block the push; if the check "
+                       "can't run (for example Docker is off) it warns and lets the push through.", style="dim"))
+    console.print(Text("\nLooking for Git projects in your home folder...", style="dim"))
+    repos = find_repos(Path.home())
+    if not repos:
+        console.print(Text("No Git projects found. Clone a project first, then come back here.", style="yellow"))
+        pause(console)
+        return
+    console.print()
+    for number, repo in enumerate(repos, start=1):
+        label = str(repo).replace(str(Path.home()), "~", 1)
+        option(console, str(number), label + ("  (already protected)" if is_protected(repo) else ""))
+    console.print(Text("\nProjects cloned later are not covered; come back to this option to add them.", style="dim"))
+    picked = retry_input(console, "\nProtect which? Numbers like 1 3 5, a for all, b to go back: ",
+                         lambda entry: parse_selection(entry, len(repos)))
+    if picked is None:
+        return
+    console.print()
+    for index in picked:
+        repo = repos[index]
+        label = str(repo).replace(str(Path.home()), "~", 1)
+        if is_protected(repo):
+            console.print(Text(f"  already protected  {label}", style="dim"))
+            continue
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                install_hook(repo)
+        except (ToolError, OSError) as error:
+            console.print(Text(f"  not protected      {label}: {error}", style="yellow"))
+            continue
+        remember(repo)
+        console.print(Text("  protected          ", style="bold green") + Text(label))
+    console.print(Text("\nTo remove it from a project later: vapt hook uninstall <project folder>", style="dim"))
+    pause(console)
+
+
 def check_ready(console: Console) -> None:
     result = diagnose("push")
     rows = [(check["name"], check["ready"], check["detail"]) for check in result["checks"]]
@@ -514,7 +602,14 @@ def check_ready(console: Console) -> None:
 def main() -> int:
     console = Console(highlight=False, no_color=bool(os.environ.get("NO_COLOR")))
     actions = {"1": run_scan, "2": show_latest, "3": check_ready,
-               "4": run_staging_check, "5": run_local_attack, "6": show_compare}
+               "4": run_staging_check, "5": run_local_attack, "6": show_compare, "7": protect_pushes}
+    if "--protect" in sys.argv[1:]:
+        console.clear()
+        print_header(console)
+        try:
+            protect_pushes(console)
+        except (KeyboardInterrupt, EOFError):
+            console.print()
     while True:
         console.clear()
         print_header(console)
@@ -524,6 +619,7 @@ def main() -> int:
         option(console, "4", "Quick staging check (paste a staging link)")
         option(console, "5", "Local attack testing (localhost only)")
         option(console, "6", "Compare the last two scans")
+        option(console, "7", "Protect your git pushes (check for leaks before each push)")
         option(console, "q", "Quit")
         try:
             choice = ask(console, "\nChoose: ").lower()

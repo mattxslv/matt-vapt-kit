@@ -65,9 +65,11 @@ command; it does not change your system's script policy.
 > host networking. Some dev servers reject that hostname: Vite, for example,
 > needs `server.allowedHosts: ['host.docker.internal']`.
 
-Either way, it creates the local Python environment, installs the toolkit into
-it, and opens the menu below. Running it again later just reopens the menu (it
-skips reinstalling once the toolkit is already set up).
+Either way, it creates the local Python environment and installs the toolkit
+into it. On that first run it then finds the Git projects in your home folder and
+asks which ones to protect on every `git push` (pick numbers, or `a` for all; see
+option 7 below), then opens the menu. Running it again later just reopens the
+menu (it skips reinstalling once the toolkit is already set up).
 
 Already installed? Run `vaptkit` (or `.venv/bin/vaptkit`, `.venv\Scripts\vaptkit.exe`
 on Windows, from this folder) for a numbered menu:
@@ -112,6 +114,19 @@ on Windows, from this folder) for a numbered menu:
    no authentication check. Needs at least two scans to show anything.
 
    ![Compare scans](docs/screenshots/06-compare.svg)
+7. **Protect your git pushes** — finds the Git projects in your home folder (no
+   need to know where they live), and installs a pre-push check in the ones you
+   pick, or all of them with `a`. Before each `git push` it scans **only the new
+   commits** for leaked secrets, and if `package.json`/`pnpm-lock.yaml` changed,
+   runs a high/critical dependency audit. Findings **block the push** and show the
+   file, line and commit (secret values redacted). If the check can't run, for
+   example Docker is off, it warns and lets the push through. Old leaks already on
+   the remote don't block new pushes. `git push --no-verify` skips it in an
+   emergency, false positives go in the project's `.gitleaksignore`, and
+   `vapt hook uninstall <project folder>` removes it. Projects cloned later aren't
+   covered until you run option 7 again.
+
+   ![Protect your git pushes](docs/screenshots/09-protect.svg)
 
 Screenshots are rendered from the real menu code using synthetic scan data, not
 findings from any real project.

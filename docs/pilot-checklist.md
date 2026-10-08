@@ -10,11 +10,11 @@ and operational-readiness pilot, not a certification or an independent accuracy 
 Linux/macOS is the piloted platform. A `install.ps1` bootstrap exists for native
 Windows (PowerShell) but has not been run on an actual Windows machine or
 completed a teammate pilot there — treat the first Windows install as part of
-this pilot, not as already-verified tooling. Known Windows gap: menu option 5
-(local attack testing) depends on `docker run --network host`, which Docker
-Desktop on Windows does not support; it is expected to fail there regardless of
-how the rest of the install goes. Use WSL instead of native Windows if full
-parity with the Linux experience, including local attack testing, is needed.
+this pilot, not as already-verified tooling. On Windows, the scan stages and
+menu option 5 (local attack testing) use Windows-specific Docker handling
+(no host uid mapping; option 5 targets `host.docker.internal` instead of host
+networking) that was only exercised on Linux. WSL remains the fallback if
+native Windows misbehaves.
 
 ## Before the run
 

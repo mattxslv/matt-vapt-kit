@@ -8,8 +8,8 @@ you plan to use. None of the steps in the first-run walkthrough scans a live tar
 **Want the interactive menu immediately?** From the toolkit folder, use `./install`
 (Linux/macOS) or `powershell -ExecutionPolicy Bypass -File .\install.ps1` (Windows).
 It bootstraps the local Python environment, installs the toolkit, and opens the
-numbered menu. Re-running it later just reopens the menu. On Windows, menu option 5
-(local attack testing) will not work; see the [README warning](../README.md#menu).
+numbered menu. Re-running it later just reopens the menu. Windows support is not
+yet piloted; see the [README warning](../README.md#menu).
 
 **Want to check a repository immediately, no menu?** From the toolkit folder, use
 `./scan /path/to/your-project`. It bootstraps the local Python environment and runs

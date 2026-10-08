@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 from vaptkit.process import ToolError, stream
 from vaptkit.menu import (
-    compare_scans, is_local_target, is_noisy_zap_line, local_url, missing_local_attack_images,
+    compare_scans, container_target, is_local_target, is_noisy_zap_line, local_url, missing_local_attack_images,
     retry_input, scan_findings, staging_config, staging_recap, available_memory_mb,
 )
 
@@ -241,3 +241,16 @@ class MissingLocalAttackImagesTests(unittest.TestCase):
         with unittest.mock.patch("subprocess.run") as run:
             run.return_value = MagicMock(returncode=0)
             self.assertEqual(missing_local_attack_images(), [])
+
+
+class ContainerTargetTests(unittest.TestCase):
+    def test_linux_uses_host_network_and_the_url_unchanged(self):
+        with unittest.mock.patch("vaptkit.menu.WINDOWS", False):
+            self.assertEqual(container_target("http://localhost:3000"),
+                             ("http://localhost:3000", ["--network", "host"]))
+
+    def test_windows_targets_docker_desktop_host_name_without_host_network(self):
+        with unittest.mock.patch("vaptkit.menu.WINDOWS", True):
+            self.assertEqual(container_target("http://127.0.0.1:8080"), ("http://host.docker.internal:8080", []))
+            self.assertEqual(container_target("http://localhost:3000/app?x=1"),
+                             ("http://host.docker.internal:3000/app?x=1", []))

@@ -26,6 +26,7 @@ KIT = Path(__file__).resolve().parent.parent
 PRIVATE = KIT / ".private"
 PROJECTS = KIT / "projects"
 RECENT_LIMIT = 8
+WINDOWS = os.name == "nt"
 
 
 def recent_file() -> Path:
@@ -210,7 +211,7 @@ def show_latest(console: Console) -> None:
     option(console, "o", "Open this folder")
     option(console, "b", "Back")
     if ask(console, "\nChoose: ").lower() == "o":
-        if os.name == "nt":
+        if WINDOWS:
             os.startfile(folder)
             return
         if not shutil.which("xdg-open"):
@@ -338,6 +339,15 @@ def is_local_target(url: str) -> bool:
     return parsed.hostname in LOCAL_HOSTS and bool(parsed.scheme) and parsed.port is not None
 
 
+def container_target(url: str) -> tuple[str, list[str]]:
+    """The URL scanner containers should use for a local app, and the docker network flags to reach it."""
+    if not WINDOWS:
+        return url, ["--network", "host"]
+    # Docker Desktop runs containers in a VM, where localhost is the VM itself; this name is the Windows host.
+    parsed = urlsplit(url)
+    return parsed._replace(netloc=f"host.docker.internal:{parsed.port}").geturl(), []
+
+
 def local_url(entry: str) -> str:
     """Accept a bare port, host:port, or a full URL and normalize to http://localhost:PORT."""
     entry = entry.strip() or "3000"
@@ -396,7 +406,10 @@ def run_local_attack(console: Console) -> None:
     output.mkdir(mode=0o700)
     console.clear()
     print_header(console)
+    target, network = container_target(url)
     console.print(Text(f"Target   {url}", style="dim"))
+    if target != url:
+        console.print(Text(f"Scanners reach it as {target} (Docker Desktop's name for this computer).", style="dim"))
     console.print(Text(f"Save to  {output}", style="dim"))
     console.print(Text("Each scanner is capped on memory and time so a slow machine doesn't need "
                        "to be force-stopped.", style="dim"))
@@ -418,11 +431,11 @@ def run_local_attack(console: Console) -> None:
     nuclei_name = f"mvk-nuclei-{stamp}"
     console.rule(Text("1 / 2  Nuclei known-issue scan", style="bold"), align="left", style="grey37")
     nuclei_log, code, nuclei_timed_out = stream([
-        "docker", "run", "--rm", "--network", "host", "--name", nuclei_name,
+        "docker", "run", "--rm", *network, "--name", nuclei_name,
         "--memory=1g", "--memory-swap=1g",
         "-v", f"{output}:/output",
         next(image for image in LOCAL_ATTACK_IMAGES if "nuclei" in image),
-        "-u", url, "-severity", "low,medium,high,critical", "-c", "10", "-o", "/output/nuclei.txt",
+        "-u", target, "-severity", "low,medium,high,critical", "-c", "10", "-o", "/output/nuclei.txt",
     ], printer, timeout=NUCLEI_TIMEOUT_SECONDS, on_timeout=stop(nuclei_name))
     hits = len((output / "nuclei.txt").read_text().splitlines()) if (output / "nuclei.txt").is_file() else 0
     if nuclei_timed_out:
@@ -435,11 +448,11 @@ def run_local_attack(console: Console) -> None:
     zap_name = f"mvk-zap-{stamp}"
     console.rule(Text("2 / 2  ZAP active scan", style="bold"), align="left", style="grey37")
     zap_log, code, zap_timed_out = stream([
-        "docker", "run", "--rm", "--network", "host", "--name", zap_name,
+        "docker", "run", "--rm", *network, "--name", zap_name,
         "--memory=2g", "--memory-swap=2g", "-e", "JAVA_OPTS=-Xmx1536m",
         "-v", f"{output}:/zap/wrk:rw",
         next(image for image in LOCAL_ATTACK_IMAGES if "zap" in image),
-        "zap-full-scan.py", "-t", url, "-r", "zap-report.html", "-I", "-s",
+        "zap-full-scan.py", "-t", target, "-r", "zap-report.html", "-I", "-s",
     ], zap_printer, timeout=ZAP_TIMEOUT_SECONDS, on_timeout=stop(zap_name))
     alerts = zap_log.count("WARN-NEW:") + zap_log.count("FAIL-NEW:")
     if zap_timed_out:

@@ -57,13 +57,13 @@ checked during setup). The `-ExecutionPolicy Bypass` only applies to this one
 command; it does not change your system's script policy.
 
 > [!WARNING]
-> Native Windows has not completed a teammate pilot. Scans (option 1) need
-> Docker Desktop running; the scanner containers have Windows-specific
-> handling that was exercised on Linux, not yet on a real Windows machine.
-> **Local attack testing (menu option 5) will not work on Windows**: it relies
-> on `docker run --network host`, which Docker Desktop on Windows does not
-> support the way Linux does. Use WSL for full parity with the Linux
-> experience, or stick to options 1-4 and 6 on native Windows.
+> Native Windows has not completed a teammate pilot. Scans (option 1) and
+> local attack testing (option 5) need Docker Desktop running, and both have
+> Windows-specific handling that was exercised on Linux, not yet on a real
+> Windows machine. On Windows, option 5 reaches your app through
+> `host.docker.internal` (Docker Desktop's name for your computer) instead of
+> host networking. Some dev servers reject that hostname: Vite, for example,
+> needs `server.allowedHosts: ['host.docker.internal']`.
 
 Either way, it creates the local Python environment, installs the toolkit into
 it, and opens the menu below. Running it again later just reopens the menu (it
@@ -102,7 +102,8 @@ on Windows, from this folder) for a numbered menu:
    with synthetic data, never at staging or production. Each scanner runs
    with a memory cap and a time limit (10 minutes for Nuclei, 15 for ZAP) so
    a slow machine doesn't need a manual kill, and it warns first if free
-   memory looks low. **Does not work on Windows** — see the warning above.
+   memory looks low. On Windows the scanners reach the app through
+   `host.docker.internal` instead; see the warning above.
 
    ![Local attack testing](docs/screenshots/08-local-attack.svg)
 6. **Compare the last two scans** — diffs `static-findings.json` and

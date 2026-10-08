@@ -24,12 +24,12 @@ VAPT.
 Needs Python 3.11+ on PATH and Docker running. Clone, then run one command:
 
 ```bash
-git clone --branch v0.6.3 https://github.com/mattxslv/matt-vapt-kit.git
+git clone --branch v0.6.4 https://github.com/mattxslv/matt-vapt-kit.git
 cd matt-vapt-kit
 ./install
 ```
 
-`--branch v0.6.3` pins the current [release](https://github.com/mattxslv/matt-vapt-kit/releases);
+`--branch v0.6.4` pins the current [release](https://github.com/mattxslv/matt-vapt-kit/releases);
 drop it to follow `main`.
 
 ![Linux install](docs/screenshots/01-install-linux.svg)
@@ -53,6 +53,10 @@ menu. Afterwards, `./install` or `vaptkit` just opens the menu.
 
 ![vaptkit menu](docs/screenshots/03-menu.svg)
 
+0. **Full scan of a project:** the one-step option. Pick the project and it scans
+   every branch (your checkout, `main`, `staging`), runs the read-only staging check
+   if the project has a standing approval, makes all the PDFs and ends with one
+   summary table across branches.
 1. **Scan a project:** secrets in Git history, vulnerable dependencies (Node, PHP,
    .NET, Python and more), code rules (JavaScript/TypeScript, C#/ASP.NET
    and web.config) and API routes without a login check (Next.js and ASP.NET). You can

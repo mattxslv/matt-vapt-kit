@@ -169,6 +169,11 @@
   handlers. The earlier lead-evaluator/requirements auth finding is RESOLVED: the
   route is gone from both branches.
 
+- Option 0 "Full scan of a project" (v0.6.4, `full_scan` in menu.py): all branches, live
+  stage once, PDFs automatically, summary table (attention, secrets, high/critical deps,
+  no-login handlers, report link). Shares `prepare_project`/`scan_branches` with option 1.
+  New "Quick start" group keeps the menu numbered 0-8 top to bottom (test enforces order).
+
 Previous handoff (2026-10-07 menu/redesign work, DTAP finding) preserved below.
 
 Replaces the Oct 5 handoff below this line's content; that session's "pending" items

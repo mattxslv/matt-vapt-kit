@@ -147,36 +147,39 @@ def pick_branches(console: Console, choices: list[tuple[str, str]]) -> list[tupl
     return None if picked is None else [choices[index] for index in picked]
 
 
-def run_scan(console: Console) -> None:
+def prepare_project(console: Console) -> Path | None:
+    """Pick a project, confirm it's a Git repo, remember it and refresh its remote branches."""
     repo = choose_project(console)
     if repo is None:
-        return
+        return None
     try:
         repo = Path(git(repo, "rev-parse", "--show-toplevel")).resolve()
     except ToolError:
         console.print(Text(f"\n{repo} is not a Git project folder.", style=ACCENT))
         pause(console)
-        return
+        return None
     remember(repo)
     console.print(Text("\nChecking the remote for the latest branches...", style="dim"))
     if not refresh_branches(repo):
         console.print(Text("Couldn't reach the remote; using the branches already on this computer.", style=ACCENT))
-    selected = pick_branches(console, branch_choices(repo))
-    if not selected:
-        return
+    return repo
+
+
+def scan_branches(console: Console, repo: Path, selected: list[tuple[str, str]]) -> list[tuple[str, Path]]:
+    """Scan each (label, revision) into its own evidence folder; returns [(branch label, folder)] that finished."""
     config = matching_config(repo)
     PRIVATE.mkdir(mode=0o700, exist_ok=True)
     console.clear()
     finished = []
     for index, (label, revision) in enumerate(selected):
         output = PRIVATE / ("scan-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6])
+        branch = label.removesuffix(" (your checkout)")
         if index:
-            console.rule(Text(f"Next: {label}", style="bold"), style="grey37")
+            console.rule(Text(f"Next: {branch}", style="bold"), style="grey37")
         try:
             # The live staging check is about the deployed site, not a branch, so run it once per run.
             scan(repo, config_path=config, output=output, console=console, revision=revision,
-                 branch=label.removesuffix(" (your checkout)") if len(selected) > 1 or revision != "HEAD" else None,
-                 live=index == 0)
+                 branch=branch if len(selected) > 1 or revision != "HEAD" else None, live=index == 0)
         except KeyboardInterrupt:
             console.print(Text("\nScan stopped.", style=ACCENT))
             break
@@ -185,7 +188,18 @@ def run_scan(console: Console) -> None:
             console.print(Text(f"\n{error}", style=ACCENT))
             console.print(Text("If this looks like a problem with the kit, choose 8 to report it.", style="dim"))
         else:
-            finished.append(output)
+            finished.append((branch, output))
+    return finished
+
+
+def run_scan(console: Console) -> None:
+    repo = prepare_project(console)
+    if repo is None:
+        return
+    selected = pick_branches(console, branch_choices(repo))
+    if not selected:
+        return
+    finished = [folder for _, folder in scan_branches(console, repo, selected)]
     if len(finished) == 1:
         offer_scan_pdf(console, finished[0])
     elif finished:
@@ -194,6 +208,49 @@ def run_scan(console: Console) -> None:
                 offer_scan_pdf(console, folder, confirm=False, open_prompt=False)
         console.print(Text("Tip: option 3 compares the last two scans, so it shows what differs between these branches.",
                            style="dim"))
+    pause(console)
+
+
+def full_scan(console: Console) -> None:
+    """Everything for one project with no further questions: every branch, live check, all PDFs, one summary."""
+    repo = prepare_project(console)
+    if repo is None:
+        return
+    finished = scan_branches(console, repo, branch_choices(repo))
+    if not finished:
+        pause(console)
+        return
+    reports = []
+    for branch, folder in finished:
+        try:
+            html, pdf = write_scan_report(folder, html_only=not pdf_available())
+        except (ToolError, OSError) as error:
+            record_error("full scan PDF", str(error))
+            html, pdf = folder / "report.html", None
+        reports.append((branch, folder, pdf if pdf else html if html.is_file() else None))
+    table = Table(title=f"Full scan · {repo.name}", title_style="bold", header_style="bold",
+                  box=box.ROUNDED, border_style="grey50", padding=(0, 1))
+    for column in ("Branch", "Needs attention", "Secrets", "High/critical deps", "No login check", "Report"):
+        table.add_column(column, overflow="fold")
+    for branch, folder, report in reports:
+        summary = json.loads((folder / "summary.json").read_text())
+        facts = summary.get("facts", {})
+        attention = sum(row["status"] != "DONE" for row in summary["checks"])
+        audit = folder / "dependency-audit.json"
+        severity = json.loads(audit.read_text())["severity"] if audit.is_file() else {}
+        serious = severity.get("critical", 0) + severity.get("high", 0)
+        table.add_row(branch, Text(str(attention), style=ACCENT if attention else "green"),
+                      str(facts.get("leaks", 0)), str(serious), str(facts.get("routes", 0)),
+                      path_link(report, report.name) if report else Text("not made", style=ACCENT))
+    console.print()
+    console.print(table)
+    if not pdf_available():
+        console.print(Text(PDF_TOOLS_HINT, style=ACCENT))
+    console.print(Text("Reports list findings; share them only with people approved to see them.", style="dim"))
+    if any(report for *_, report in reports) and ask(console, "\nOpen the reports now? (y/N): ").lower() == "y":
+        for *_, report in reports:
+            if report:
+                open_path(console, report)
     pause(console)
 
 
@@ -735,6 +792,9 @@ def report_problem(console: Console) -> None:
 
 
 MENU = (
+    ("Quick start", (
+        ("0", "Full scan of a project", "every branch, staging check, all PDFs, one summary"),
+    )),
     ("Scan", (
         ("1", "Scan a project", "secrets, dependencies, code rules, API auth"),
         ("2", "Latest results", "summary table and PDF report"),
@@ -816,7 +876,7 @@ def print_menu(console: Console) -> int:
 
 def main() -> int:
     console = Console(highlight=False, no_color=bool(os.environ.get("NO_COLOR")))
-    actions = {"1": run_scan, "2": show_latest, "3": show_compare,
+    actions = {"0": full_scan, "1": run_scan, "2": show_latest, "3": show_compare,
                "4": run_staging_check, "5": run_local_attack, "6": check_ready, "7": protect_pushes,
                "8": report_problem}
     if "--protect" in sys.argv[1:]:

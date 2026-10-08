@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 import yaml
 from rich import box
 from rich.console import Console
+from rich.padding import Padding
 from rich.table import Table
 from rich.text import Text
 
@@ -665,6 +666,83 @@ def check_ready(console: Console) -> None:
     pause(console)
 
 
+MENU = (
+    ("Scan", (
+        ("1", "Scan a project", "secrets, dependencies, code rules, API auth"),
+        ("2", "Latest results", "summary table and PDF report"),
+        ("6", "Compare last two scans", "what is new and what got fixed"),
+    )),
+    ("Live checks", (
+        ("4", "Quick staging check", "read-only headers, cookies, exposed files"),
+        ("5", "Local attack testing", "Nuclei and ZAP against your localhost"),
+    )),
+    ("Setup", (
+        ("3", "Check this computer", "Python, Git, Docker, scanner images"),
+        ("7", "Protect git pushes", "block leaked secrets before each push"),
+    )),
+)
+
+
+def ago(moment: datetime) -> str:
+    seconds = (datetime.now(timezone.utc) - moment).total_seconds()
+    for unit, size in (("d", 86400), ("h", 3600), ("m", 60)):
+        if seconds >= size:
+            return f"{int(seconds // size)}{unit} ago"
+    return "just now"
+
+
+def status_line() -> Text:
+    """One dim line of real state: the last scan and how many projects have push protection."""
+    line = Text(style="dim")
+    folder = latest_scan()
+    if folder is None:
+        line.append("No scans yet. Start with 1.")
+    else:
+        summary = json.loads((folder / "summary.json").read_text())
+        name = summary.get("project", "last scan")
+        when = ago(datetime.fromisoformat(summary["finished_at"])) if summary.get("finished_at") else "unfinished"
+        attention = sum(row["status"] != "DONE" for row in summary.get("checks", []))
+        line.append("Last scan        ")
+        line.append(name, style="bold")
+        line.append(f" · {when} · ")
+        line.append(f"{attention} need attention" if attention else "all checks done",
+                    style="yellow" if attention else "green")
+    protected = sum(is_protected(Path(entry)) for entry in load_recent())
+    line.append("\nPush protection  ")
+    line.append(f"on for {protected} recent project{'s' if protected != 1 else ''}" if protected
+                else "off (choose 7 to turn it on)", style="green" if protected else "yellow")
+    return line
+
+
+def menu_block(hints: bool = True) -> Table:
+    grid = Table.grid(padding=(0, 2))
+    grid.add_column(justify="right", no_wrap=True)
+    grid.add_column(no_wrap=True)
+    grid.add_column(style="dim", no_wrap=True)
+    for index, (section, items) in enumerate(MENU):
+        if index:
+            grid.add_row("", "", "")
+        grid.add_row("", Text(section.upper(), style="dim bold"), "")
+        for key, label, hint in items:
+            grid.add_row(Text(key, style="bold"), Text(label), hint if hints else "")
+    grid.add_row("", "", "")
+    grid.add_row(Text("q", style="bold"), Text("Quit"), "")
+    return grid
+
+
+def print_menu(console: Console) -> int:
+    """Draw the grouped menu centered under the logo; returns the left margin used, for the prompt."""
+    block = menu_block()
+    if console.measure(block).maximum > console.width:
+        block = menu_block(hints=False)
+    width = min(console.measure(block).maximum, console.width)
+    margin = max(0, (console.width - width) // 2)
+    console.print(Padding(block, (0, 0, 0, margin)))
+    console.print()
+    console.print(Padding(status_line(), (0, 0, 0, margin)))
+    return margin
+
+
 def main() -> int:
     console = Console(highlight=False, no_color=bool(os.environ.get("NO_COLOR")))
     actions = {"1": run_scan, "2": show_latest, "3": check_ready,
@@ -679,16 +757,9 @@ def main() -> int:
     while True:
         console.clear()
         print_header(console)
-        option(console, "1", "Scan a project for vulnerabilities")
-        option(console, "2", "See the latest scan results")
-        option(console, "3", "Check this computer is ready to scan")
-        option(console, "4", "Quick staging check (paste a staging link)")
-        option(console, "5", "Local attack testing (localhost only)")
-        option(console, "6", "Compare the last two scans")
-        option(console, "7", "Protect your git pushes (check for leaks before each push)")
-        option(console, "q", "Quit")
+        margin = print_menu(console)
         try:
-            choice = ask(console, "\nChoose: ").lower()
+            choice = ask(console, "\n" + " " * margin + "Choose › ").lower()
             if choice in ("q", "quit", "exit"):
                 return 0
             if choice in actions:

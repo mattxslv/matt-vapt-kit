@@ -76,21 +76,22 @@ option 7 below), then opens the menu. Running it again later just reopens the
 menu (it skips reinstalling once the toolkit is already set up).
 
 Already installed? Run `vaptkit` (or `.venv/bin/vaptkit`, `.venv\Scripts\vaptkit.exe`
-on Windows, from this folder) for a numbered menu:
+on Windows, from this folder) for the menu. Options are grouped into Scan, Live checks and
+Setup, and a status line under them shows your last scan and whether push protection is on:
 
 ![vaptkit menu](docs/screenshots/03-menu.svg)
 
-1. **Scan a project for vulnerabilities** — recently scanned folders are listed
+1. **Scan a project** — recently scanned folders are listed
    for one-key reruns, and a matching `projects/*.vapt.yml` policy is picked by
    folder name (for example `~/DTAP` uses `dtap.vapt.yml`). Evidence is saved
    under this toolkit's `.private/` directory. At the end it offers a **PDF
    report** (summary, secret count, static matches, API routes without an auth
    check, scope), saved next to the evidence as `report.pdf` and `report.html`.
-2. **See the latest scan results** — the most recent scan's check table, with a
+2. **Latest results** — the most recent scan's check table, with a
    link to its saved evidence folder, and `p` to make a PDF report of it.
 
    ![Latest scan results](docs/screenshots/04-latest-results.svg)
-3. **Check this computer is ready to scan** — local prerequisites (Python, Git,
+3. **Check this computer** — local prerequisites (Python, Git,
    Docker). If Docker is running, it also checks whether the Nuclei/ZAP images
    used by local attack testing are already pulled and offers to download them
    up front, so a later attack-test run doesn't stall mid-scan on the pull.
@@ -120,13 +121,13 @@ on Windows, from this folder) for a numbered menu:
    see the warning above.
 
    ![Local attack testing](docs/screenshots/08-local-attack.svg)
-6. **Compare the last two scans** — diffs `static-findings.json` and
+6. **Compare last two scans** — diffs `static-findings.json` and
    `route-review.json` between the two most recent `.private/scan-*` folders,
    reporting new/resolved static-rule matches and new/resolved API routes with
    no authentication check. Needs at least two scans to show anything.
 
    ![Compare scans](docs/screenshots/06-compare.svg)
-7. **Protect your git pushes** — finds the Git projects in your home folder (no
+7. **Protect git pushes** — finds the Git projects in your home folder (no
    need to know where they live), and installs a pre-push check in the ones you
    pick, or all of them with `a`. Before each `git push` it scans **only the new
    commits** for leaked secrets, and if `package.json`/`pnpm-lock.yaml` changed,

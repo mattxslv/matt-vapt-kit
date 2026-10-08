@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 from vaptkit.process import ToolError, stream
 from vaptkit.menu import (
-    compare_scans, container_target, find_repos, zap_alert_count, parse_selection, is_local_target, is_noisy_zap_line, local_url, missing_local_attack_images,
+    MENU, ago, compare_scans, container_target, find_repos, zap_alert_count, parse_selection, is_local_target, is_noisy_zap_line, local_url, missing_local_attack_images,
     retry_input, scan_findings, staging_config, staging_recap, available_memory_mb,
 )
 
@@ -288,3 +288,17 @@ class ZapAlertCountTests(unittest.TestCase):
             "FAIL-NEW: 1\tFAIL-INPROG: 0\tWARN-NEW: 1\tWARN-INPROG: 0\tINFO: 0\tIGNORE: 0\tPASS: 133",
         ])
         self.assertEqual(zap_alert_count(log), 2)
+
+
+class MenuLayoutTests(unittest.TestCase):
+    def test_every_action_appears_exactly_once_in_the_menu(self):
+        keys = [key for _, items in MENU for key, _, _ in items]
+        self.assertEqual(sorted(keys), ["1", "2", "3", "4", "5", "6", "7"])
+
+    def test_ago_uses_the_largest_whole_unit(self):
+        from datetime import datetime, timedelta, timezone
+        now = datetime.now(timezone.utc)
+        self.assertEqual(ago(now - timedelta(seconds=20)), "just now")
+        self.assertEqual(ago(now - timedelta(minutes=5, seconds=10)), "5m ago")
+        self.assertEqual(ago(now - timedelta(hours=3)), "3h ago")
+        self.assertEqual(ago(now - timedelta(days=2, hours=5)), "2d ago")

@@ -5,7 +5,11 @@
 Start with a synthetic report. Install additional tools only for the capability
 you plan to use. None of the steps in the first-run walkthrough scans a live target.
 
-**Want to check a repository immediately?** From the toolkit folder, use
+**Want the interactive menu immediately?** From the toolkit folder, use `./install`.
+It bootstraps the local Python environment, installs the toolkit, and opens the
+numbered menu. Re-running it later just reopens the menu.
+
+**Want to check a repository immediately, no menu?** From the toolkit folder, use
 `./scan /path/to/your-project`. It bootstraps the local Python environment and runs
 all supported independent committed-code checks with progress and a final table.
 Docker and the project's exact pnpm version must already be available for their

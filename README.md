@@ -21,7 +21,19 @@ an external vulnerability assessment and penetration test.
 
 ## Menu
 
-Run `vaptkit` (or `.venv/bin/vaptkit` from this folder) for a numbered menu:
+New laptop, nothing installed yet? Clone the repo and run one command:
+
+```bash
+git clone https://github.com/mattxslv/matt-vapt-kit.git
+cd matt-vapt-kit
+./install
+```
+
+It creates the local Python environment, installs the toolkit into it, and opens
+the menu below. Re-running `./install` later just reopens the menu (it skips
+reinstalling once the toolkit is already set up).
+
+Already installed? Run `vaptkit` (or `.venv/bin/vaptkit` from this folder) for a numbered menu:
 scan a project, see the latest results, or check prerequisites. Recently scanned
 folders are listed for one-key reruns, and a matching `projects/*.vapt.yml` policy
 is picked by folder name (for example `~/DTAP` uses `dtap.vapt.yml`). Evidence is

@@ -29,7 +29,8 @@ from .config import load_config
 from .live import (NotCovered, browser_sign_in_possible, run_read_only, standing_approval_path, staging_counts,
                    staging_recap, standing_approval)
 from .process import ToolError, git
-from .routes import review
+from .routes import Tree, review
+from .usage import SOURCE as SOURCE_FILE, reachable_files
 
 ACCENT = "#d68b68"
 LOADING_WORDS = (
@@ -362,14 +363,18 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
         dev_serious = counts["critical"] + counts["high"] - serious
         facts.update(vulnerabilities=report["vulnerabilities"], severity=severity_text(counts), high=bool(serious))
         for entry in report["top"][:8]:
-            dev = "  (dev only)" if entry["scope"] == "dev" else ""
+            dev = {"dev": "  (dev only)", "unused": "  (via an unused dependency)"}.get(entry["scope"], "")
             console.print(Text(f"  {entry['severity']:<8} {entry['package']} {entry['version']}  {entry['id']}{dev}",
                                style=ACCENT if entry["severity"] in ("critical", "high") and not dev else "dim"))
         if len(report["top"]) > 8:
             console.print(Text(f"  + {len(report['top']) - 8} more", style="dim"))
         lockfile_note = f"{len(report['lockfiles'])} lockfile{'s' if len(report['lockfiles']) != 1 else ''}"
-        dev_note = (f" {dev_serious} high/critical are in dev-only packages (tests, build tools) that don't ship."
-                    if dev_serious else "")
+        removable = [item for item in report.get("unused_dependencies", []) if item["clears"]]
+        dev_note = (f" {dev_serious} high/critical are in dev-only packages or come only through dependencies nothing "
+                    "imports." if dev_serious else "")
+        if removable:
+            dev_note += " Removing unused dependencies would clear some: " + ", ".join(
+                f"{item['name']} ({item['clears']})" for item in removable[:4]) + "."
         if serious:
             raise ToolError(f"{report['vulnerabilities']} known vulnerabilities in {report['packages']} packages "
                             f"({severity_text(counts)}) across {lockfile_note}; {serious} high/critical in runtime "
@@ -390,7 +395,12 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
             raise ToolError("Static scanner could not complete; no passing result recorded.") from None
         processing_errors = []
         findings = static_summary(result.stdout, errors=processing_errors)
+        reachable = reachable_files(Tree(repo, sha))
+        for item in findings:
+            if item["runtime"] and reachable is not None and SOURCE_FILE.search(item["path"]) and item["path"] not in reachable:
+                item.update(runtime=False, unused=True)
         runtime = [item for item in findings if item["runtime"]]
+        unused_files = len({item["path"] for item in findings if item.get("unused")})
         offline = len(findings) - len(runtime)
         facts["static"] = len(runtime)
         # Partial parsing (one JSX snippet skipped) still scans the rest of the file; only real failures leave gaps.
@@ -410,11 +420,13 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
                 console.print(Text("    " + location, style="dim"))
             if len(locations) > 3:
                 console.print(Text(f"    + {len(locations) - 3} more locations in static-findings.json", style="dim"))
-        outside = (f" {offline} more in scripts, migrations, tests or docs, which aren't part of the running app."
+        outside = (f" {offline} more in scripts, migrations, tests, docs or files nothing imports"
+                   f"{f' ({unused_files} unused files)' if unused_files else ''}, which aren't part of the running app."
                    if offline else "")
         partly = f" {partial} file{'s were' if partial != 1 else ' was'} only partly parsed." if partial else ""
         if offline:
-            console.print(Text(f"  {offline} matches outside the running app (scripts, migrations, tests, docs)", style="dim"))
+            console.print(Text(f"  {offline} matches outside the running app (scripts, migrations, tests, docs, unused files)",
+                               style="dim"))
         if incomplete:
             raise ToolError(f"{len(runtime)} matches in the running app;{outside} {len(hard_errors)} files couldn't be "
                             f"scanned (scanner exit {result.returncode}), so coverage is incomplete. See static-findings.json.")

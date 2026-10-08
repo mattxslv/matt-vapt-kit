@@ -8,6 +8,7 @@ from pathlib import Path
 import yaml
 
 from .process import ToolError, git, run
+from .usage import unused_dependencies
 
 GITLEAKS = "ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f"
 SEMGREP = "semgrep/semgrep@sha256:acaac22ffc7b7cc5926de0751b223bce0b2491c33d18422fa72f632c78d81198"
@@ -70,8 +71,11 @@ def severity_band(score: str) -> str:
     return "critical" if value >= 9 else "high" if value >= 7 else "medium" if value >= 4 else "low"
 
 
-def pnpm_runtime(lock: dict) -> set[tuple[str, str]]:
-    """(name, version) reachable from the importers' runtime and optional dependencies in a pnpm lockfile."""
+def pnpm_runtime(lock: dict, exclude: frozenset = frozenset(), only: frozenset | None = None) -> set[tuple[str, str]]:
+    """(name, version) reachable from the importers' runtime and optional dependencies in a pnpm lockfile.
+
+    `exclude` leaves out direct dependencies (e.g. ones nothing imports); `only` starts from just those names.
+    """
     def base(version) -> str:
         return str(version).split("(")[0]
 
@@ -83,6 +87,8 @@ def pnpm_runtime(lock: dict) -> set[tuple[str, str]]:
     queue = []
     for importer in (lock.get("importers") or {".": lock}).values():
         for name, spec in {**(importer.get("dependencies") or {}), **(importer.get("optionalDependencies") or {})}.items():
+            if name in exclude or (only is not None and name not in only):
+                continue
             queue.append((name, base(spec["version"] if isinstance(spec, dict) else spec)))
     seen = set()
     while queue:
@@ -93,13 +99,22 @@ def pnpm_runtime(lock: dict) -> set[tuple[str, str]]:
     return seen
 
 
-def dependency_scopes(root: Path, lockfile: str):
-    """A function (name, version) -> "runtime" | "dev" | "unknown" for one committed lockfile."""
+def dependency_scopes(root: Path, lockfile: str, unused: frozenset = frozenset()):
+    """A function (name, version) -> "runtime" | "unused" | "dev" | "unknown" for one committed lockfile.
+
+    "unused" means reachable only through runtime dependencies nothing in the code imports.
+    """
     path, name = root / lockfile, Path(lockfile).name
     try:
         if name == "pnpm-lock.yaml":
-            runtime = pnpm_runtime(yaml.safe_load(path.read_text()) or {})
-            return lambda package, version: "runtime" if (package, version) in runtime else "dev" if runtime else "unknown"
+            lock = yaml.safe_load(path.read_text()) or {}
+            runtime = pnpm_runtime(lock, exclude=unused)
+            idle = pnpm_runtime(lock, only=unused) - runtime if unused else set()
+
+            def scope(package, version):
+                key = (package, version)
+                return "runtime" if key in runtime else "unused" if key in idle else "dev" if runtime else "unknown"
+            return scope
         if name in ("package-lock.json", "npm-shrinkwrap.json"):
             entries = json.loads(path.read_text()).get("packages", {})
             scoped = {(key.rpartition("node_modules/")[2], info.get("version")): bool(info.get("dev"))
@@ -130,13 +145,13 @@ def summarize_osv(report: dict, scopes: dict | None = None) -> dict:
                 package = item["package"]
                 scope = scope_of(package["name"], package.get("version", ""))
                 counts[band] += 1
-                if scope != "dev":
+                if scope not in ("dev", "unused"):
                     runtime_counts[band] += 1
                 top.append({"package": package["name"], "version": package.get("version", ""),
                             "ecosystem": package.get("ecosystem", ""), "id": group["ids"][0], "severity": band,
                             "score": group.get("max_severity") or "", "scope": scope})
     # Runtime (and unclassified) first: dev-only packages never ship in the running app.
-    top.sort(key=lambda entry: (entry["scope"] == "dev", SEVERITIES.index(entry["severity"]), entry["package"]))
+    top.sort(key=lambda entry: (entry["scope"] in ("dev", "unused"), SEVERITIES.index(entry["severity"]), entry["package"]))
     return {"vulnerabilities": sum(counts.values()), "packages": packages, "severity": counts,
             "runtime_severity": runtime_counts, "top": top}
 
@@ -170,7 +185,15 @@ def audit_commit(repo: Path, sha: str) -> dict | None:
             ], capture_output=True, text=True, check=False)
         except OSError:
             raise ToolError("Cannot start docker; install it before continuing.") from None
-        scopes = {path: dependency_scopes(root, path) for path in found}
+        unused = frozenset(unused_dependencies(repo, sha)) if "package.json" in found or any(
+            Path(path).name == "pnpm-lock.yaml" and Path(path).parent == Path(".") for path in found) else frozenset()
+        scopes = {path: dependency_scopes(root, path, unused if Path(path).parent == Path(".") else frozenset())
+                  for path in found}
+        clears = {}
+        if unused and "pnpm-lock.yaml" in found:
+            lock = yaml.safe_load((root / "pnpm-lock.yaml").read_text()) or {}
+            kept = pnpm_runtime(lock, exclude=unused)
+            clears = {name: pnpm_runtime(lock, only=frozenset({name})) - kept for name in unused}
     if result.returncode == 128:
         return None
     if result.returncode not in (0, 1):
@@ -179,7 +202,13 @@ def audit_commit(repo: Path, sha: str) -> dict | None:
         report = json.loads(result.stdout) if result.stdout.strip() else {}
     except ValueError:
         raise ToolError("The dependency scanner returned unreadable output.") from None
-    return {**summarize_osv(report, scopes), "lockfiles": found}
+    summary = summarize_osv(report, scopes)
+    serious = [(entry["package"], entry["version"]) for entry in summary["top"]
+               if entry["scope"] == "unused" and entry["severity"] in ("critical", "high")]
+    summary["unused_dependencies"] = sorted(
+        ({"name": name, "clears": sum(1 for key in serious if key in closure)} for name, closure in clears.items()),
+        key=lambda item: -item["clears"])
+    return {**summary, "lockfiles": found}
 
 
 def check(repo: Path, revision: str, *, static: bool = False) -> None:

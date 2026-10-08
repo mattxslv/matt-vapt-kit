@@ -15,7 +15,7 @@ from .report import FORMAT_ID, PHT, TLP_COLOR, esc
 STATUS = {"DONE": ("done", "Done"), "REVIEW": ("review", "Needs review"),
           "NOT RUN": ("gap", "Not run"), "CANCELLED": ("gap", "Cancelled")}
 LOCATION_LIMIT = 120
-SCOPE_LABEL = {"runtime": "Runtime", "dev": "Dev only", "unknown": "Not classified"}
+SCOPE_LABEL = {"runtime": "Runtime", "dev": "Dev only", "unused": "Unused dependency", "unknown": "Not classified"}
 ROUTE_LIMIT = 300
 
 
@@ -149,7 +149,8 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
     if offline_findings:
         rule_sections.append(
             f'<h3>Outside the running app ({len(offline_findings)})</h3><p class="muted">One-off scripts, migrations, '
-            f'tests and docs. They never run in the deployed app, so they are listed for completeness only.</p>'
+            f'tests, docs and files nothing imports. They never run in the deployed app, so they are listed for '
+            f'completeness only.</p>'
             + rule_groups(offline_findings))
     static_html = "".join(rule_sections) or '<p class="lede">No code-rule matches were recorded.</p>'
     if offline_findings and not runtime_findings:
@@ -189,14 +190,19 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
             f'<td><code>{esc(entry["id"])}</code></td><td>{esc(SCOPE_LABEL.get(entry.get("scope"), "Runtime"))}</td></tr>'
             for entry in dependencies["top"][:ROUTE_LIMIT])
         listed = ", ".join(f"<code>{esc(path)}</code>" for path in dependencies["lockfiles"])
+        removable = [item for item in dependencies.get("unused_dependencies", []) if item["clears"]]
+        removal = ("<p><strong>Quick win:</strong> nothing imports " + ", ".join(
+            f'<code>{esc(item["name"])}</code> (clears {item["clears"]})' for item in removable)
+                   + ". Removing them from package.json clears those high/critical findings.</p>") if removable else ""
         body = (f'<table><thead><tr><th>Package</th><th>Severity</th><th>Advisory</th><th>Used in</th></tr></thead>'
                 f"<tbody>{rows}</tbody></table>" if rows else
                 '<p class="lede">No known vulnerabilities in these lockfiles.</p>')
         dependency_html = f"""<section class="chapter">
   <header class="chapter-head"><p class="eyebrow">§§</p><h2>Vulnerable dependencies</h2></header>
   <p class="lede">Known advisories for the exact package versions pinned in {listed}, from the public OSV
-  database. "Dev only" packages (tests, build tools) don't ship in the running app; fix runtime high and
-  critical ones first. The advisory ID explains the fix.</p>
+  database. "Dev only" packages (tests, build tools) don't ship, and "Unused dependency" ones come only through
+  a dependency nothing in the code imports; fix runtime high and critical ones first.</p>
+  {removal}
   {body}
 </section>
 """

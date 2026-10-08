@@ -196,8 +196,9 @@ Use `NO_COLOR=1 ./scan /path/to/your-project` for uncolored output. Redirected o
 has no animated spinner.
 The terminal shows a shield icon beside an MVK wordmark,
 and a one-word loading status such as `✻ Topsy-turvying… (37s · Static rules)`,
-picked from 60 words, with the actual task and elapsed time and no loading bar or
-invented percentages. The scan ends with a line like
+picked from 60 words, with the actual task and elapsed time. Under it, a step
+track (`━━━━━ ━━━━━ ━━━━━ ─────  step 3 of 4`) shows which check is running; there
+are no invented percentages. The scan ends with a line like
 `✻ Cooked for 2m 5s · done 3:46 PM · 0 completed · 4 need attention` and a
 plain-English `※ recap:` of what was found and what to look at first.
 There are no artificial delays.

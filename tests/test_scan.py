@@ -10,7 +10,7 @@ from unittest.mock import patch
 from rich.console import Console
 
 from vaptkit.process import ToolError, git
-from vaptkit.scan import DECOR_CODE_LINES, DECOR_WINDOW, LOADING_WORDS, LoadingMessage, duration, path_link, print_header, recap, scan, static_summary
+from vaptkit.scan import LOADING_WORDS, LoadingMessage, duration, path_link, print_header, recap, scan, static_summary
 
 
 class ScanTests(unittest.TestCase):
@@ -47,16 +47,19 @@ class ScanTests(unittest.TestCase):
             self.assertIn(f"({seconds} · Static rules)", text)
             self.assertNotIn("%", text)
 
-    def test_loading_message_shows_decorative_code_lines_not_real_source(self):
+    def test_loading_message_tracks_the_real_step_without_fake_code(self):
         with patch("vaptkit.scan.time.monotonic", return_value=0), patch(
             "vaptkit.scan.random.choice", return_value="Digging"
-        ), patch("vaptkit.scan.random.randrange", return_value=0):
-            message = LoadingMessage("Secret history")
+        ):
+            message = LoadingMessage("3 / 4  Static rules")
             stream = io.StringIO()
             Console(file=stream, force_terminal=False, width=80).print(next(iter(message.__rich_console__(None, None))))
-        text = stream.getvalue()
-        shown = [line for line in DECOR_CODE_LINES[:DECOR_WINDOW] if line in text]
-        self.assertEqual(len(shown), DECOR_WINDOW)
+        lines = stream.getvalue().splitlines()
+        self.assertIn("Digging…", lines[0])
+        self.assertIn("(0s · Static rules)", lines[0])
+        self.assertIn("step 3 of 4", lines[1])
+        self.assertEqual(lines[1].count("━"), 15)
+        self.assertEqual(len(lines), 2)
 
     def test_recap_summarizes_findings_and_suggests_first_step(self):
         rows = [{"check": f"{n} / 4  {name}", "status": status, "detail": ""} for n, name, status in (

@@ -45,48 +45,43 @@ DONE_WORDS = (
     "Baked", "Brewed", "Cooked", "Crunched", "Churned", "Sleuthed", "Simmered", "Stewed",
 )
 SPINNER_FRAMES = "·✢✳✶✻✽✻✶✳✢"
-DECOR_CODE_LINES = (
-    "if (user.role !== 'admin') return",
-    "const token = crypto.randomBytes(32)",
-    "SELECT * FROM sessions WHERE id = ?",
-    "export async function middleware(req) {",
-    "headers.set('X-Frame-Options', 'DENY')",
-    "await bcrypt.compare(password, hash)",
-    "process.env.DATABASE_URL ?? 'sqlite://'",
-    "app.use(helmet())",
-    "const jwt = sign(payload, secret)",
-    "if (!authorized) throw new Error('403')",
-    "git log --oneline -n 20",
-    "docker run --rm --network host ...",
-    "grep -rn 'TODO' --include=*.ts .",
-    "cookie.secure = true; cookie.httpOnly = true",
-    "response.status(401).json({ error })",
-    "const hash = sha256(input).hex()",
-    "import { NextRequest } from 'next/server'",
-    "WHERE created_at > NOW() - INTERVAL '1 day'",
-    "openssl x509 -in cert.pem -noout -dates",
-    "trustProxy: false, // verify origin",
-)
-DECOR_WINDOW = 3
-DECOR_SECONDS_PER_LINE = 0.6
+SHIMMER = "#f3c9b4"
+SHIMMER_WIDTH = 3
+STEP_WIDTH = 5
 
 
 class LoadingMessage:
     def __init__(self, task: str):
+        step = re.match(r"^(\d+) / (\d+)\s+", task)
+        self.step, self.steps = (int(step[1]), int(step[2])) if step else (None, None)
         self.task = re.sub(r"^\d+ / \d+\s+", "", task)
         self.started = time.monotonic()
         self.word = random.choice(LOADING_WORDS)
-        self.offset = random.randrange(len(DECOR_CODE_LINES))
 
     def __rich_console__(self, console, options):
         elapsed = max(0, time.monotonic() - self.started)
-        start = self.offset + int(elapsed / DECOR_SECONDS_PER_LINE)
-        decor = Text("\n".join(
-            DECOR_CODE_LINES[(start + index) % len(DECOR_CODE_LINES)] for index in range(DECOR_WINDOW)
-        ), style="dim")
-        message = Text(SPINNER_FRAMES[int(elapsed * 8) % len(SPINNER_FRAMES)] + " " + self.word + "…", style=ACCENT)
+        message = Text(SPINNER_FRAMES[int(elapsed * 8) % len(SPINNER_FRAMES)] + " ", style=ACCENT)
+        word = self.word + "…"
+        # A soft highlight sweeps across the word, then pauses off the end before repeating.
+        sweep = int(elapsed * 12) % (len(word) + 12) - SHIMMER_WIDTH
+        for index, char in enumerate(word):
+            message.append(char, style=SHIMMER if sweep <= index < sweep + SHIMMER_WIDTH else ACCENT)
         message.append(f" ({elapsed:.0f}s · {self.task})", style="dim")
-        yield Group(decor, message)
+        if self.step is None:
+            yield message
+            return
+        track = Text()
+        for index in range(1, self.steps + 1):
+            if index > 1:
+                track.append(" ")
+            if index < self.step:
+                track.append("━" * STEP_WIDTH, style=ACCENT)
+            elif index == self.step:
+                track.append("━" * STEP_WIDTH, style=SHIMMER if int(elapsed * 2) % 2 else ACCENT)
+            else:
+                track.append("─" * STEP_WIDTH, style="grey37")
+        track.append(f"  step {self.step} of {self.steps}", style="dim")
+        yield Group(message, track)
 
 
 def loading(console: Console, task: str, animate: bool):

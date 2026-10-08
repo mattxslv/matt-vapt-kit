@@ -149,6 +149,10 @@
   code rules removed (rules/php.yml, tests/semgrep/php.php). Composer lockfiles are
   still read by the generic OSV dependency audit.
 
+- Released v0.6.0 (first tagged release; pyproject bumped). README install pins
+  `--branch v0.6.0`. Recommended rollout: one Windows teammate pilots first (Windows,
+  weekly workflow and the live DTAP stage are still unverified end to end).
+
 Previous handoff (2026-10-07 menu/redesign work, DTAP finding) preserved below.
 
 Replaces the Oct 5 handoff below this line's content; that session's "pending" items

@@ -24,10 +24,13 @@ VAPT.
 Needs Python 3.11+ on PATH and Docker running. Clone, then run one command:
 
 ```bash
-git clone https://github.com/mattxslv/matt-vapt-kit.git
+git clone --branch v0.6.0 https://github.com/mattxslv/matt-vapt-kit.git
 cd matt-vapt-kit
 ./install
 ```
+
+`--branch v0.6.0` pins the current [release](https://github.com/mattxslv/matt-vapt-kit/releases);
+drop it to follow `main`.
 
 ![Linux install](docs/screenshots/01-install-linux.svg)
 

@@ -177,6 +177,9 @@
 - v0.6.5: multi-branch runs print the logo only once (`scan(header=...)`); after scans,
   `offer_open` asks r = reports / f = folders / Enter = skip (option 0 and single scans).
 
+- v0.6.6: the project picker (options 0/1) lists recent projects first, marked, then
+  every other Git repo found under home (`project_list`, reuses `find_repos`).
+
 Previous handoff (2026-10-07 menu/redesign work, DTAP finding) preserved below.
 
 Replaces the Oct 5 handoff below this line's content; that session's "pending" items

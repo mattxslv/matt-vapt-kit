@@ -95,16 +95,25 @@ def option(console: Console, key: str, label: str) -> None:
     console.print(line)
 
 
+def project_list() -> list[tuple[Path, bool]]:
+    """[(project, recently used)]: recent projects first, then every other Git project in the home folder."""
+    recent = [Path(entry) for entry in load_recent()]
+    seen = {path.resolve() for path in recent}
+    others = [repo for repo in find_repos(Path.home()) if repo.resolve() not in seen]
+    return [(path, True) for path in recent] + [(path, False) for path in others]
+
+
 def choose_project(console: Console) -> Path | None:
-    recent = load_recent()
+    projects = project_list()
     console.print(Text("Which project?", style="bold"))
-    for number, entry in enumerate(recent, start=1):
-        option(console, str(number), entry.replace(str(Path.home()), "~", 1))
-    option(console, "n", "Type a new project folder path")
+    for number, (path, recent) in enumerate(projects, start=1):
+        label = str(path).replace(str(Path.home()), "~", 1)
+        option(console, str(number), label + ("  (recent)" if recent else ""))
+    option(console, "n", "Type a different folder path")
     option(console, "b", "Back")
     choice = ask(console, "\nChoose: ").lower()
-    if choice.isdigit() and 1 <= int(choice) <= len(recent):
-        return Path(recent[int(choice) - 1])
+    if choice.isdigit() and 1 <= int(choice) <= len(projects):
+        return projects[int(choice) - 1][0]
     if choice == "n":
         typed = ask(console, "Project folder (for example ~/DTAP): ")
         return Path(typed).expanduser() if typed else None

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 from vaptkit.process import ToolError, stream
 from vaptkit.menu import (
-    MENU, ago, branch_choices, compare_scans, container_target, find_repos, zap_alert_count, parse_selection, is_local_target, is_noisy_zap_line, local_url, missing_local_attack_images,
+    MENU, ago, branch_choices, compare_scans, project_list, container_target, find_repos, zap_alert_count, parse_selection, is_local_target, is_noisy_zap_line, local_url, missing_local_attack_images,
     retry_input, scan_findings, staging_config, staging_recap, available_memory_mb,
 )
 
@@ -319,3 +319,17 @@ class BranchChoiceTests(unittest.TestCase):
                 git(work, *args)
             self.assertEqual(branch_choices(work), [("staging (your checkout)", "HEAD"), ("main", "origin/main")])
             self.assertEqual(git(work, "rev-parse", "--abbrev-ref", "HEAD"), "staging")
+
+
+class ProjectListTests(unittest.TestCase):
+    def test_recent_projects_first_then_every_other_repo_without_duplicates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            for name in ("dtap", "hrmis", "intranet"):
+                (home / name / ".git").mkdir(parents=True)
+            with unittest.mock.patch("vaptkit.menu.Path.home", return_value=home), \
+                    unittest.mock.patch("vaptkit.menu.load_recent", return_value=[str(home / "dtap")]):
+                projects = project_list()
+        self.assertEqual(projects[0], (home / "dtap", True))
+        self.assertEqual({path.name for path, recent in projects[1:]}, {"hrmis", "intranet"})
+        self.assertFalse(any(recent for _, recent in projects[1:]))

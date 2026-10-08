@@ -1,8 +1,127 @@
 # Matt VAPT Kit — Handoff
 
-**Date:** 2026-10-08 (session via Claude Code)
+**Date:** 2026-10-08 (session via Claude Code, latest session)
 
-## What this session added
+## What this session added (2026-10-08, latest)
+
+Current version: **v0.7.5**. 314 tests pass (`.venv/bin/python -m unittest discover -s tests`).
+
+### 1. Made role/ownership testing universal, not DTAP-specific
+The user's explicit instruction mid-session: *"what i want here is anything that
+we make, its universal not just for specific repo or project."* `roles.py` and
+`ownership.py` previously hardcoded DTAP's login shape (`/api/auth/signin`,
+cookie names `auth-token`/`session-bind`, role field `user_type`). Generalized
+both to read everything from a new `role_testing.login` config block:
+`login_path`, `logout_path`, `identity_path`, `email_field`, `role_field`, and
+a `session` block that is either `{type: cookie, cookie_names: [...]}` or
+`{type: bearer, token_path: [...], header: ...}`.
+
+- `vaptkit/schemas/project.json`: adapter renamed `dtap-cookie-v1` →
+  `session-login-v1`; added the `login` schema block (required).
+- `projects/dtap.vapt.yml` migrated to the new shape.
+- `tests/test_roles_bearer_login.py` (new): proves genericity against a second,
+  differently-shaped real app (PEMEDES: bearer token, `role` not `user_type`,
+  different login path) — no cookies ever sent, verified by the test's own
+  `assertNoCookieHeader` check.
+- Found and fixed a real bug during the refactor: `sign_out()`'s guard changed
+  from `if not session` (a plain cookie dict, falsy when empty) to a wrapper
+  dict (`{"type": ..., "values"/"token": ...}`) that is always truthy even when
+  no session was ever established — so a failed login would still attempt a
+  sign-out POST. Added `has_session()` to check the actual payload instead of
+  dict truthiness.
+- `release_tests/test_role_challenge.py` had its own hardcoded
+  `dtap-cookie-v1` fixture that broke CI on this adapter rename. Fixed and
+  re-verified; cut **v0.7.5** since v0.7.4 had shipped with this CI red.
+
+### 2. Fixed a real, non-flaky CI failure (not what it looked like at first)
+`tests/test_assessment.py::ScopeTests` was failing on every `main`-branch push
+since the ownership-checks commit (looked like network flakiness at first
+glance, since tag-triggered "Release challenge" runs — a different workflow —
+kept passing and masked it). Root cause: `pemedes.vapt.yml` uses
+`iap-service-account` access, so `assess()` built request headers via
+`ServiceAccountAccess.headers()` — a real `gcloud`/IAM Credentials API call —
+as an **eagerly-evaluated argument** to the mocked `observe()`, bypassing the
+mock entirely. Fixed by patching `ServiceAccountAccess.headers` in
+`ScopeTests.setUp`.
+
+### 3. Fixed a real Rich/terminal rendering bug
+The clickable repo/output path in the scan header had its underline (and
+hyperlink escape sequence) stretch far past the visible text into the table's
+padding. Cause: `path_link()` applied `Style(underline=True, link=...)` as the
+`Text` object's **base style**, so `Table`'s cell padding — appended to
+`Text.plain` after the fact — inherited it too (confirmed by inspecting the
+raw ANSI: `\x1b[4m/path/here                    \x1b[0m`, underline covering
+the trailing spaces). Fixed with `text.stylize(style, 0, len(display))` to
+scope the style to just the real text.
+
+### 4. Menu UX fixes (from a user screenshot)
+- Reworded the `r = reports, f = folders, Enter = skip` prompt (confusing per
+  direct user feedback) to spell out what each key does:
+  `Press r to open the report, f to open the folder, or Enter to go back`.
+- Removed a redundant second "Press Enter to go back to the menu..." prompt
+  that always ran immediately after the one above, even though pressing Enter
+  there already meant "go back." `offer_open()`/`show_report()`/
+  `offer_scan_pdf()` now return whether the caller still needs to show that
+  second pause (only true if the user actually opened something, or the
+  open-prompt was skipped entirely for that code path).
+
+### 5. Added CERT-PH-equivalent recon coverage
+The user asked what tools NCERT/CERT-PH actually use in their DTAP pentest
+report (found in `~/Downloads/Ticket#14928_..._DRAFT.pdf`, password-protected —
+decrypted with `qpdf`, read, then the decrypted copy was shredded) and asked to
+cover everything in it. Their methodology: **Dirsearch**, **Feroxbuster**,
+**Burp Suite** (crawling), **Subfinder**, **Nslookup** (DMARC), **Nmap**
+(`-p- -A -sV -Pn`, `--script ssl-enum-ciphers`, `--script vuln`), and the
+**Wappalyzer** browser extension. No Nessus/Acunetix/Qualys/ZAP/Nuclei.
+
+Added, all gated behind the existing `exposure_checks` approval flag
+(unauthenticated targets only), all driven purely from `target.url` — no new
+per-project config, keeping the "universal, no extra setup" rule the user set
+earlier in the session:
+- **`vaptkit/exposure.py`**: expanded the fixed path list from 12 to 34 entries
+  (backup/database dumps, cloud/deploy credential files, other VCS metadata,
+  common admin panels) — the directory-busting part of their methodology,
+  reusing the existing baseline/signature-confirmation machinery so it needed
+  no wordlist file or extra setup.
+- **`vaptkit/recon.py`** (new):
+  - `dns_hygiene()` — SPF/DMARC presence via a **hand-built DNS TXT query**
+    over raw UDP sockets (no `dig`/`nslookup` binary dependency, so it works
+    the same on a machine that doesn't have one installed).
+  - `subdomains()` — passive enumeration via crt.sh certificate-transparency
+    logs; never touches the target.
+  - `fingerprint()` — tech detection (Next.js/React/WordPress/Express/PHP/
+    Apache/nginx) from the homepage response `exposure.run()` already fetches
+    for source-map discovery (added an `on_homepage` callback hook to
+    `exposure.run()` so this needs no extra request).
+  - `scan_ports()` — plain TCP connect scan (no payload) against a ~30-port
+    common-service list; the Nmap-equivalent piece, added last after the user
+    confirmed they wanted it too. Only runs once the earlier stages complete
+    without errors, since unlike DNS/subdomains it does touch the target.
+- Wired into `assess()` as `result["recon"]` (schema updated in
+  `vaptkit/schemas/report.json`); surfaced in the staging-check recap text in
+  `vaptkit/live.py`.
+- `tests/test_recon.py` (new, 14 tests): pure-function tests for DNS parsing,
+  fingerprinting, and port scanning with mocked sockets; network-failure paths
+  (DNS unreachable, crt.sh down/502) assert graceful empty-result handling,
+  not exceptions.
+- `tests/test_accuracy_benchmark.py`: had to patch `vaptkit.recon.dns_hygiene`
+  /`subdomains`/`scan_ports` in `AccuracyBenchmark.setUp` — this test pins
+  every socket connection to a local loopback server, and the new recon calls
+  would otherwise try to reach real DNS/crt.sh during the test.
+
+### Deliberately not done
+- No Nmap-equivalent cipher/vuln scripting (`--script ssl-enum-ciphers`,
+  `--script vuln`) — only the port-discovery half of their Nmap usage. Their
+  own report found nothing from those scripts anyway (modern TLS, ports
+  Cloudflare-fronted); flag to the user if they want this revisited.
+  Their own report's other findings (outdated Next.js via Wappalyzer) are
+  already covered more thoroughly by the kit's existing dependency-audit
+  check against the actual lockfile, not just a runtime version guess.
+- `scan_ports()` is a deliberately short, common-service port list, not a full
+  `1-65535` sweep like `nmap -p-` — a full sweep would be slow and far more
+  intrusive against someone else's infrastructure for a self-assessment tool.
+
+## What this session added (earlier, archived)
 
 - Menu option 3 (was 6), "Compare the last two scans" (`show_compare`, `compare_scans`,
   `scan_findings` in `menu.py`): diffs `static-findings.json` and

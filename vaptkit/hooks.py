@@ -5,12 +5,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .checks import LOCKFILES, WINDOWS, audit_commit, pushed_updates, scan_history, severity_text
+from .checks import WINDOWS, audit_commit, is_lockfile, pushed_updates, scan_history, severity_text
 from .process import ToolError, git, run
 
 MARKER = "# matt-vapt-kit managed hook"
 LEAK_EXIT_CODE = 42
-DEPENDENCY_FILES = LOCKFILES | {"package.json", "composer.json"}
+MANIFESTS = {"package.json", "composer.json"}
 
 
 class Findings(ToolError):
@@ -124,7 +124,7 @@ def protect(repo: Path, local: str, remote: str | None) -> None:
         warn("the secret scan", error)
     changed = {Path(path).name for path in
                git(repo, "log", "--name-only", "--format=", *revisions.split()).splitlines()}
-    if changed & DEPENDENCY_FILES:
+    if any(name in MANIFESTS or is_lockfile(name) for name in changed):
         print("MVK: dependencies changed; auditing for high/critical vulnerabilities...", file=sys.stderr, flush=True)
         try:
             report = audit_commit(repo, local)

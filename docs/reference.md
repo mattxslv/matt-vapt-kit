@@ -81,7 +81,7 @@ that cannot run (for example Docker is off) warns and lets the push through. Fin
 are not automatically fixed or ignored.
 
 The dependency audit uses OSV-Scanner on the committed lockfiles: npm, yarn, pnpm and
-bun for Node; Composer for PHP; pip, Poetry, Pipenv and uv for Python; Go, Maven,
+bun for Node; Composer for PHP; NuGet (`.csproj`, `packages.config`, `packages.lock.json`) for .NET; pip, Poetry, Pipenv and uv for Python; Go, Maven,
 Gradle, Ruby and Rust. Lockfiles under `node_modules/`, `vendor/` and virtualenvs are
 skipped. No package manager needs to be installed. Package names and versions (not
 source code) are sent to osv.dev; the other Docker scans have no network access.
@@ -114,8 +114,13 @@ or comprehensive OWASP coverage**. Findings require triage.
 |---|---|
 | JavaScript / TypeScript | disabled TLS verification, dynamic code evaluation, interpolated shell commands |
 | PHP / Laravel | raw SQL built from variables, shell commands built from variables, uploads saved under the client's filename, hardcoded passwords/keys/tokens, debug mode switched on in code |
+| C# / ASP.NET | SQL built from strings (SqlCommand, CommandText, EF raw SQL), processes started with built strings, uploads saved under the client's filename, hardcoded passwords/keys/connection-string passwords, developer error page outside development |
+| web.config / appsettings | debug compilation on, customErrors Off, request validation off, passwords in connection strings |
 
 The PHP rules skip Blade templates, `lang/`, `tests/` and (for SQL) `database/migrations/`.
+The JavaScript rules skip bundled libraries (`*.min.js`, `wwwroot/lib*`, `Scripts/jquery*`).
+On nopCommerce (about 3,700 C# files) the C# rules report three SQL strings built from
+configuration values and one developer error page enabled by a config flag, all worth review.
 On the official Laravel starter they report nothing; on a large open-source Laravel app
 (BookStack, about 1,800 PHP files) they report six raw-SQL locations, all worth review.
 

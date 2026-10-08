@@ -51,8 +51,8 @@ menu. Afterwards, `./install` or `vaptkit` just opens the menu.
 ![vaptkit menu](docs/screenshots/03-menu.svg)
 
 1. **Scan a project:** secrets in Git history, vulnerable dependencies (Node, PHP,
-   Python and more), code rules (JavaScript/TypeScript and PHP/Laravel) and Next.js
-   API routes without a login check. Projects with a standing approval (DTAP)
+   .NET, Python and more), code rules (JavaScript/TypeScript, PHP/Laravel, C#/ASP.NET
+   and web.config) and Next.js API routes without a login check. Projects with a standing approval (DTAP)
    also get read-only checks of their staging site. Ends with an optional PDF report.
 2. **Latest results:** the last scan's table; `p` makes a PDF.
 

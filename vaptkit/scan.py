@@ -323,7 +323,7 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
     found_lockfiles = lockfiles(listing)
     stage(f"2 / {total}  Dependency audit", dependencies,
           docker_gap if found_lockfiles else
-          "No supported lockfile (npm, yarn, pnpm, Composer, pip, Poetry, Go, Maven, Ruby, Rust) at this commit.")
+          "No supported lockfile (npm, yarn, pnpm, Composer, NuGet, pip, Poetry, Go, Maven, Ruby, Rust) at this commit.")
 
     def static_command(command, **kwargs):
         try:

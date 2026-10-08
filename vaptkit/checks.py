@@ -43,15 +43,21 @@ LOCKFILES = {
     "package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml", "bun.lock",
     "composer.lock", "requirements.txt", "poetry.lock", "Pipfile.lock", "uv.lock",
     "go.mod", "Gemfile.lock", "Cargo.lock", "pom.xml", "gradle.lockfile",
+    "packages.config", "packages.lock.json",
 }
+PROJECT_FILE_SUFFIXES = (".csproj",)
 VENDORED = {"node_modules", "vendor", ".venv", "venv"}
 SEVERITIES = ("critical", "high", "medium", "low", "unknown")
+
+
+def is_lockfile(name: str) -> bool:
+    return name in LOCKFILES or name.endswith(PROJECT_FILE_SUFFIXES)
 
 
 def lockfiles(listing: list[str]) -> list[str]:
     """Committed lockfiles OSV-Scanner understands, skipping vendored dependency folders."""
     return [path for path in listing
-            if Path(path).name in LOCKFILES and not VENDORED.intersection(Path(path).parts[:-1])]
+            if is_lockfile(Path(path).name) and not VENDORED.intersection(Path(path).parts[:-1])]
 
 
 def severity_band(score: str) -> str:
@@ -214,7 +220,8 @@ def scan_static(repo: Path, sha: str, *, runner=None, json_output=False) -> None
             "-e", "SEMGREP_SEND_METRICS=off", "-e", "SEMGREP_ENABLE_VERSION_CHECK=0",
             "-v", f"{source}:/src:ro", "-v", f"{rules}:/rules:ro",
             "--entrypoint=semgrep", SEMGREP, "scan", "--config=/rules",
-            "--metrics=off", "--disable-version-check", "--error",
+            # Semgrep's 5s per-file default flakes on large files when the machine is busy.
+            "--metrics=off", "--disable-version-check", "--timeout=30", "--error",
             "--strict", "--quiet",
         ] + (["--json"] if json_output else []) + ["/src"])
 

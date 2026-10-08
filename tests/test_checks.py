@@ -163,8 +163,10 @@ class PushTests(unittest.TestCase):
 class DependencyReportTests(unittest.TestCase):
     def test_lockfiles_found_anywhere_except_vendored_folders(self):
         listing = ["package.json", "pnpm-lock.yaml", "api/composer.lock", "vendor/x/composer.lock",
-                   "node_modules/a/package-lock.json", "README.md"]
-        self.assertEqual(lockfiles(listing), ["pnpm-lock.yaml", "api/composer.lock"])
+                   "node_modules/a/package-lock.json", "README.md", "Hrmis.Web/Hrmis.Web.csproj",
+                   "Intranet/packages.config", "Hrmis.Web/Program.cs"]
+        self.assertEqual(lockfiles(listing), ["pnpm-lock.yaml", "api/composer.lock", "Hrmis.Web/Hrmis.Web.csproj",
+                                              "Intranet/packages.config"])
 
     def test_severity_bands_follow_cvss(self):
         self.assertEqual([severity_band(score) for score in ("9.8", "7.0", "5.3", "2.1", "", None)],

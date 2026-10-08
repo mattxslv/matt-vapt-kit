@@ -1,0 +1,37 @@
+rules:
+  - id: web-config-debug-on
+    message: Debug compilation is on in web.config. In production it shows detailed errors and slows the site; set debug="false" (or remove it in Web.Release.config) for deployed builds.
+    severity: WARNING
+    languages: [regex]
+    pattern-regex: (?i)<compilation\b[^>]*\bdebug\s*=\s*"true"
+    paths:
+      include:
+        - "*.config"
+
+  - id: web-config-custom-errors-off
+    message: customErrors is Off, so visitors see full error pages with stack traces and code. Use mode="RemoteOnly" or "On" with a friendly error page.
+    severity: ERROR
+    languages: [regex]
+    pattern-regex: (?i)<customErrors\b[^>]*\bmode\s*=\s*"Off"
+    paths:
+      include:
+        - "*.config"
+
+  - id: web-config-request-validation-off
+    message: ASP.NET request validation is switched off, which removes a layer of protection against cross-site scripting. Keep it on and encode output instead.
+    severity: ERROR
+    languages: [regex]
+    pattern-regex: (?i)\bvalidateRequest\s*=\s*"false"
+    paths:
+      include:
+        - "*.config"
+        - "*.aspx"
+
+  - id: web-config-connection-string-password
+    message: A connection string in web.config contains a password. Move it out of the repository (environment, Secret Manager, or an untracked config file) and rotate it.
+    severity: ERROR
+    languages: [regex]
+    pattern-regex: (?i)connectionString\s*=\s*"[^"]*\b(password|pwd)\s*=\s*[^;"{\s][^;"]{2,}
+    paths:
+      include:
+        - "*.config"

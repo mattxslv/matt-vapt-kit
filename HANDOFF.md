@@ -128,6 +128,16 @@
   contain a digit, skips lang/tests), debug => true. Blade templates excluded
   (unparseable as PHP). Tuned against laravel/laravel (0) and BookStack (43 -> 6,
   all real raw-SQL review items). Route review is still Next.js-only.
+- C#/ASP.NET (user's intranet + HRMIS teams): NuGet added to the audit
+  (`.csproj` by suffix, packages.config, packages.lock.json); rules in
+  `rules/csharp.yml` (SQL from strings, Process.Start, upload filename, secrets and
+  connection-string passwords via pattern-regex because Semgrep's C# matcher doesn't
+  bind property assignments, UseDeveloperExceptionPage outside IsDevelopment),
+  `rules/aspnet-config.yml` (web.config debug, customErrors Off, validateRequest
+  false, connectionString passwords), `rules/aspnet-settings.yml` (appsettings*.json).
+  JS rules now skip bundled libs. Semgrep --timeout=30. Tuned on nopCommerce and
+  dotnet/eShop. Fixture fakes carry `gitleaks:allow` so the repo's own push
+  protection doesn't block them (it did, correctly, on the first try).
 
 Previous handoff (2026-10-07 menu/redesign work, DTAP finding) preserved below.
 

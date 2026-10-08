@@ -1,0 +1,75 @@
+rules:
+  - id: sql-built-from-strings
+    message: SQL is built by joining strings with variables. Use parameters (cmd.Parameters.AddWithValue, FromSqlInterpolated) so input can't change the query.
+    severity: ERROR
+    languages: [csharp]
+    pattern-either:
+      - patterns:
+          - pattern-either:
+              - pattern: new $CMD("..." + $X, ...)
+              - pattern: new $CMD($X + "...", ...)
+              - pattern: new $CMD($"...", ...)
+          - metavariable-regex:
+              metavariable: $CMD
+              regex: ^(SqlCommand|OleDbCommand|OdbcCommand|MySqlCommand|NpgsqlCommand|OracleCommand|SQLiteCommand|SqliteCommand|SqlDataAdapter)$
+      - pattern: $C.CommandText = "..." + $X
+      - pattern: $C.CommandText = $X + "..."
+      - pattern: $C.CommandText = $"..."
+      - patterns:
+          - pattern-either:
+              - pattern: $DB.$RAW("..." + $X, ...)
+              - pattern: $DB.$RAW($X + "...", ...)
+              - pattern: $DB.$RAW($"...", ...)
+              - pattern: $DB.$RAW(string.Format(...), ...)
+          - metavariable-regex:
+              metavariable: $RAW
+              regex: ^(ExecuteSqlRaw|ExecuteSqlRawAsync|FromSqlRaw|SqlQuery|ExecuteSqlCommand|ExecuteSqlCommandAsync|SqlQueryRaw)$
+
+  - id: process-built-from-strings
+    message: A program is started with a command built from variables. Pass fixed arguments (ProcessStartInfo.ArgumentList) and never feed user input to cmd.exe or a shell.
+    severity: ERROR
+    languages: [csharp]
+    pattern-either:
+      - pattern: Process.Start($EXE, "..." + $X)
+      - pattern: Process.Start($EXE, $X + "...")
+      - pattern: Process.Start($EXE, $"...")
+      - pattern: new ProcessStartInfo($EXE, "..." + $X)
+      - pattern: new ProcessStartInfo($EXE, $"...")
+      - pattern: $P.Arguments = "..." + $X
+      - pattern: $P.Arguments = $"..."
+
+  - id: upload-keeps-client-filename
+    message: An upload is saved under the filename the browser sent. Generate the name yourself (Guid.NewGuid()) and check the type, or attackers can overwrite files or upload scripts.
+    severity: ERROR
+    languages: [csharp]
+    pattern-either:
+      - pattern: $FILE.SaveAs(<... $F.FileName ...>)
+      - pattern: new FileStream(<... $F.FileName ...>, ...)
+      - pattern: File.Create(<... $F.FileName ...>, ...)
+      - pattern: File.WriteAllBytes(<... $F.FileName ...>, ...)
+
+  - id: hardcoded-secret-in-code
+    message: A password, key, token or connection-string password is written directly in the code. Read it from configuration or a secret store and keep the value out of Git.
+    severity: ERROR
+    languages: [csharp]
+    patterns:
+      - pattern-either:
+          # Semgrep's C# matcher doesn't bind property assignments reliably, so match the text.
+          # Real secrets almost always contain a digit; labels and messages rarely do.
+          - pattern-regex: (?i)\b(password|passwd|pwd|secret|clientsecret|client_secret|apikey|api_key|accesskey|privatekey|token|authtoken)\s*=\s*"(?=[^"]*[0-9])[^\s"]{8,}"
+          - pattern-regex: (?i)"[^"\n]*\b(password|pwd)\s*=\s*[^;"{\s][^;"]{2,}[^"\n]*"
+    paths:
+      exclude:
+        - "*Test*/**"
+        - "*.Tests/**"
+
+  - id: developer-error-page-outside-development
+    message: The developer exception page shows stack traces and settings to visitors. Only enable it inside if (env.IsDevelopment()).
+    severity: ERROR
+    languages: [csharp]
+    patterns:
+      - pattern: $APP.UseDeveloperExceptionPage()
+      - pattern-not-inside: |
+          if ($ENV.IsDevelopment()) { ... }
+      - pattern-not-inside: |
+          if ($ENV.IsDevelopment()) { ... } else { ... }

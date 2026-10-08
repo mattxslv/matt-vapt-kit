@@ -5,11 +5,31 @@ rules:
     languages: [javascript, typescript]
     patterns:
       - pattern: "{..., rejectUnauthorized: false, ...}"
+    paths:
+      exclude:
+        - "*.min.js"
+        - "*.umd.js"
+        - "**/wwwroot/lib/**"
+        - "**/wwwroot/lib_npm/**"
+        - "**/Scripts/jquery*.js"
+        - "**/Scripts/bootstrap*.js"
+        - "**/Scripts/modernizr*.js"
+
   - id: dynamic-code-evaluation
     message: Review dynamic code evaluation; untrusted input must never reach eval.
     severity: ERROR
     languages: [javascript, typescript]
     pattern: eval(...)
+    paths:
+      exclude:
+        - "*.min.js"
+        - "*.umd.js"
+        - "**/wwwroot/lib/**"
+        - "**/wwwroot/lib_npm/**"
+        - "**/Scripts/jquery*.js"
+        - "**/Scripts/bootstrap*.js"
+        - "**/Scripts/modernizr*.js"
+
   - id: shell-exec-with-template
     message: Review shell execution with an interpolated command. Prefer execFile with arguments.
     severity: ERROR
@@ -18,3 +38,12 @@ rules:
       - pattern-either:
           - pattern: exec(`...${$VALUE}...`, ...)
           - pattern: execSync(`...${$VALUE}...`, ...)
+    paths:
+      exclude:
+        - "*.min.js"
+        - "*.umd.js"
+        - "**/wwwroot/lib/**"
+        - "**/wwwroot/lib_npm/**"
+        - "**/Scripts/jquery*.js"
+        - "**/Scripts/bootstrap*.js"
+        - "**/Scripts/modernizr*.js"

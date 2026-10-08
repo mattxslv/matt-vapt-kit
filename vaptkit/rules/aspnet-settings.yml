@@ -1,0 +1,10 @@
+rules:
+  - id: appsettings-connection-string-password
+    message: A connection string in appsettings contains a password. Move it to user secrets, environment variables or a secret store, and rotate it.
+    severity: ERROR
+    languages: [regex]
+    pattern-regex: (?i)"[^"\n]*\b(password|pwd)\s*=\s*[^;"{\s][^;"]{2,}[^"\n]*"
+    paths:
+      include:
+        - "appsettings*.json"
+        - "aspnet-settings.json"

@@ -1,0 +1,8 @@
+{
+  "ConnectionStrings": {
+    // ruleid: appsettings-connection-string-password
+    "Hrmis": "Server=hrdb;Database=HRMIS;User Id=hr_app;Password=Hr@pp2024!;", // gitleaks:allow
+    // ok: appsettings-connection-string-password
+    "Intranet": "Server=intra;Database=Intranet;Trusted_Connection=True;"
+  }
+}

@@ -63,6 +63,19 @@
   commits, missing Docker warns and allows. Windows hook chaining uses sh wrapper
   scripts instead of symlinks; untested on real Windows.
 
+- End-to-end test (fresh GitHub clone, scratch HOME; XDG_STATE_HOME must also
+  be pointed at the scratch dir or the test writes to the real recent list).
+  Passed: install + protect prompt, options 1/2/3/5/6/7, real pushes (clean,
+  leak, vulnerable dep, wrong pnpm via corepack, Docker missing), hook
+  uninstall. Fixed during it: Docker-missing aborted the dependency audit too;
+  ZAP never finished (DOM XSS rule 40026 needs Firefox, which doesn't fit the
+  2 GB cap; now disabled via zap-rules.conf); ZAP alert count included the
+  totals line. Not tested: option 4 (user chose to skip a live site), weekly
+  workflow (no SCAN_REPOS_TOKEN yet), anything on real Windows.
+- Open finding: option 5's Nuclei run probes other ports on localhost (seen:
+  4040, 9780) because some templates hardcode ports and host networking exposes
+  the whole machine. Stays on the local machine, but wider than the chosen port.
+
 Previous handoff (2026-10-07 menu/redesign work, DTAP finding) preserved below.
 
 Replaces the Oct 5 handoff below this line's content; that session's "pending" items

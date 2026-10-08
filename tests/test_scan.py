@@ -76,9 +76,9 @@ class ScanTests(unittest.TestCase):
             (1, "Secret history", "REVIEW"), (2, "Dependency audit", "REVIEW"),
             (3, "Static rules", "NOT RUN"), (4, "API authentication review", "REVIEW"))]
         text = recap("DTAP", rows, {"leaks": 74, "vulnerabilities": 13, "severity": "10 moderate | 3 high",
-                                    "high": True, "routes": 16})
+                                    "runtime_serious": 3, "high": True, "routes": 16})
         self.assertIn("DTAP has 74 possible secrets", text)
-        self.assertIn("13 known dependency vulnerabilities (10 moderate | 3 high)", text)
+        self.assertIn("3 high/critical runtime dependency vulnerabilities (of 13 total)", text)
         self.assertIn("16 suspected API access-control findings", text)
         self.assertIn("Static rules did not run", text)
         self.assertIn("Next, go through the leaked secrets first", text)

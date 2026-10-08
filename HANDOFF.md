@@ -220,6 +220,44 @@
   real (reversible) writes under the evaluator accounts. CLI-only, like `vapt roles`; not added to
   the menu given the password-prompt/approval flow doesn't fit the current menu UI.
 
+- Second round of pilot feedback (#3, #5, #6, #7, #8 from the peer session's list; #1/2/4 from
+  that same list were already shipped earlier this session -- confirmed by checking git log, told
+  the peer session via SendMessage to pull latest):
+  - #3 (symmetric HTTP-method coverage): already true in code (routes.py's METHODS tuple and
+    aspnet_routes.py's HTTP_VERBS/MAP_VERBS cover GET/POST/PUT/PATCH/DELETE identically; confirmed
+    against real DTAP main -- all 5 methods analyzed and authenticated at the same rate). Added a
+    regression test (test_routes_middleware.py) locking this in, since it was previously unverified
+    by any test.
+  - #5 (lead with reachable count): dependency messages in both scan.py and checks.py now say
+    "N high/critical in runtime dependencies" first, "(of M total across P packages)" second,
+    instead of the raw total leading. recap() and the push-hook message updated to match. Verified
+    against real DTAP main: "28 high/critical in runtime dependencies, update those first. 98 known
+    vulnerabilities...".
+  - #6 (CI gate): `vapt check` / action.yml gained `--routes` (default true in the action), which
+    runs the offline route review using the matching projects/*.vapt.yml (matched by repo folder
+    name, same lookup as the menu's project picker) and fails the check if any access-control
+    finding exists. NOT wired to live regression checks -- those need IAP credentials the push
+    workflow doesn't have; flagged as a real limitation, not attempted. Also fixed a bug this
+    surfaced: `vapt check`'s secret-history step still used the old blunt scan_history (raw exit
+    code, no placeholder detection) while scan() had already been fixed; both now go through
+    history_findings with the same placeholder-aware logic.
+  - #7 (fix diffs): largely already covered by drift.py (built earlier this session), which links
+    the fixing commit per finding. Added a top-level "method" field to routes.py's finding() dict
+    (was previously only embedded in the impact text) and surfaced it in drift.py's route entries
+    and the PDF's ownership-finding table.
+  - #8 (CERT-PH export): new `vaptkit/certph.py` / `vapt export-tickets` / menu option 2 -> `t`.
+    One ticket per finding (route review, runtime static matches grouped by rule, runtime
+    high/critical dependencies grouped by package+version, non-placeholder secrets), most severe
+    first, rendered as a Markdown table. Explicitly labelled best-effort -- this kit has not seen an
+    actual CERT-PH/DC-003 template, so the field names are a guess at a typical layout, not a
+    verified match. Verified against a real DTAP main scan (15 tickets, correctly sorted, grouped
+    lodash/minimatch/etc. advisories).
+  - Hit and fixed a real file-overwrite race while editing menu.py with back-to-back python3
+    heredocs in one Bash call: the second heredoc's `p.read_text()` didn't see the first heredoc's
+    write (tool's own "modified on disk since you last read it" notice caught it on the Edit-tool
+    retry). Re-applied via the Edit tool and confirmed with grep before moving on. Worth remembering
+    if a future multi-step python-heredoc edit to the same file in one Bash call silently reverts.
+
 Previous handoff (2026-10-07 menu/redesign work, DTAP finding) preserved below.
 
 Replaces the Oct 5 handoff below this line's content; that session's "pending" items

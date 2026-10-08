@@ -86,7 +86,13 @@ class PushTests(unittest.TestCase):
         self.assertEqual(docker_calls, [])
 
     def test_static_scanner_can_read_private_export_without_root_capabilities(self):
-        def process(command, **kwargs):
+        real_run = subprocess.run
+
+        def process(command, *args, **kwargs):
+            if command[0] != "docker":
+                return real_run(command, *args, **kwargs)
+            if "gitleaks" in str(command):
+                return subprocess.CompletedProcess(command, 0, stdout="[]", stderr="")
             if command[-1] == "/src":
                 self.assertIn("--user", command)
                 self.assertIn(f"{os.getuid()}:{os.getgid()}", command)
@@ -95,19 +101,26 @@ class PushTests(unittest.TestCase):
                 source = next(mount.split(":/src:ro")[0] for mount in mounts if mount.endswith(":/src:ro"))
                 self.assertTrue((Path(source) / "file.txt").is_file())
                 self.assertEqual(Path(source).stat().st_mode & 0o777, 0o700)
+            return real_run(command, *args, **kwargs)
 
-        with patch("vaptkit.checks.run", side_effect=process):
+        with patch("vaptkit.checks.run", side_effect=process), \
+                patch("vaptkit.checks.subprocess.run", side_effect=process):
             check(self.repo, "HEAD", static=True)
 
     def test_windows_docker_commands_use_linux_paths_and_no_host_uid(self):
         commands = []
+        real_run = subprocess.run
 
-        def process(command, **kwargs):
+        def process(command, *args, **kwargs):
             commands.append(command)
-            if command[:2] == ["git", "clone"]:
-                subprocess.run(command, check=True)
+            if command[0] != "docker":
+                return real_run(command, *args, **kwargs)
+            if "gitleaks" in str(command):
+                return subprocess.CompletedProcess(command, 0, stdout="[]", stderr="")
+            return real_run(command, *args, **kwargs)
 
         with patch("vaptkit.checks.WINDOWS", True), patch("vaptkit.checks.run", side_effect=process), \
+                patch("vaptkit.checks.subprocess.run", side_effect=process), \
                 patch("os.getuid", side_effect=AttributeError("Windows has no getuid")):
             check(self.repo, "HEAD", static=True)
         clone = next(command for command in commands if command[:2] == ["git", "clone"])
@@ -280,3 +293,78 @@ class HistoryFindingsTests(unittest.TestCase):
         self.assertEqual(found[2]["commit"], "c" * 12)
         self.assertNotIn("k9Q2vX7pL4mN8rT1", json.dumps(found))
         self.assertTrue(all("Secret" not in item and "secret" not in item for item in found))
+
+
+class RouteReviewInCheckTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.repo = Path(self.directory.name) / "repo"
+        self.repo.mkdir()
+        git(self.repo, "init", "-q")
+        git(self.repo, "config", "user.name", "Fixture")
+        git(self.repo, "config", "user.email", "fixture@example.invalid")
+
+    def commit(self, route_body: str):
+        (self.repo / "app/api/evaluator/profile").mkdir(parents=True, exist_ok=True)
+        (self.repo / "app/api/evaluator/profile/route.ts").write_text(route_body)
+        git(self.repo, "add", ".")
+        git(self.repo, "commit", "-qm", "route")
+        return git(self.repo, "rev-parse", "HEAD")
+
+    def run_check(self, project_dir: Path):
+        with patch("vaptkit.checks.history_findings", return_value=[]), \
+                patch("vaptkit.checks.audit_commit", return_value=None), \
+                patch("vaptkit.checks.PROJECTS_DIR", project_dir):
+            check(self.repo, "HEAD")
+
+    def test_no_matching_project_config_is_not_applicable(self):
+        self.commit("export async function GET() { return Response.json({}) }")
+        with tempfile.TemporaryDirectory() as empty_projects:
+            with patch("vaptkit.checks.history_findings", return_value=[]), \
+                    patch("vaptkit.checks.audit_commit", return_value=None), \
+                    patch("vaptkit.checks.PROJECTS_DIR", Path(empty_projects)):
+                check(self.repo, "HEAD", routes=True)  # must not raise
+
+    def test_unauthenticated_handler_fails_the_check(self):
+        self.commit("export async function PUT(req) { return Response.json(await save(req)) }")
+        with tempfile.TemporaryDirectory() as projects_dir:
+            config = Path(projects_dir) / "repo.vapt.yml"
+            config.write_text("schema_version: 1\nproject: repo\n"
+            "target:\n  environment: staging\n  url: https://staging.example.invalid\n"
+            "  allowed_hosts: [staging.example.invalid]\n  verification: pending\n"
+            "scope:\n  api_prefixes: [/api/]\n  excluded_prefixes: []\n  roles: []\n"
+            "credentials: {}\nreview: {}\n")
+            with patch("vaptkit.checks.history_findings", return_value=[]), \
+                    patch("vaptkit.checks.audit_commit", return_value=None), \
+                    patch("vaptkit.checks.PROJECTS_DIR", Path(projects_dir)):
+                with self.assertRaises(ToolError):
+                    check(self.repo, "HEAD", routes=True)
+
+    def test_protected_handler_passes(self):
+        self.commit("export async function PUT(req) { "
+                    "const session = await requireAuth(req); return Response.json(await save(req)) }")
+        with tempfile.TemporaryDirectory() as projects_dir:
+            config = Path(projects_dir) / "repo.vapt.yml"
+            config.write_text("schema_version: 1\nproject: repo\n"
+            "target:\n  environment: staging\n  url: https://staging.example.invalid\n"
+            "  allowed_hosts: [staging.example.invalid]\n  verification: pending\n"
+            "scope:\n  api_prefixes: [/api/]\n  excluded_prefixes: []\n  roles: []\n"
+            "credentials: {}\nreview: {}\n")
+            with patch("vaptkit.checks.history_findings", return_value=[]), \
+                    patch("vaptkit.checks.audit_commit", return_value=None), \
+                    patch("vaptkit.checks.PROJECTS_DIR", Path(projects_dir)):
+                check(self.repo, "HEAD", routes=True)  # must not raise
+
+    def test_routes_false_skips_the_review_even_with_a_bug_present(self):
+        self.commit("export async function PUT(req) { return Response.json(await save(req)) }")
+        with tempfile.TemporaryDirectory() as projects_dir:
+            (Path(projects_dir) / "repo.vapt.yml").write_text("schema_version: 1\nproject: repo\n"
+            "target:\n  environment: staging\n  url: https://staging.example.invalid\n"
+            "  allowed_hosts: [staging.example.invalid]\n  verification: pending\n"
+            "scope:\n  api_prefixes: [/api/]\n  excluded_prefixes: []\n  roles: []\n"
+            "credentials: {}\nreview: {}\n")
+            with patch("vaptkit.checks.history_findings", return_value=[]), \
+                    patch("vaptkit.checks.audit_commit", return_value=None), \
+                    patch("vaptkit.checks.PROJECTS_DIR", Path(projects_dir)):
+                check(self.repo, "HEAD", routes=False)  # must not raise: review not requested

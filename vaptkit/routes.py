@@ -409,7 +409,7 @@ def matches_any(path: str, patterns: list[str]) -> bool:
 
 def finding(route: dict, method: str, title: str, severity: str, impact: str, remediation: str) -> dict:
     return {
-        "title": title, "severity": severity, "verification": "suspected",
+        "title": title, "severity": severity, "verification": "suspected", "method": method,
         "category": "unauthorized_access", "path": route["path"][:256], "owasp": "A01",
         "impact": f"{method} handler in {route['file']}. {impact}"[:2000], "remediation": remediation,
     }

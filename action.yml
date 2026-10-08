@@ -4,6 +4,9 @@ inputs:
   static:
     description: Run the bundled Semgrep rules
     default: "true"
+  routes:
+    description: Run the offline API access-control review (uses the matching projects/*.vapt.yml in this toolkit, if any)
+    default: "true"
 runs:
   using: composite
   steps:
@@ -15,9 +18,11 @@ runs:
       env:
         KIT_PATH: ${{ github.action_path }}
         RUN_STATIC: ${{ inputs.static }}
+        RUN_ROUTES: ${{ inputs.routes }}
       run: |
         python -m venv "$RUNNER_TEMP/matt-vapt-venv"
         "$RUNNER_TEMP/matt-vapt-venv/bin/pip" install --quiet "$KIT_PATH"
         args=()
         if [[ "$RUN_STATIC" == "true" ]]; then args+=(--static); fi
+        if [[ "$RUN_ROUTES" == "true" ]]; then args+=(--routes); fi
         "$RUNNER_TEMP/matt-vapt-venv/bin/vapt" check . "${args[@]}"

@@ -163,11 +163,12 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
     ownership = [item for item in routes.get("findings", []) if item["title"].startswith("Handler changes a record")]
     ownership_html = ""
     if ownership:
-        rows = "".join(f'<tr><td><code>{esc(item["path"])}</code></td><td>{esc(item["impact"])}</td></tr>' for item in ownership)
+        rows = "".join(f'<tr><td><span class="chip method">{esc(item.get("method", "?"))}</span></td>'
+                       f'<td><code>{esc(item["path"])}</code></td><td>{esc(item["impact"])}</td></tr>' for item in ownership)
         ownership_html = (f'<h3>Changes someone else\'s record ({len(ownership)})</h3><p>These handlers write using a user '
                           'ID taken from the request and never compare it with the signed-in user. Take the ID from the '
                           'session, or check ownership or role, before writing.</p>'
-                          f'<table><thead><tr><th>Route</th><th>Detail</th></tr></thead><tbody>{rows}</tbody></table>')
+                          f'<table><thead><tr><th>Method</th><th>Route</th><th>Detail</th></tr></thead><tbody>{rows}</tbody></table>')
     if unauthenticated:
         more = (f'<p class="more">{len(unauthenticated) - ROUTE_LIMIT} more are listed in route-review.json.</p>'
                 if len(unauthenticated) > ROUTE_LIMIT else "")

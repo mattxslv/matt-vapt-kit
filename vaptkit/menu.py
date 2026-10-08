@@ -438,14 +438,32 @@ def show_latest(console: Console) -> None:
     console.print(Text("Saved in ") + path_link(folder))
     console.print()
     option(console, "p", "Make a PDF report of this scan")
+    option(console, "t", "Export findings as a remediation-ticket table (Markdown)")
     option(console, "o", "Open this folder")
     option(console, "b", "Back")
     choice = ask(console, "\nChoose: ").lower()
     if choice == "p":
         offer_scan_pdf(console, folder, confirm=False)
         pause(console)
+    elif choice == "t":
+        export_tickets(console, folder)
+        pause(console)
     elif choice == "o":
         open_path(console, folder)
+
+
+def export_tickets(console: Console, folder: Path) -> None:
+    from .certph import render_markdown
+    destination = folder / "tickets.md"
+    try:
+        destination.write_text(render_markdown(folder))
+    except (ToolError, OSError) as error:
+        record_error("ticket export", str(error))
+        console.print(Text(f"\n{error}", style=ACCENT))
+        return
+    console.print(Text("\nTicket table saved: ") + path_link(destination))
+    console.print(Text("Field names are a best-effort mapping, not a verified CERT-PH template; check them before "
+                       "pasting this into a report.", style="dim"))
 
 
 HOSTNAME = re.compile(r"^[a-z0-9]+([.-][a-z0-9]+)*$")

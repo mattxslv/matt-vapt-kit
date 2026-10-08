@@ -270,6 +270,19 @@ templates, or `/Controller/Action` for conventional routing. WebForms pages and 
 Pages conventions are not reviewed. On nopCommerce all 620 admin actions are recognized
 as protected; the remaining unprotected actions are its public storefront.
 
+### Exporting findings as remediation tickets
+
+```sh
+.venv/bin/vapt export-tickets .private/scan-20261008-074822-e111db --output .private/tickets.md
+```
+
+One row per finding across route review, runtime static-rule matches, runtime high/critical
+dependencies (grouped per package/version) and non-placeholder secret matches, sorted most severe
+first, with a generated ticket ID per row. The column layout is this kit's best-effort mapping to a
+typical remediation-ticket table; it has not been checked against an actual CERT-PH or DICT DC 003
+s.2020 template, so confirm the exact fields and wording your report needs before submitting it.
+Also available from the menu: option 2 (latest results) → `t`.
+
 ### Two-account ownership checks
 
 ```sh

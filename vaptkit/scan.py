@@ -107,8 +107,11 @@ def recap(project: str, rows: list[dict], facts: dict) -> str:
         if stage == "Secret history" and facts.get("leaks"):
             found.append(f"{facts['leaks']} possible secrets in its Git history")
         elif stage == "Dependency audit" and facts.get("vulnerabilities"):
-            severity = f" ({facts['severity']})" if facts.get("severity") else ""
-            found.append(f"{facts['vulnerabilities']} known dependency vulnerabilities{severity}")
+            if facts.get("runtime_serious"):
+                found.append(f"{facts['runtime_serious']} high/critical runtime dependency vulnerabilities "
+                            f"(of {facts['vulnerabilities']} total)")
+            else:
+                found.append(f"{facts['vulnerabilities']} known dependency vulnerabilities, none high/critical in runtime")
         elif stage == "Static rules" and facts.get("static"):
             found.append(f"{facts['static']} static-rule matches")
         elif stage == "API authentication review" and facts.get("routes"):
@@ -364,7 +367,8 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
         counts, runtime = report["severity"], report["runtime_severity"]
         serious = runtime["critical"] + runtime["high"]
         dev_serious = counts["critical"] + counts["high"] - serious
-        facts.update(vulnerabilities=report["vulnerabilities"], severity=severity_text(counts), high=bool(serious))
+        facts.update(vulnerabilities=report["vulnerabilities"], severity=severity_text(counts),
+                    runtime_serious=serious, high=bool(serious))
         for entry in report["top"][:8]:
             dev = {"dev": "  (dev only)", "unused": "  (via an unused dependency)"}.get(entry["scope"], "")
             console.print(Text(f"  {entry['severity']:<8} {entry['package']} {entry['version']}  {entry['id']}{dev}",
@@ -378,13 +382,15 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
         if removable:
             dev_note += " Removing unused dependencies would clear some: " + ", ".join(
                 f"{item['name']} ({item['clears']})" for item in removable[:4]) + "."
+        # Lead with what's reachable: a raw "2 critical | 62 high" overstates risk when most of it is dev-only
+        # or comes only through a dependency nothing imports.
         if serious:
-            raise ToolError(f"{report['vulnerabilities']} known vulnerabilities in {report['packages']} packages "
-                            f"({severity_text(counts)}) across {lockfile_note}; {serious} high/critical in runtime "
-                            f"dependencies, update those first.{dev_note}")
+            raise ToolError(f"{serious} high/critical in runtime dependencies, update those first. "
+                            f"{report['vulnerabilities']} known vulnerabilities in {report['packages']} packages "
+                            f"({severity_text(counts)}) across {lockfile_note}.{dev_note}")
         if report["vulnerabilities"]:
-            return (f"{report['vulnerabilities']} known vulnerabilities ({severity_text(counts)}) across {lockfile_note}; "
-                    f"none high or critical in runtime dependencies.{dev_note}")
+            return (f"0 high/critical in runtime dependencies. {report['vulnerabilities']} known vulnerabilities "
+                    f"({severity_text(counts)}) across {lockfile_note}.{dev_note}")
         return f"No known vulnerabilities in {lockfile_note}."
     found_lockfiles = lockfiles(listing)
     stage(f"2 / {total}  Dependency audit", dependencies,

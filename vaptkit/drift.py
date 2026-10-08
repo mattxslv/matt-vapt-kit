@@ -21,8 +21,10 @@ def finding_keys(folder: Path) -> dict[str, dict]:
     """Comparable identity -> description for every finding a scan folder recorded."""
     keys = {}
     for item in read(folder, "route-review.json").get("findings", []):
+        method = item.get("method", "")
         keys[f"route|{item['title']}|{item['path']}"] = {"kind": "Access control", "what": item["title"],
-                                                         "where": item["path"], "file": item.get("impact", "").split(" handler in ")[-1].split(". ")[0]}
+                                                         "where": f"{method} {item['path']}" if method else item["path"],
+                                                         "file": item.get("impact", "").split(" handler in ")[-1].split(". ")[0]}
     for item in read(folder, "static-findings.json").get("findings", []):
         if item.get("runtime", True):
             keys[f"static|{item['rule']}|{item['path']}"] = {"kind": "Code rule", "what": item["rule"],

@@ -111,3 +111,28 @@ class MiddlewareAwareReviewTests(unittest.TestCase):
         helper_checked = VULNERABLE_PROFILE.replace(
             "  await query(", "  if (!isProfileEditAuthorized({ targetUserId: userId, session })) return forbidden()\n  await query(")
         self.assertEqual(self.build({"app/api/evaluator/profile/route.ts": helper_checked})["findings"], [])
+
+
+class SymmetricMethodCoverageTests(unittest.TestCase):
+    """The real DTAP bug was a PUT handler; confirm every HTTP method gets the same scrutiny as GET."""
+
+    def test_every_http_method_is_analyzed_and_an_unprotected_write_is_flagged_regardless_of_method(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        repo = Path(directory.name)
+        git(repo, "init", "-q")
+        git(repo, "config", "user.email", "t@example.invalid")
+        git(repo, "config", "user.name", "T")
+        for method in ("GET", "POST", "PUT", "PATCH", "DELETE"):
+            (repo / f"app/api/records/{method.lower()}").mkdir(parents=True)
+            (repo / f"app/api/records/{method.lower()}/route.ts").write_text(
+                f"export async function {method}(req) {{ return NextResponse.json(await act(req)) }}")
+        git(repo, "add", ".")
+        git(repo, "commit", "-qm", "fixture")
+        result = review(repo, {"project": "fixture", "review": {}})
+        analyzed = {route["handlers"][0]["method"] for route in result["routes"]}
+        self.assertEqual(analyzed, {"GET", "POST", "PUT", "PATCH", "DELETE"})
+        flagged = {route["handlers"][0]["method"] for route in result["routes"]
+                  if not route["handlers"][0]["authentication"]}
+        self.assertEqual(flagged, {"GET", "POST", "PUT", "PATCH", "DELETE"})
+        self.assertEqual(result["summary"]["no_authentication"], 5)

@@ -36,6 +36,7 @@ def main(argv=None) -> int:
     checks.add_argument("repo", type=Path)
     checks.add_argument("--revision", default="HEAD")
     checks.add_argument("--static", action="store_true")
+    checks.add_argument("--routes", action="store_true", help="Also run the offline API access-control review")
     hooks = commands.add_parser("hook", help="Install or remove local pre-push protection")
     hooks.add_argument("action", choices=["install", "uninstall"])
     hooks.add_argument("repo", type=Path)
@@ -75,6 +76,9 @@ def main(argv=None) -> int:
     scan.add_argument("--output", type=Path, required=True)
     scan.add_argument("--acknowledge-scope", action="store_true")
     scan.add_argument("--baseline", type=Path, help="Earlier assessment.json to retest finding by finding")
+    export = commands.add_parser("export-tickets", help="Export a repository scan's findings as a remediation-ticket table (Markdown)")
+    export.add_argument("scan_folder", type=Path, help="A .private/scan-* folder from a repository scan")
+    export.add_argument("--output", type=Path, required=True)
     report = commands.add_parser("report", help="Render reviewed observations as HTML, PDF and PNG")
     report.add_argument("input", type=Path)
     report.add_argument("--output", type=Path, required=True)
@@ -108,11 +112,18 @@ def main(argv=None) -> int:
             return 0 if result["ready"] else 1
         if args.command == "check":
             from .checks import check
-            check(args.repo, args.revision, static=args.static)
+            check(args.repo, args.revision, static=args.static, routes=args.routes)
             return 0
         if args.command == "hook":
             from .hooks import install, uninstall
             (install if args.action == "install" else uninstall)(args.repo)
+            return 0
+        if args.command == "export-tickets":
+            from .certph import render_markdown
+            if not (args.scan_folder / "summary.json").is_file():
+                raise ToolError(f"{args.scan_folder} does not look like a repository scan folder (no summary.json).")
+            args.output.write_text(render_markdown(args.scan_folder))
+            print(f"Ticket table written to {args.output}.")
             return 0
         if args.command == "report":
             from .report import generate

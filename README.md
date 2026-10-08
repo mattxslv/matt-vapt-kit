@@ -24,12 +24,12 @@ VAPT.
 Needs Python 3.11+ on PATH and Docker running. Clone, then run one command:
 
 ```bash
-git clone --branch v0.7.1 https://github.com/mattxslv/matt-vapt-kit.git
+git clone --branch v0.7.3 https://github.com/mattxslv/matt-vapt-kit.git
 cd matt-vapt-kit
 ./install
 ```
 
-`--branch v0.7.1` pins the current [release](https://github.com/mattxslv/matt-vapt-kit/releases);
+`--branch v0.7.3` pins the current [release](https://github.com/mattxslv/matt-vapt-kit/releases);
 drop it to follow `main`.
 
 ![Linux install](docs/screenshots/01-install-linux.svg)
@@ -63,7 +63,9 @@ menu. Afterwards, `./install` or `vaptkit` just opens the menu.
    scan your checkout, `main`, `staging` or all of them; other branches are read
    straight from git, so your working folder is never switched. Projects with a standing approval (DTAP)
    also get read-only checks of their staging site. Ends with an optional PDF report.
-2. **Latest results:** the last scan's table; `p` makes a PDF.
+2. **Latest results:** the last scan's table; `p` makes a PDF, `t` exports findings as a
+   remediation-ticket table (Markdown) — a best-effort mapping to a typical ticket layout, not a
+   verified CERT-PH template.
 
    ![Latest scan results](docs/screenshots/04-latest-results.svg)
 3. **Compare last two scans:** what's new and what got fixed.

@@ -211,22 +211,62 @@ def audit_commit(repo: Path, sha: str) -> dict | None:
     return {**summary, "lockfiles": found}
 
 
-def check(repo: Path, revision: str, *, static: bool = False) -> None:
+PROJECTS_DIR = Path(__file__).resolve().parent.parent / "projects"
+
+
+def project_config_for(repo: Path) -> Path | None:
+    """The projects/*.vapt.yml whose name best matches this repo's folder name, if any."""
+    if not PROJECTS_DIR.is_dir():
+        return None
+    name = repo.name.lower()
+    matches = [path for path in PROJECTS_DIR.glob("*.vapt.yml") if path.name.removesuffix(".vapt.yml") in name]
+    return max(matches, key=lambda path: len(path.name), default=None)
+
+
+def check(repo: Path, revision: str, *, static: bool = False, routes: bool = False) -> None:
     repo = Path(git(repo, "rev-parse", "--show-toplevel")).resolve()
     sha = checked_revision(repo, revision)
     print(f"Checking committed tree {sha[:12]}; dirty working files are not included.", flush=True)
-    scan_history(repo, sha)
+    found = history_findings(repo, sha)
+    real = [item for item in found if not item["placeholder"]]
+    placeholders = len(found) - len(real)
+    note = f" {placeholders} more look like placeholders in docs or example values." if placeholders else ""
+    print(f"Secret history: {len(real)} possible secrets (values withheld).{note}" if found
+          else "Secret history: no issue reported by this check.")
+    if real:
+        raise ToolError(f"{len(real)} possible secrets in the Git history (values withheld).{note} "
+                        "Rotate any that are real, even if later deleted.")
     report = audit_commit(repo, sha)
     if report is None:
         print("Dependency audit: not applicable (no supported lockfile at this commit).")
     else:
         serious = report["runtime_severity"]["critical"] + report["runtime_severity"]["high"]
-        print(f"Dependency audit: {report['vulnerabilities']} known vulnerabilities in {len(report['lockfiles'])} "
-              f"lockfile(s) ({severity_text(report['severity']) or 'none'}).")
+        total = report["severity"]["critical"] + report["severity"]["high"]
+        # Lead with what's actually reachable: a raw "2 critical | 62 high" overstates risk when most of it
+        # is dev-only or comes only through a dependency nothing imports.
+        print(f"Dependency audit: {serious} high/critical in runtime dependencies"
+              + (f" (of {total} total across {report['packages']} packages)" if total != serious else "")
+              + f". {report['vulnerabilities']} known vulnerabilities in {len(report['lockfiles'])} lockfile(s) "
+              f"({severity_text(report['severity']) or 'none'}).")
         if serious:
             raise ToolError(f"{serious} high/critical vulnerabilities in runtime dependencies; update those packages.")
     if static:
         scan_static(repo, sha)
+    if routes:
+        config_path = project_config_for(repo)
+        if config_path is None:
+            print("API access-control review: not applicable (no matching project config).")
+        else:
+            from .config import load_config
+            from .routes import review
+            result = review(repo, load_config(config_path), sha)
+            summary = result["summary"]
+            protected = f", {summary['middleware_protected']} protected by middleware" if summary.get("middleware_protected") else ""
+            print(f"API access-control review: {summary['handlers']} handlers reviewed{protected}.")
+            if result["findings"]:
+                for item in result["findings"][:8]:
+                    print(f"  [{item['severity'].upper():6}] {item['path']}  {item['title']}")
+                raise ToolError(f"{len(result['findings'])} suspected API access-control findings; see the detail above.")
 
 
 def clone_history(repo: Path, bare: Path, execute) -> None:

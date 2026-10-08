@@ -114,7 +114,12 @@ class RoleReleaseChallenge(unittest.TestCase):
                       "roles": ["service-provider", "lead-evaluator"]},
             "credentials": {},
             "role_testing": {
-                "adapter": "dtap-cookie-v1",
+                "adapter": "session-login-v1",
+                "login": {
+                    "login_path": "/api/auth/signin", "logout_path": "/api/auth/signout",
+                    "identity_path": ["user"], "email_field": "email", "role_field": "user_type",
+                    "session": {"type": "cookie", "cookie_names": ["auth-token", "session-bind"]},
+                },
                 "accounts": [
                     {"id": "provider", "role": "service-provider", "email_env": "CHALLENGE_PROVIDER_EMAIL",
                      "password_env": "CHALLENGE_PASSWORD"},

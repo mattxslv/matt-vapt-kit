@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 from vaptkit.process import ToolError, stream
 from vaptkit.menu import (
-    compare_scans, container_target, find_repos, parse_selection, is_local_target, is_noisy_zap_line, local_url, missing_local_attack_images,
+    compare_scans, container_target, find_repos, zap_alert_count, parse_selection, is_local_target, is_noisy_zap_line, local_url, missing_local_attack_images,
     retry_input, scan_findings, staging_config, staging_recap, available_memory_mb,
 )
 
@@ -277,3 +277,14 @@ class ParseSelectionTests(unittest.TestCase):
         for entry in ("0", "5", "x", "", "3-1"):
             with self.assertRaises(ToolError, msg=entry):
                 parse_selection(entry, 4)
+
+
+class ZapAlertCountTests(unittest.TestCase):
+    def test_counts_alert_lines_but_not_the_totals_line(self):
+        log = "\n".join([
+            "WARN-NEW: Missing Anti-clickjacking Header [10020] x 3 ",
+            "FAIL-NEW: SQL Injection [40018] x 1 ",
+            "PASS: Cookie No HttpOnly Flag [10010]",
+            "FAIL-NEW: 1\tFAIL-INPROG: 0\tWARN-NEW: 1\tWARN-INPROG: 0\tINFO: 0\tIGNORE: 0\tPASS: 133",
+        ])
+        self.assertEqual(zap_alert_count(log), 2)

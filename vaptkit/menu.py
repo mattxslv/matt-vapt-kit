@@ -338,6 +338,14 @@ def is_noisy_zap_line(line: str) -> bool:
     """True for ZAP's raw Java boot/logging lines, not its scan findings or errors."""
     return bool(ZAP_NOISE.match(line))
 ZAP_TIMEOUT_SECONDS = 900
+# DOM XSS (40026) drives Firefox inside the container; it doesn't fit the memory cap and stalls every scan.
+ZAP_RULES = "40026\tIGNORE\t(DOM XSS needs a browser that does not fit the memory cap)\n"
+ZAP_ALERT = re.compile(r"^(WARN|FAIL)-NEW: .*\[\d+\]", re.MULTILINE)
+
+
+def zap_alert_count(log: str) -> int:
+    """Alert lines such as 'WARN-NEW: Missing header [10021] x 3', not ZAP's final totals line."""
+    return len(ZAP_ALERT.findall(log))
 
 
 def is_local_target(url: str) -> bool:
@@ -453,14 +461,15 @@ def run_local_attack(console: Console) -> None:
 
     zap_name = f"mvk-zap-{stamp}"
     console.rule(Text("2 / 2  ZAP active scan", style="bold"), align="left", style="grey37")
+    (output / "zap-rules.conf").write_text(ZAP_RULES)
     zap_log, code, zap_timed_out = stream([
         "docker", "run", "--rm", *network, "--name", zap_name,
         "--memory=2g", "--memory-swap=2g", "-e", "JAVA_OPTS=-Xmx1536m",
         "-v", f"{output}:/zap/wrk:rw",
         next(image for image in LOCAL_ATTACK_IMAGES if "zap" in image),
-        "zap-full-scan.py", "-t", target, "-r", "zap-report.html", "-I", "-s",
+        "zap-full-scan.py", "-t", target, "-r", "zap-report.html", "-c", "zap-rules.conf", "-I", "-s",
     ], zap_printer, timeout=ZAP_TIMEOUT_SECONDS, on_timeout=stop(zap_name))
-    alerts = zap_log.count("WARN-NEW:") + zap_log.count("FAIL-NEW:")
+    alerts = zap_alert_count(zap_log)
     if zap_timed_out:
         summary.append(f"ZAP: stopped after {ZAP_TIMEOUT_SECONDS // 60} minute(s); partial results may be in zap-report.html.")
     else:

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="512" height="512" role="img" aria-label="Matt VAPT Kit logo">
+  <path d="M60 6 L104 21 V60 C104 89 85 106 60 116 C35 106 16 89 16 60 V21 Z" fill="#d68b68"/>
+  <path d="M60 16 L95 28 V60 C95 83 80 97 60 106 C40 97 25 83 25 60 V28 Z" fill="none" stroke="#1f1b19" stroke-opacity="0.18" stroke-width="2.5"/>
+  <path d="M60 40 L78 60 L60 80 L42 60 Z" fill="#1f1b19"/>
+</svg>

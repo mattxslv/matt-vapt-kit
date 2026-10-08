@@ -1,6 +1,14 @@
-# Matt VAPT Kit
+<p align="center">
+  <img src="docs/brand/banner.svg" alt="Matt VAPT Kit: anti vince vulnerability, to prevent spilling the beans" width="100%">
+</p>
 
-[![Toolkit checks](https://github.com/mattxslv/matt-vapt-kit/actions/workflows/test.yml/badge.svg)](https://github.com/mattxslv/matt-vapt-kit/actions/workflows/test.yml)
+<p align="center">
+  <a href="https://github.com/mattxslv/matt-vapt-kit/actions/workflows/test.yml"><img src="https://github.com/mattxslv/matt-vapt-kit/actions/workflows/test.yml/badge.svg" alt="Toolkit checks"></a>
+  <a href="https://github.com/mattxslv/matt-vapt-kit/actions/workflows/weekly-scan.yml"><img src="https://github.com/mattxslv/matt-vapt-kit/actions/workflows/weekly-scan.yml/badge.svg" alt="Weekly security scan"></a>
+  <img src="https://img.shields.io/badge/python-3.11%2B-d68b68" alt="Python 3.11+">
+  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20(beta)-d68b68" alt="Platform: Linux, Windows beta">
+  <img src="https://img.shields.io/badge/status-private%20team%20pilot-1f1b19" alt="Status: private team pilot">
+</p>
 
 **Scoped security checks for staging, with private evidence you can review.**
 

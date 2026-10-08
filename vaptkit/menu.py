@@ -124,6 +124,68 @@ def latest_scan() -> Path | None:
     return scans[-1].parent if scans else None
 
 
+def list_scans() -> list[Path]:
+    return sorted(path.parent for path in PRIVATE.glob("scan-*/summary.json"))
+
+
+def scan_findings(folder: Path) -> tuple[set[tuple], set[str]]:
+    """(static-rule findings, API routes with no authentication) recorded in a scan folder."""
+    static_path = folder / "static-findings.json"
+    static_findings = set()
+    if static_path.is_file():
+        data = json.loads(static_path.read_text())
+        static_findings = {(item["rule"], item["path"], item["line"]) for item in data.get("findings", [])}
+    route_path = folder / "route-review.json"
+    no_auth_routes = set()
+    if route_path.is_file():
+        data = json.loads(route_path.read_text())
+        no_auth_routes = {route["path"] for route in data.get("routes", [])
+                           if any(not handler["authentication"] for handler in route["handlers"])}
+    return static_findings, no_auth_routes
+
+
+def compare_scans(older: Path, newer: Path) -> dict:
+    old_static, old_routes = scan_findings(older)
+    new_static, new_routes = scan_findings(newer)
+    return {
+        "new_static": sorted(new_static - old_static),
+        "resolved_static": sorted(old_static - new_static),
+        "new_no_auth_routes": sorted(new_routes - old_routes),
+        "resolved_no_auth_routes": sorted(old_routes - new_routes),
+    }
+
+
+def show_compare(console: Console) -> None:
+    scans = list_scans()
+    if len(scans) < 2:
+        console.print(Text("\nNeed at least two scans to compare. Run another scan first.", style="yellow"))
+        pause(console)
+        return
+    older, newer = scans[-2], scans[-1]
+    diff = compare_scans(older, newer)
+    console.print()
+    console.print(Text(f"Comparing {older.name}  ->  {newer.name}", style="bold"))
+
+    def section(title: str, items: list, color: str) -> None:
+        if not items:
+            return
+        console.print(Text(f"\n{title} ({len(items)})", style=f"bold {color}"))
+        for item in items[:20]:
+            text = item if isinstance(item, str) else " ".join(f"{part}:" if index == 0 else str(part)
+                                                                 for index, part in enumerate(item))
+            console.print(Text("  " + text, style=color))
+        if len(items) > 20:
+            console.print(Text(f"  ... and {len(items) - 20} more", style="dim"))
+
+    section("New static-rule matches", diff["new_static"], "yellow")
+    section("Resolved static-rule matches", diff["resolved_static"], "green")
+    section("API routes newly missing authentication", diff["new_no_auth_routes"], "yellow")
+    section("API routes that now have authentication", diff["resolved_no_auth_routes"], "green")
+    if not any(diff.values()):
+        console.print(Text("\nNo change in static matches or no-authentication routes between these two scans.", style="dim"))
+    pause(console)
+
+
 def show_latest(console: Console) -> None:
     folder = latest_scan()
     if folder is None:
@@ -356,7 +418,7 @@ def run_local_attack(console: Console) -> None:
         "docker", "run", "--rm", "--network", "host", "--name", nuclei_name,
         "--memory=1g", "--memory-swap=1g",
         "-v", f"{output}:/output",
-        "projectdiscovery/nuclei:latest",
+        next(image for image in LOCAL_ATTACK_IMAGES if "nuclei" in image),
         "-u", url, "-severity", "low,medium,high,critical", "-c", "10", "-o", "/output/nuclei.txt",
     ], printer, timeout=NUCLEI_TIMEOUT_SECONDS, on_timeout=stop(nuclei_name))
     hits = len((output / "nuclei.txt").read_text().splitlines()) if (output / "nuclei.txt").is_file() else 0
@@ -373,7 +435,7 @@ def run_local_attack(console: Console) -> None:
         "docker", "run", "--rm", "--network", "host", "--name", zap_name,
         "--memory=2g", "--memory-swap=2g", "-e", "JAVA_OPTS=-Xmx1536m",
         "-v", f"{output}:/zap/wrk:rw",
-        "ghcr.io/zaproxy/zaproxy:stable",
+        next(image for image in LOCAL_ATTACK_IMAGES if "zap" in image),
         "zap-full-scan.py", "-t", url, "-r", "zap-report.html", "-I", "-s",
     ], zap_printer, timeout=ZAP_TIMEOUT_SECONDS, on_timeout=stop(zap_name))
     alerts = zap_log.count("WARN-NEW:") + zap_log.count("FAIL-NEW:")
@@ -395,24 +457,48 @@ def run_local_attack(console: Console) -> None:
     pause(console)
 
 
+LOCAL_ATTACK_IMAGES = {
+    "projectdiscovery/nuclei:latest": "Nuclei",
+    "ghcr.io/zaproxy/zaproxy:stable": "ZAP",
+}
+
+
+def missing_local_attack_images() -> list[str]:
+    return [image for image in LOCAL_ATTACK_IMAGES
+            if subprocess.run(["docker", "image", "inspect", image], capture_output=True).returncode != 0]
+
+
 def check_ready(console: Console) -> None:
     result = diagnose("push")
     rows = [(check["name"], check["ready"], check["detail"]) for check in result["checks"]]
+    docker_running = False
     if shutil.which("docker"):
-        running = subprocess.run(["docker", "info"], capture_output=True).returncode == 0
-        rows.append(("docker running", running, "Docker is running." if running else "Start Docker first."))
+        docker_running = subprocess.run(["docker", "info"], capture_output=True).returncode == 0
+        rows.append(("docker running", docker_running, "Docker is running." if docker_running else "Start Docker first."))
     console.print()
     for name, ready, detail in rows:
         mark = Text("  OK    ", style="bold green") if ready else Text("  MISSING ", style="bold yellow")
         console.print(mark + Text(f"{name}: ", style="bold") + Text(detail))
     console.print(Text("\nThe project's own pnpm version is checked during the scan.", style="dim"))
+    if docker_running:
+        missing = missing_local_attack_images()
+        if not missing:
+            console.print(Text("Local attack testing images (Nuclei, ZAP) are already downloaded.", style="dim"))
+        else:
+            names = ", ".join(LOCAL_ATTACK_IMAGES[image] for image in missing)
+            console.print(Text(f"\n{names} not downloaded yet; local attack testing would download "
+                               "them on first use (a few hundred MB).", style="yellow"))
+            if ask(console, "Download now instead? (y/N): ").lower() == "y":
+                for image in missing:
+                    console.print(Text(f"\nPulling {image}...", style="dim"))
+                    stream(["docker", "pull", image], lambda line: console.print(Text("  " + line, style="dim")))
     pause(console)
 
 
 def main() -> int:
     console = Console(highlight=False, no_color=bool(os.environ.get("NO_COLOR")))
     actions = {"1": run_scan, "2": show_latest, "3": check_ready,
-               "4": run_staging_check, "5": run_local_attack}
+               "4": run_staging_check, "5": run_local_attack, "6": show_compare}
     while True:
         console.clear()
         print_header(console)
@@ -421,6 +507,7 @@ def main() -> int:
         option(console, "3", "Check this computer is ready to scan")
         option(console, "4", "Quick staging check (paste a staging link)")
         option(console, "5", "Local attack testing (localhost only)")
+        option(console, "6", "Compare the last two scans")
         option(console, "q", "Quit")
         try:
             choice = ask(console, "\nChoose: ").lower()

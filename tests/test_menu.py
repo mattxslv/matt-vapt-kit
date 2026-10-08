@@ -1,8 +1,14 @@
+import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock
 
 from vaptkit.process import ToolError, stream
-from vaptkit.menu import is_local_target, is_noisy_zap_line, local_url, retry_input, staging_config, staging_recap, available_memory_mb
+from vaptkit.menu import (
+    compare_scans, is_local_target, is_noisy_zap_line, local_url, missing_local_attack_images,
+    retry_input, scan_findings, staging_config, staging_recap, available_memory_mb,
+)
 
 
 class StagingConfigTests(unittest.TestCase):
@@ -149,3 +155,89 @@ class ZapNoiseFilterTests(unittest.TestCase):
             "2026-10-07 09:40:52,198 I/O error: [Errno 5] ZAP failed to access: http://127.0.0.1:1",
         ):
             self.assertFalse(is_noisy_zap_line(line), line)
+
+
+class ScanFindingsTests(unittest.TestCase):
+    def scan_folder(self, static_findings=(), routes=()):
+        folder = Path(self._tmp.name) / ("scan-" + str(id(static_findings)) + str(id(routes)))
+        folder.mkdir()
+        if static_findings:
+            (folder / "static-findings.json").write_text(json.dumps({"findings": list(static_findings)}))
+        if routes:
+            (folder / "route-review.json").write_text(json.dumps({"routes": list(routes)}))
+        return folder
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+
+    def test_reads_static_findings_as_rule_path_line_tuples(self):
+        folder = self.scan_folder(static_findings=[{"rule": "r1", "path": "a.ts", "line": 3}])
+        static, routes = scan_findings(folder)
+        self.assertEqual(static, {("r1", "a.ts", 3)})
+        self.assertEqual(routes, set())
+
+    def test_reads_routes_with_any_unauthenticated_handler(self):
+        folder = self.scan_folder(routes=[
+            {"path": "/api/open", "handlers": [{"authentication": False}]},
+            {"path": "/api/mixed", "handlers": [{"authentication": True}, {"authentication": False}]},
+            {"path": "/api/closed", "handlers": [{"authentication": True}]},
+        ])
+        _, routes = scan_findings(folder)
+        self.assertEqual(routes, {"/api/open", "/api/mixed"})
+
+    def test_missing_files_yield_empty_sets(self):
+        folder = Path(self._tmp.name) / "empty-scan"
+        folder.mkdir()
+        self.assertEqual(scan_findings(folder), (set(), set()))
+
+
+class CompareScansTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+
+    def folder(self, name, static_findings=(), routes=()):
+        path = Path(self._tmp.name) / name
+        path.mkdir()
+        (path / "static-findings.json").write_text(json.dumps({"findings": list(static_findings)}))
+        (path / "route-review.json").write_text(json.dumps({"routes": list(routes)}))
+        return path
+
+    def test_new_and_resolved_findings_and_routes_are_both_reported(self):
+        older = self.folder(
+            "older",
+            static_findings=[{"rule": "r1", "path": "a.ts", "line": 1}],
+            routes=[{"path": "/api/old-gap", "handlers": [{"authentication": False}]}],
+        )
+        newer = self.folder(
+            "newer",
+            static_findings=[{"rule": "r2", "path": "b.ts", "line": 2}],
+            routes=[{"path": "/api/new-gap", "handlers": [{"authentication": False}]}],
+        )
+        diff = compare_scans(older, newer)
+        self.assertEqual(diff["new_static"], [("r2", "b.ts", 2)])
+        self.assertEqual(diff["resolved_static"], [("r1", "a.ts", 1)])
+        self.assertEqual(diff["new_no_auth_routes"], ["/api/new-gap"])
+        self.assertEqual(diff["resolved_no_auth_routes"], ["/api/old-gap"])
+
+    def test_identical_scans_report_no_differences(self):
+        shared_static = [{"rule": "r1", "path": "a.ts", "line": 1}]
+        shared_routes = [{"path": "/api/gap", "handlers": [{"authentication": False}]}]
+        older = self.folder("older", static_findings=shared_static, routes=shared_routes)
+        newer = self.folder("newer", static_findings=shared_static, routes=shared_routes)
+        diff = compare_scans(older, newer)
+        self.assertFalse(any(diff.values()))
+
+
+class MissingLocalAttackImagesTests(unittest.TestCase):
+    def test_images_missing_when_docker_inspect_fails(self):
+        with unittest.mock.patch("subprocess.run") as run:
+            run.return_value = MagicMock(returncode=1)
+            self.assertEqual(set(missing_local_attack_images()),
+                              {"projectdiscovery/nuclei:latest", "ghcr.io/zaproxy/zaproxy:stable"})
+
+    def test_no_images_missing_when_docker_inspect_succeeds(self):
+        with unittest.mock.patch("subprocess.run") as run:
+            run.return_value = MagicMock(returncode=0)
+            self.assertEqual(missing_local_attack_images(), [])

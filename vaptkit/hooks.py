@@ -5,12 +5,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .checks import WINDOWS, audit_commit, pushed_updates, scan_history
+from .checks import LOCKFILES, WINDOWS, audit_commit, pushed_updates, scan_history, severity_text
 from .process import ToolError, git, run
 
 MARKER = "# matt-vapt-kit managed hook"
 LEAK_EXIT_CODE = 42
-DEPENDENCY_FILES = {"package.json", "pnpm-lock.yaml"}
+DEPENDENCY_FILES = LOCKFILES | {"package.json", "composer.json"}
 
 
 class Findings(ToolError):
@@ -104,21 +104,6 @@ def leak_runner(command, **kwargs):
         raise ToolError(f"the secret scan did not complete (exit {code})")
 
 
-def audit_runner(command, *, cwd=None, **kwargs):
-    result = subprocess.run(command + ["--json"], cwd=cwd, capture_output=True, text=True, check=False)
-    try:
-        report = json.loads(result.stdout)
-    except ValueError:
-        raise ToolError("pnpm audit returned no readable result") from None
-    if "error" in report:
-        raise ToolError("pnpm audit could not complete")
-    counts = report.get("metadata", {}).get("vulnerabilities", {})
-    serious = counts.get("high", 0) + counts.get("critical", 0)
-    if serious:
-        raise Findings(f"{serious} high/critical vulnerable dependencies in the pushed lockfile. "
-                       "Run pnpm audit for details, update them, then push again.")
-
-
 def warn(stage: str, error: Exception) -> None:
     print(f"MVK: {stage} was skipped because it could not run ({error}). "
           "Run vaptkit option 6 to check your setup.", file=sys.stderr)
@@ -137,15 +122,22 @@ def protect(repo: Path, local: str, remote: str | None) -> None:
         raise
     except (ToolError, OSError) as error:
         warn("the secret scan", error)
-    changed = set(git(repo, "log", "--name-only", "--format=", *revisions.split()).splitlines())
+    changed = {Path(path).name for path in
+               git(repo, "log", "--name-only", "--format=", *revisions.split()).splitlines()}
     if changed & DEPENDENCY_FILES:
         print("MVK: dependencies changed; auditing for high/critical vulnerabilities...", file=sys.stderr, flush=True)
         try:
-            audit_commit(repo, local, runner=audit_runner)
-        except Findings:
-            raise
+            report = audit_commit(repo, local)
         except (ToolError, OSError) as error:
             warn("the dependency audit", error)
+            return
+        counts = report["severity"] if report else {}
+        serious = counts.get("critical", 0) + counts.get("high", 0)
+        if serious:
+            worst = ", ".join(list(dict.fromkeys(f"{entry['package']} {entry['version']}"
+                                                 for entry in report["top"]))[:3])
+            raise Findings(f"{serious} high/critical dependency vulnerabilities in the pushed lockfiles "
+                           f"({severity_text(counts)}), e.g. {worst}. Update them, then push again.")
 
 
 def main() -> int:

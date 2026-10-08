@@ -58,7 +58,7 @@ def diagnose(profile: str, config: dict | None = None) -> dict:
         "This checks local prerequisites, not authorization or permission to assess a target.",
     ]
     if profile == "push":
-        notes.append("Docker daemon/images and the target project's exact pnpm version are not checked; vapt check validates them.")
+        notes.append("The Docker daemon and scanner images are not checked here; vapt check validates them.")
     if profile == "roles":
         notes.append("QA emails/passwords and active approval are required at run time, not read by doctor.")
         if config is None:

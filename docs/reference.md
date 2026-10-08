@@ -47,7 +47,7 @@ For an interactive all-supported-checks workflow:
 ./scan /path/to/project --config projects/dtap.vapt.yml
 ```
 
-This runs secret history, supported pnpm auditing, bundled static rules and
+This runs secret history, a lockfile dependency audit, bundled static rules and
 offline route review against one pinned HEAD revision. Independent stages continue
 after a failure so the final table does not hide coverage gaps. It writes only
 normalized stage statuses, static-match locations and route-review evidence,
@@ -67,21 +67,24 @@ The existing fail-closed `check` command and hooks retain their previous behavio
 .venv/bin/vapt hook uninstall /path/to/project
 ```
 
-The pre-push hook checks every unique nondeleted pushed commit tip (including tag
-targets), not just the current branch or dirty working tree. Gitleaks scans all
-reachable history for each tip and redacts its output. `pnpm audit --audit-level=high`
-checks a temporary copy of that commit's manifests. No dependency install, lifecycle
-scripts or application build is run.
+The pre-push hook checks only the commits a push adds (`remote..local`, or the new
+commits of a new branch), not the dirty working tree. Gitleaks scans those commits and
+redacts its output. When a lockfile or manifest changed, the dependency audit checks the
+committed lockfiles of the pushed tip. No dependency install, lifecycle scripts or
+application build is run.
 A temporary bare snapshot shares read-only Git objects during history scanning.
 Local certificate directories, dirty attributes and working-tree scanner overrides
 do not affect the history read. The default Gitleaks rules apply.
 
-Checks fail closed on missing tools, unsupported Node lockfiles, audit errors and
-high/critical dependency findings. Findings are not automatically fixed or ignored.
-Projects without root `package.json` explicitly skip the pnpm audit; their ecosystem
-auditors are not implemented yet. pnpm must resolve the exact version in the project's
-`packageManager` field. The pnpm audit service receives package names and versions,
-not source code. Docker scans have no network access.
+New leaked secrets and high/critical dependency findings block the push; a check
+that cannot run (for example Docker is off) warns and lets the push through. Findings
+are not automatically fixed or ignored.
+
+The dependency audit uses OSV-Scanner on the committed lockfiles: npm, yarn, pnpm and
+bun for Node; Composer for PHP; pip, Poetry, Pipenv and uv for Python; Go, Maven,
+Gradle, Ruby and Rust. Lockfiles under `node_modules/`, `vendor/` and virtualenvs are
+skipped. No package manager needs to be installed. Package names and versions (not
+source code) are sent to osv.dev; the other Docker scans have no network access.
 
 Installation preserves executable hooks in the previous hooks directory and chains
 the previous pre-push hook with identical stdin and arguments. Uninstall restores the

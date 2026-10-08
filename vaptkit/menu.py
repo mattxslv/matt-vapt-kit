@@ -626,7 +626,6 @@ def check_ready(console: Console) -> None:
     for name, ready, detail in rows:
         mark = Text("  OK    ", style="bold green") if ready else Text("  MISSING ", style=f"bold {ACCENT}")
         console.print(mark + Text(f"{name}: ", style="bold") + Text(detail))
-    console.print(Text("\nThe project's own pnpm version is checked during the scan.", style="dim"))
     if docker_running:
         missing = missing_local_attack_images()
         if not missing:

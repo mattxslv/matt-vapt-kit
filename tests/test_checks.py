@@ -6,8 +6,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from vaptkit.checks import audit_commit, check, checked_revision, pushed_updates
-from vaptkit.hooks import Findings, audit_runner, install, protect, uninstall
+from vaptkit.checks import audit_commit, check, checked_revision, lockfiles, pushed_updates, severity_band, summarize_osv
+from vaptkit.hooks import Findings, install, protect, uninstall
 from vaptkit.process import ToolError, git
 
 
@@ -71,10 +71,18 @@ class PushTests(unittest.TestCase):
         self.assertEqual((self.repo / "received.txt").read_text(), "original input\n")
         self.assertIn("Existing pre-push hook failed", result.stderr)
 
-    def test_non_node_audit_explicit(self):
-        with patch("vaptkit.checks.run") as run:
-            audit_commit(self.repo, git(self.repo, "rev-parse", "HEAD"))
-            run.assert_not_called()
+    def test_no_lockfile_means_no_audit(self):
+        real_run = subprocess.run
+        docker_calls = []
+
+        def process(command, **kwargs):
+            if command[0] == "docker":
+                docker_calls.append(command)
+            return real_run(command, **kwargs)
+
+        with patch("vaptkit.checks.subprocess.run", side_effect=process):
+            self.assertIsNone(audit_commit(self.repo, git(self.repo, "rev-parse", "HEAD")))
+        self.assertEqual(docker_calls, [])
 
     def test_static_scanner_can_read_private_export_without_root_capabilities(self):
         def process(command, **kwargs):
@@ -113,46 +121,63 @@ class PushTests(unittest.TestCase):
         self.assertNotIn(str(self.repo), " ".join(history))
 
     def test_audit_uses_pushed_lockfile_not_working_tree(self):
-        (self.repo / "package.json").write_text(json.dumps({"packageManager": "pnpm@10.27.0"}))
-        (self.repo / "pnpm-lock.yaml").write_text("committed lockfile\n")
-        git(self.repo, "add", "package.json", "pnpm-lock.yaml")
-        git(self.repo, "commit", "-qm", "Add manifests")
-        (self.repo / "pnpm-lock.yaml").write_text("dirty lockfile\n")
+        (self.repo / "composer.lock").write_text('{"packages": ["committed"]}')
+        git(self.repo, "add", "composer.lock")
+        git(self.repo, "commit", "-qm", "Add lockfile")
+        (self.repo / "composer.lock").write_text('{"packages": ["dirty"]}')
         real_run = subprocess.run
+        seen = {}
 
         def process(command, **kwargs):
-            if command[:2] == ["pnpm", "--version"]:
-                return subprocess.CompletedProcess(command, 0, stdout="10.27.0\n")
-            return real_run(command, **kwargs)
+            if command[0] != "docker":
+                return real_run(command, **kwargs)
+            mount = next(arg for arg in command if arg.endswith(":/src:ro")).rsplit(":/src:ro", 1)[0]
+            seen["lockfile"] = (Path(mount) / "composer.lock").read_text()
+            seen["command"] = command
+            return subprocess.CompletedProcess(command, 1, stdout=json.dumps({"results": [{"packages": [{
+                "package": {"name": "guzzlehttp/guzzle", "version": "7.4.0", "ecosystem": "Packagist"},
+                "groups": [{"ids": ["GHSA-1"], "max_severity": "8.0"}, {"ids": ["GHSA-2"], "max_severity": "5.3"}],
+            }]}]}), stderr="")
 
-        def audit(command, *, cwd):
-            self.assertEqual((cwd / "pnpm-lock.yaml").read_text(), "committed lockfile\n")
-            self.assertIn("--audit-level=high", command)
+        with patch("vaptkit.checks.subprocess.run", side_effect=process):
+            report = audit_commit(self.repo, git(self.repo, "rev-parse", "HEAD"))
+        self.assertEqual(seen["lockfile"], '{"packages": ["committed"]}')
+        self.assertNotIn("--network=none", seen["command"])
+        self.assertEqual(report["vulnerabilities"], 2)
+        self.assertEqual(report["severity"]["high"], 1)
+        self.assertEqual(report["severity"]["medium"], 1)
+        self.assertEqual(report["lockfiles"], ["composer.lock"])
 
-        with patch("vaptkit.checks.subprocess.run", side_effect=process), patch(
-            "vaptkit.checks.run", side_effect=audit
-        ):
-            audit_commit(self.repo, git(self.repo, "rev-parse", "HEAD"))
+    def test_scanner_finding_no_packages_counts_as_no_audit(self):
+        (self.repo / "package-lock.json").write_text("{}")
+        git(self.repo, "add", "package-lock.json")
+        git(self.repo, "commit", "-qm", "Add empty lockfile")
+        real_run = subprocess.run
+        with patch("vaptkit.checks.subprocess.run", side_effect=lambda command, **kwargs: (
+            subprocess.CompletedProcess(command, 128, stdout="", stderr="") if command[0] == "docker"
+            else real_run(command, **kwargs)
+        )):
+            self.assertIsNone(audit_commit(self.repo, git(self.repo, "rev-parse", "HEAD")))
 
 
-class HookAuditTests(unittest.TestCase):
-    def audit(self, stdout):
-        with patch("vaptkit.hooks.subprocess.run") as run:
-            run.return_value = subprocess.CompletedProcess([], 1, stdout=stdout, stderr="")
-            audit_runner(["pnpm", "audit"])
+class DependencyReportTests(unittest.TestCase):
+    def test_lockfiles_found_anywhere_except_vendored_folders(self):
+        listing = ["package.json", "pnpm-lock.yaml", "api/composer.lock", "vendor/x/composer.lock",
+                   "node_modules/a/package-lock.json", "README.md"]
+        self.assertEqual(lockfiles(listing), ["pnpm-lock.yaml", "api/composer.lock"])
 
-    def test_high_or_critical_blocks(self):
-        with self.assertRaises(Findings):
-            self.audit(json.dumps({"metadata": {"vulnerabilities": {"high": 1, "critical": 0}}}))
+    def test_severity_bands_follow_cvss(self):
+        self.assertEqual([severity_band(score) for score in ("9.8", "7.0", "5.3", "2.1", "", None)],
+                         ["critical", "high", "medium", "low", "unknown", "unknown"])
 
-    def test_only_low_or_moderate_passes(self):
-        self.audit(json.dumps({"metadata": {"vulnerabilities": {"low": 4, "moderate": 2}}}))
-
-    def test_audit_errors_are_not_findings(self):
-        for stdout in ("not json", json.dumps({"error": {"code": "ENOTFOUND"}})):
-            with self.assertRaises(ToolError) as caught:
-                self.audit(stdout)
-            self.assertNotIsInstance(caught.exception, Findings)
+    def test_summary_counts_each_advisory_group_once_worst_first(self):
+        summary = summarize_osv({"results": [{"packages": [
+            {"package": {"name": "a", "version": "1"}, "groups": [{"ids": ["X"], "max_severity": "4.0"}]},
+            {"package": {"name": "b", "version": "2"}, "groups": [{"ids": ["Y"], "max_severity": "9.1"}]},
+        ]}]})
+        self.assertEqual(summary["vulnerabilities"], 2)
+        self.assertEqual(summary["packages"], 2)
+        self.assertEqual(summary["top"][0]["package"], "b")
 
 
 class HookProtectTests(unittest.TestCase):
@@ -163,7 +188,21 @@ class HookProtectTests(unittest.TestCase):
         with patch("vaptkit.hooks.push_revisions", return_value="a..b"), \
                 patch("vaptkit.hooks.git", side_effect=fake_git), \
                 patch("vaptkit.hooks.scan_history", side_effect=FileNotFoundError("docker")), \
-                patch("vaptkit.hooks.audit_commit", side_effect=Findings("1 high")) as audit:
+                patch("vaptkit.hooks.audit_commit", return_value={
+                    "severity": {"critical": 0, "high": 1, "medium": 0, "low": 0, "unknown": 0},
+                    "top": [{"package": "lodash", "version": "4.17.20"}]}) as audit:
             with self.assertRaises(Findings):
                 protect(Path("."), "b" * 40, "a" * 40)
+        audit.assert_called_once()
+
+
+    def test_composer_lockfile_changes_also_trigger_the_audit(self):
+        def fake_git(repo, *args):
+            return "1" if args[0] == "rev-list" else "backend/composer.lock"
+
+        with patch("vaptkit.hooks.push_revisions", return_value="a..b"), \
+                patch("vaptkit.hooks.git", side_effect=fake_git), \
+                patch("vaptkit.hooks.scan_history", return_value=None), \
+                patch("vaptkit.hooks.audit_commit", return_value=None) as audit:
+            protect(Path("."), "b" * 40, "a" * 40)
         audit.assert_called_once()

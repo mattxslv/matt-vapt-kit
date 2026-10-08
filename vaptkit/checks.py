@@ -9,6 +9,7 @@ from .process import ToolError, git, run
 
 GITLEAKS = "ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f"
 SEMGREP = "semgrep/semgrep@sha256:acaac22ffc7b7cc5926de0751b223bce0b2491c33d18422fa72f632c78d81198"
+OSV_SCANNER = "ghcr.io/google/osv-scanner@sha256:afd838850ac1a0fcc15ff4a041dc9ba11123c3f0d2666217a5f0fcf9222b55fa"
 SHA = re.compile(r"^[0-9a-f]{40,64}$")
 WINDOWS = os.name == "nt"
 
@@ -38,43 +39,86 @@ def docker_repo(repo: Path) -> list[str]:
     return command
 
 
-def audit_commit(repo: Path, sha: str, *, runner=None) -> None:
-    execute = runner or run
-    listing = git(repo, "ls-tree", "-r", "--name-only", sha).splitlines()
-    if "package.json" not in listing:
-        print("Dependency audit: not applicable (no root package.json at this commit).")
-        return
-    if "pnpm-lock.yaml" not in listing:
-        raise ToolError("Node project has no pnpm-lock.yaml; unsupported audit format.")
-    package = subprocess.run(
-        ["git", "-C", str(repo), "show", f"{sha}:package.json"],
-        capture_output=True, check=True,
-    ).stdout
+LOCKFILES = {
+    "package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml", "bun.lock",
+    "composer.lock", "requirements.txt", "poetry.lock", "Pipfile.lock", "uv.lock",
+    "go.mod", "Gemfile.lock", "Cargo.lock", "pom.xml", "gradle.lockfile",
+}
+VENDORED = {"node_modules", "vendor", ".venv", "venv"}
+SEVERITIES = ("critical", "high", "medium", "low", "unknown")
+
+
+def lockfiles(listing: list[str]) -> list[str]:
+    """Committed lockfiles OSV-Scanner understands, skipping vendored dependency folders."""
+    return [path for path in listing
+            if Path(path).name in LOCKFILES and not VENDORED.intersection(Path(path).parts[:-1])]
+
+
+def severity_band(score: str) -> str:
     try:
-        manager = json.loads(package).get("packageManager", "")
-    except (ValueError, AttributeError):
-        raise ToolError("Invalid package.json at the pushed commit.") from None
-    match = re.fullmatch(r"pnpm@(\d+\.\d+\.\d+)(?:\+sha\d+\.[a-f0-9]+)?", manager)
-    if not match:
-        raise ToolError("Set an exact pnpm packageManager version before enabling audits.")
-    try:
-        installed = subprocess.run(
-            ["pnpm", "--version"], cwd=repo, capture_output=True, text=True, check=True
-        ).stdout.strip()
-    except (OSError, subprocess.CalledProcessError):
-        raise ToolError("pnpm is unavailable. Install the project's pinned version.") from None
-    if installed != match[1]:
-        raise ToolError(f"Install pnpm {match[1]} for this project before pushing.")
+        value = float(score)
+    except (TypeError, ValueError):
+        return "unknown"
+    return "critical" if value >= 9 else "high" if value >= 7 else "medium" if value >= 4 else "low"
+
+
+def summarize_osv(report: dict) -> dict:
+    counts = dict.fromkeys(SEVERITIES, 0)
+    top, packages = [], 0
+    for result in report.get("results", []):
+        for item in result.get("packages", []):
+            groups = item.get("groups", [])
+            if groups:
+                packages += 1
+            for group in groups:
+                band = severity_band(group.get("max_severity"))
+                counts[band] += 1
+                package = item["package"]
+                top.append({"package": package["name"], "version": package.get("version", ""),
+                            "ecosystem": package.get("ecosystem", ""), "id": group["ids"][0], "severity": band,
+                            "score": group.get("max_severity") or ""})
+    top.sort(key=lambda entry: (SEVERITIES.index(entry["severity"]), entry["package"]))
+    return {"vulnerabilities": sum(counts.values()), "packages": packages, "severity": counts, "top": top}
+
+
+def severity_text(counts: dict) -> str:
+    return " | ".join(f"{counts[band]} {band}" for band in SEVERITIES if counts.get(band))
+
+
+def audit_commit(repo: Path, sha: str) -> dict | None:
+    """Check the committed lockfiles against the OSV vulnerability database; None if there are none.
+
+    Only lockfiles are copied out of the commit, so dirty working files never affect the result. Package
+    names and versions are sent to osv.dev.
+    """
+    found = lockfiles(git(repo, "ls-tree", "-r", "--name-only", sha).splitlines())
+    if not found:
+        return None
     with tempfile.TemporaryDirectory(prefix="matt-vapt-audit-") as directory:
         root = Path(directory)
-        (root / "package.json").write_bytes(package)
-        lock = subprocess.run(
-            ["git", "-C", str(repo), "show", f"{sha}:pnpm-lock.yaml"],
-            capture_output=True, check=True,
-        ).stdout
-        (root / "pnpm-lock.yaml").write_bytes(lock)
-        print("Auditing committed lockfile (package names/versions sent to npm's audit service).")
-        execute(["pnpm", "audit", "--audit-level=high", "--registry=https://registry.npmjs.org"], cwd=root)
+        for path in found:
+            destination = root / path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(subprocess.run(
+                ["git", "-C", str(repo), "show", f"{sha}:{path}"], capture_output=True, check=True,
+            ).stdout)
+        try:
+            result = subprocess.run([
+                "docker", "run", "--rm", "--cap-drop=ALL", "--security-opt=no-new-privileges", *user_flag(),
+                "-e", "HOME=/tmp", "-v", f"{root}:/src:ro", OSV_SCANNER,
+                "scan", "source", "--recursive", "--format", "json", "/src",
+            ], capture_output=True, text=True, check=False)
+        except OSError:
+            raise ToolError("Cannot start docker; install it before continuing.") from None
+    if result.returncode == 128:
+        return None
+    if result.returncode not in (0, 1):
+        raise ToolError(f"The dependency scanner did not complete (exit {result.returncode}).")
+    try:
+        report = json.loads(result.stdout) if result.stdout.strip() else {}
+    except ValueError:
+        raise ToolError("The dependency scanner returned unreadable output.") from None
+    return {**summarize_osv(report), "lockfiles": found}
 
 
 def check(repo: Path, revision: str, *, static: bool = False) -> None:
@@ -82,7 +126,15 @@ def check(repo: Path, revision: str, *, static: bool = False) -> None:
     sha = checked_revision(repo, revision)
     print(f"Checking committed tree {sha[:12]}; dirty working files are not included.", flush=True)
     scan_history(repo, sha)
-    audit_commit(repo, sha)
+    report = audit_commit(repo, sha)
+    if report is None:
+        print("Dependency audit: not applicable (no supported lockfile at this commit).")
+    else:
+        serious = report["severity"]["critical"] + report["severity"]["high"]
+        print(f"Dependency audit: {report['vulnerabilities']} known vulnerabilities in {len(report['lockfiles'])} "
+              f"lockfile(s) ({severity_text(report['severity']) or 'none'}).")
+        if serious:
+            raise ToolError(f"{serious} high/critical dependency vulnerabilities; update those packages.")
     if static:
         scan_static(repo, sha)
 

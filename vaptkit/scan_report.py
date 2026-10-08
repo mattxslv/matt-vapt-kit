@@ -134,6 +134,26 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
     else:
         routes_html = '<p class="lede">Every API handler that was reviewed has an authentication check in code.</p>'
 
+    dependencies = read(folder, "dependency-audit.json")
+    dependency_html = ""
+    if dependencies is not None:
+        band_chip = {"critical": "review", "high": "review", "medium": "gap", "low": "gap", "unknown": "gap"}
+        rows = "".join(
+            f'<tr><td class="check">{esc(entry["package"])} <span class="muted">{esc(entry["version"])}</span></td>'
+            f'<td class="state"><span class="chip {band_chip[entry["severity"]]}">{esc(entry["severity"])}</span></td>'
+            f'<td><code>{esc(entry["id"])}</code></td><td>{esc(entry["ecosystem"])}</td></tr>'
+            for entry in dependencies["top"][:ROUTE_LIMIT])
+        listed = ", ".join(f"<code>{esc(path)}</code>" for path in dependencies["lockfiles"])
+        body = (f'<table><thead><tr><th>Package</th><th>Severity</th><th>Advisory</th><th>Ecosystem</th></tr></thead>'
+                f"<tbody>{rows}</tbody></table>" if rows else
+                '<p class="lede">No known vulnerabilities in these lockfiles.</p>')
+        dependency_html = f"""<section class="chapter">
+  <header class="chapter-head"><p class="eyebrow">§§</p><h2>Vulnerable dependencies</h2></header>
+  <p class="lede">Known advisories for the exact package versions pinned in {listed}, from the public OSV
+  database. Update high and critical ones first; the advisory ID explains the fix.</p>
+  {body}
+</section>
+"""
     staging = read(folder / "staging", "assessment.json")
     staging_html = ""
     if staging is not None:
@@ -149,7 +169,7 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
         errors = (f'<p class="more">{len(staging["errors"])} requests did not complete, so those paths are not covered.</p>'
                   if staging["errors"] else "")
         staging_html = f"""<section class="chapter page">
-  <header class="chapter-head"><p class="eyebrow">05</p><h2>Live staging checks</h2></header>
+  <header class="chapter-head"><p class="eyebrow">§§</p><h2>Live staging checks</h2></header>
   <p class="lede">Read-only requests to <code>{esc(staging["target"])}</code>: security headers, cookies and a short list
   of commonly exposed files. No logins and no attack payloads. Confirmed means the same result was seen twice.</p>
   {table_html}{errors}
@@ -161,7 +181,7 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
                       if row["status"] in ("DONE", "REVIEW")
                       and not (live_gap and stage(row).startswith("Live staging")))
 
-    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+    document = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
 <title>{esc(rid)} | {esc(project)} Repository Scan</title><style>{css}</style></head><body>
 <div class="watermark" aria-hidden="true">MATT VAPT KIT</div>
@@ -186,7 +206,7 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
 </section>
 
 <section class="chapter">
-  <header class="chapter-head"><p class="eyebrow">01</p><h2>At a glance</h2></header>
+  <header class="chapter-head"><p class="eyebrow">§§</p><h2>At a glance</h2></header>
   <p class="verdict">{esc(summary.get("recap") or "No plain-English summary was recorded for this scan.")}</p>
   <h3>What to do first</h3>
   <ol class="actions">{steps}</ol>
@@ -196,26 +216,26 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
 </section>
 
 <section class="chapter page">
-  <header class="chapter-head"><p class="eyebrow">02</p><h2>Secrets in the commit history</h2></header>
+  <header class="chapter-head"><p class="eyebrow">§§</p><h2>Secrets in the commit history</h2></header>
   {secrets}
 </section>
 
-<section class="chapter">
-  <header class="chapter-head"><p class="eyebrow">03</p><h2>Code-rule matches</h2></header>
+{dependency_html}<section class="chapter">
+  <header class="chapter-head"><p class="eyebrow">§§</p><h2>Code-rule matches</h2></header>
   <p class="lede">Patterns in the committed code that often lead to vulnerabilities, grouped by rule.
   Source lines are deliberately not reproduced; open each location to judge it.</p>
   {static_html}
 </section>
 
 <section class="chapter page">
-  <header class="chapter-head"><p class="eyebrow">04</p><h2>API routes without a login check</h2></header>
+  <header class="chapter-head"><p class="eyebrow">§§</p><h2>API routes without a login check</h2></header>
   <p class="lede">Handlers where no session or token check was found in the code. Middleware may still protect
   some of them, so confirm each one before treating it as a vulnerability.</p>
   {routes_html}
 </section>
 
 {staging_html}<section class="chapter">
-  <header class="chapter-head"><p class="eyebrow">{"06" if staging_html else "05"}</p><h2>Scope and limits</h2></header>
+  <header class="chapter-head"><p class="eyebrow">§§</p><h2>Scope and limits</h2></header>
   <div class="scope">
     <div><h3>Covered by this scan</h3><ul>{covered or "<li>Nothing completed</li>"}</ul></div>
     <div><h3>Not covered</h3><ul>{not_tested}</ul></div>
@@ -226,6 +246,10 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
   Share this report only with people approved to see its findings.</p>
 </section>
 </body></html>"""
+    # Number the chapters in order, since the dependency and staging chapters are optional.
+    first, *chapters = document.split('<p class="eyebrow">§§</p>')
+    return first + "".join(f'<p class="eyebrow">{number:02d}</p>{chapter}'
+                           for number, chapter in enumerate(chapters, 1))
 
 
 def write_scan_report(folder: Path, *, html_only: bool = False, tlp: str = "AMBER+STRICT") -> tuple[Path, Path | None]:

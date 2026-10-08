@@ -113,6 +113,18 @@
   test.dtap.dict.gov.ph does not resolve in DNS; the stage reports it as not
   covered. Do not repoint it at production without the owner's say-so.
 
+- Dependency audit now OSV-Scanner (pinned digest in checks.py `OSV_SCANNER`) over
+  committed lockfiles of any common ecosystem (`LOCKFILES`), replacing the pnpm-only
+  audit and its "exact pnpm version installed" requirement. Other teams use Node
+  (npm/yarn/pnpm) and PHP/Laravel per the user. `audit_commit` returns a report
+  (counts by CVSS band, top entries) instead of raising; scan/check/hook decide.
+  Evidence: `dependency-audit.json`; PDF has a "Vulnerable dependencies" chapter;
+  chapters are auto-numbered. Verified on real pnpm (DTAP: 15, matching pnpm
+  audit), composer and npm projects, and a blocked composer.lock push. pnpm/Node
+  setup removed from action.yml and the weekly workflow.
+- Still JS/TS-only: bundled code rules (3) and the Next.js route review. Next
+  candidate per the user's earlier choice: more offline code rules (PHP/Laravel).
+
 Previous handoff (2026-10-07 menu/redesign work, DTAP finding) preserved below.
 
 Replaces the Oct 5 handoff below this line's content; that session's "pending" items

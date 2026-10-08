@@ -14,8 +14,7 @@ yet piloted; see the [README warning](../README.md#install).
 **Want to check a repository immediately, no menu?** From the toolkit folder, use
 `./scan /path/to/your-project`. It bootstraps the local Python environment and runs
 all supported independent committed-code checks with progress and a final table.
-Docker and the project's exact pnpm version must already be available for their
-respective stages. See [Without the menu](../README.md#without-the-menu).
+Docker must be running for the scanner stages. See [Without the menu](../README.md#without-the-menu).
 The sample-report walkthrough below is optional and does not scan a repository.
 
 This page walks through installation details, a sample report with expected
@@ -38,7 +37,7 @@ run on the remote machine and reports must be downloaded to view locally.
 | CLI, offline config validation, HTML reports | Python 3.11+, Git and repository access |
 | Local HTTPS tests and release challenge | OpenSSL |
 | PDF export and IAP browser login | The `report` extra, Playwright Chromium and browser system libraries |
-| Push checks and optional scanner containers | Docker Engine with Compose; exact project pnpm version for Node audits |
+| Push checks and optional scanner containers | Docker Engine with Compose |
 | Keyless IAP access | gcloud signed into an approved identity; administrator-provisioned staging permissions |
 | Read-only Cloud Armor review | gcloud and approved Cloud Run/Compute metadata read permissions |
 | Local XSS browser lab | The `report` extra and Playwright Chromium; no cloud credentials or live target |
@@ -166,7 +165,7 @@ browser packages, libraries or display access are reported as unmet prerequisite
 
 These are prerequisite checks, **not full operational readiness**. Doctor does not
 authenticate to Google, read QA credentials, contact targets, verify IAM, probe the
-Docker daemon, pull images or validate a project's exact pnpm version.
+Docker daemon or pull images.
 Missing `nmap` or `whatweb` on your host does not prevent offline HTML reporting.
 Use the local CLI for Git/Docker orchestration; the core container intentionally
 does not mount the Docker socket.

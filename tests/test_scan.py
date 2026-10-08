@@ -13,6 +13,14 @@ from vaptkit.process import ToolError, git
 from vaptkit.scan import LOADING_WORDS, LoadingMessage, duration, path_link, print_header, recap, scan, static_summary
 
 
+REAL_RUN = subprocess.run
+
+
+def docker_ready(command, *args, **kwargs):
+    """Pretend `docker info` succeeds; run everything else (git) for real."""
+    return SimpleNamespace(returncode=0) if command[0] == "docker" else REAL_RUN(command, *args, **kwargs)
+
+
 class ScanTests(unittest.TestCase):
     def test_header_centers_and_fits_wide_and_narrow_terminals(self):
         for width in (30, 40, 80, 120):
@@ -68,7 +76,7 @@ class ScanTests(unittest.TestCase):
         text = recap("DTAP", rows, {"leaks": 74, "vulnerabilities": 13, "severity": "10 moderate | 3 high",
                                     "high": True, "routes": 16})
         self.assertIn("DTAP has 74 possible secrets", text)
-        self.assertIn("13 vulnerable packages (10 moderate | 3 high)", text)
+        self.assertIn("13 known dependency vulnerabilities (10 moderate | 3 high)", text)
         self.assertIn("16 API routes", text)
         self.assertIn("Static rules did not run", text)
         self.assertIn("Next, go through the leaked secrets first", text)
@@ -170,6 +178,7 @@ class ScanTests(unittest.TestCase):
         git(self.repo, "config", "user.name", "Fixture")
         git(self.repo, "config", "user.email", "fixture@example.invalid")
         (self.repo / "package.json").write_text('{"packageManager":"pnpm@10.27.0"}')
+        (self.repo / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n")
         git(self.repo, "add", ".")
         git(self.repo, "commit", "-qm", "Add fixture")
         self.stream = io.StringIO()
@@ -179,7 +188,7 @@ class ScanTests(unittest.TestCase):
         with patch("vaptkit.scan.shutil.which", return_value="/fixture/docker"), patch(
             "vaptkit.scan.subprocess.run", return_value=SimpleNamespace(returncode=0)
         ), patch("vaptkit.scan.git", side_effect=lambda repo, *args: (
-            str(self.repo) if args[0] == "rev-parse" else "package.json"
+            str(self.repo) if args[0] == "rev-parse" else "package.json\npnpm-lock.yaml"
         )), patch("vaptkit.scan.checked_revision", return_value="a" * 40), patch(
             "vaptkit.scan.scan_history", side_effect=ToolError("Synthetic scanner needs review.")
         ) as history, patch("vaptkit.scan.audit_commit", return_value=None) as audit, patch(
@@ -208,7 +217,7 @@ class ScanTests(unittest.TestCase):
         self.assertEqual(code, 1)
         history.assert_not_called()
         static.assert_not_called()
-        audit.assert_called_once()
+        audit.assert_not_called()
         self.assertIn("NOT RUN", self.stream.getvalue())
 
     def test_plain_mode_does_not_start_animation(self):
@@ -221,22 +230,26 @@ class ScanTests(unittest.TestCase):
         status.assert_not_called()
 
     def test_uncommitted_files_not_used_for_ecosystem_detection(self):
-        git(self.repo, "rm", "package.json")
+        git(self.repo, "rm", "-q", "package.json", "pnpm-lock.yaml")
         git(self.repo, "commit", "-qm", "Remove manifests")
-        (self.repo / "package.json").write_text('{"private":true}')
-        with patch("vaptkit.scan.shutil.which", return_value=None), patch(
+        (self.repo / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n")
+        with patch("vaptkit.scan.shutil.which", return_value="/fixture/docker"), patch(
+            "vaptkit.scan.subprocess.run", side_effect=docker_ready
+        ), patch("vaptkit.scan.scan_history", return_value=None), patch("vaptkit.scan.scan_static", return_value=None), patch(
             "vaptkit.scan.audit_commit", return_value=None
         ) as audit, patch("vaptkit.scan.review", return_value={"summary": {"handlers": 0}, "findings": []}):
             scan(self.repo, output=self.root / "out", console=self.console)
         audit.assert_not_called()
-        self.assertIn("not implemented", self.stream.getvalue())
+        self.assertIn("No supported lockfile", self.stream.getvalue())
 
     def test_existing_output_not_overwritten(self):
         with self.assertRaises(ToolError):
             scan(self.repo, output=self.root, console=self.console)
 
     def test_cancellation_preserves_partial_summary_and_stops_following_checks(self):
-        with patch("vaptkit.scan.shutil.which", return_value=None), patch(
+        with patch("vaptkit.scan.shutil.which", return_value="/fixture/docker"), patch(
+            "vaptkit.scan.subprocess.run", side_effect=docker_ready
+        ), patch("vaptkit.scan.scan_history", return_value=None), patch(
             "vaptkit.scan.audit_commit", side_effect=KeyboardInterrupt
         ), patch("vaptkit.scan.review") as routes:
             with self.assertRaises(KeyboardInterrupt):

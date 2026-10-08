@@ -23,7 +23,7 @@ from rich.table import Table
 from rich.text import Text
 
 from .assessment import create_output, write_private
-from .checks import audit_commit, checked_revision, scan_history, scan_static
+from .checks import audit_commit, checked_revision, lockfiles, scan_history, scan_static, severity_text
 from .config import load_config
 from .live import run_read_only, standing_approval_path, staging_counts, staging_recap, standing_approval
 from .process import ToolError, git
@@ -104,7 +104,7 @@ def recap(project: str, rows: list[dict], facts: dict) -> str:
             found.append(f"{facts['leaks']} possible secrets in its Git history")
         elif stage == "Dependency audit" and facts.get("vulnerabilities"):
             severity = f" ({facts['severity']})" if facts.get("severity") else ""
-            found.append(f"{facts['vulnerabilities']} vulnerable packages{severity}")
+            found.append(f"{facts['vulnerabilities']} known dependency vulnerabilities{severity}")
         elif stage == "Static rules" and facts.get("static"):
             found.append(f"{facts['static']} static-rule matches")
         elif stage == "API authentication review" and facts.get("routes"):
@@ -234,7 +234,7 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
     else:
         scope = "Committed code only. No live target requests, logins or cloud changes."
     console.print("Scope  ", Text(scope), style="dim")
-    console.print("Network", Text("Image downloads if needed; dependency metadata sent to npm."), style="dim")
+    console.print("Network", Text("Image downloads if needed; package names and versions sent to osv.dev."), style="dim")
     console.print()
     rows = []
     facts = {}
@@ -250,11 +250,6 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
                     clean = "".join(char for char in clean if char == "\t" or char.isprintable())
                     if match := re.search(r"leaks found: (\d+)", clean):
                         facts["leaks"] = int(match[1])
-                    if match := re.search(r"(\d+) vulnerabilit(?:y|ies) found", clean):
-                        facts["vulnerabilities"] = int(match[1])
-                    if match := re.search(r"Severity: (.+)", clean):
-                        facts["severity"] = match[1].strip()
-                        facts["high"] = bool(re.search(r"\d+ (high|critical)", facts["severity"]))
                     console.print(Text("  " + clean, style="dim"))
                 code = process.wait()
         except OSError:
@@ -305,10 +300,30 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
     stage(f"1 / {total}  Secret history", lambda: scan_history(repo, sha, runner=execute), docker_gap)
     listing = git(repo, "ls-tree", "-r", "--name-only", sha).splitlines()
     def dependencies():
-        audit_commit(repo, sha, runner=execute)
-        return "High/critical threshold check completed. Lower-severity advisories may still appear above."
+        report = audit_commit(repo, sha)
+        if report is None:
+            return "No packages found in the committed lockfiles."
+        write_private(output / "dependency-audit.json", json.dumps({"revision": sha, **report}, indent=2))
+        counts = report["severity"]
+        serious = counts["critical"] + counts["high"]
+        facts.update(vulnerabilities=report["vulnerabilities"], severity=severity_text(counts), high=bool(serious))
+        for entry in report["top"][:8]:
+            console.print(Text(f"  {entry['severity']:<8} {entry['package']} {entry['version']}  {entry['id']}",
+                               style=ACCENT if entry["severity"] in ("critical", "high") else "dim"))
+        if len(report["top"]) > 8:
+            console.print(Text(f"  + {len(report['top']) - 8} more", style="dim"))
+        lockfile_note = f"{len(report['lockfiles'])} lockfile{'s' if len(report['lockfiles']) != 1 else ''}"
+        if serious:
+            raise ToolError(f"{report['vulnerabilities']} known vulnerabilities in {report['packages']} packages "
+                            f"({severity_text(counts)}) across {lockfile_note}. Update the high and critical ones first.")
+        if report["vulnerabilities"]:
+            return (f"{report['vulnerabilities']} lower-severity vulnerabilities ({severity_text(counts)}) across "
+                    f"{lockfile_note}; none high or critical.")
+        return f"No known vulnerabilities in {lockfile_note}."
+    found_lockfiles = lockfiles(listing)
     stage(f"2 / {total}  Dependency audit", dependencies,
-          None if "package.json" in listing else "No root package.json. Dependency auditing for this ecosystem is not implemented.")
+          docker_gap if found_lockfiles else
+          "No supported lockfile (npm, yarn, pnpm, Composer, pip, Poetry, Go, Maven, Ruby, Rust) at this commit.")
 
     def static_command(command, **kwargs):
         try:
@@ -401,7 +416,8 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
         from .scan_report import write_scan_report
         write_scan_report(output)
     for label, name in (("Summary", "summary.json"), ("Static matches", "static-findings.json"),
-                        ("API review", "route-review.json"), ("Report", "report.html"), ("PDF report", "report.pdf")):
+                        ("API review", "route-review.json"), ("Dependencies", "dependency-audit.json"),
+                        ("Report", "report.html"), ("PDF report", "report.pdf")):
         if (output / name).is_file():
             evidence.add_row(label, path_link(output / name, enabled=links))
     console.print(evidence)

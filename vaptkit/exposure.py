@@ -20,6 +20,29 @@ CHECKS = (
     ("/swagger.json", "api_docs", rb"\"(?:swagger|openapi)\"\s*:", "low", "API documentation publicly reachable"),
     ("/openapi.json", "api_docs", rb"\"(?:swagger|openapi)\"\s*:", "low", "API documentation publicly reachable"),
     ("/api-docs", "api_docs", rb"(?i)swagger|openapi", "low", "API documentation publicly reachable"),
+    # The rest mirror what directory-busting tools (dirsearch, feroxbuster) probe by default.
+    ("/.env.staging", "secret_file", rb"(?m)^\s*[A-Z][A-Z0-9_]{2,}\s*=", "high", "Environment file publicly downloadable"),
+    ("/.aws/credentials", "secret_file", rb"(?i)aws_access_key_id|\[default\]", "high", "Cloud credentials file publicly downloadable"),
+    ("/.npmrc", "secret_file", rb"_authToken\s*=|//registry\.", "high", "Package manager credentials file publicly downloadable"),
+    ("/.vscode/sftp.json", "secret_file", rb"\"host\"\s*:", "high", "Deployment credentials file publicly downloadable"),
+    ("/.svn/entries", "vcs", rb"^\d+\s*$|svn:", "high", "Version-control metadata publicly downloadable"),
+    ("/.hg/hgrc", "vcs", rb"\[paths\]|\[ui\]", "high", "Version-control metadata publicly downloadable"),
+    ("/backup.sql", "backup_file", rb"(?i)create table|insert into|-- (mysql|postgresql) dump", "high", "Database backup publicly downloadable"),
+    ("/database.sql", "backup_file", rb"(?i)create table|insert into|-- (mysql|postgresql) dump", "high", "Database backup publicly downloadable"),
+    ("/dump.sql", "backup_file", rb"(?i)create table|insert into|-- (mysql|postgresql) dump", "high", "Database backup publicly downloadable"),
+    ("/backup.zip", "backup_file", rb"^PK\x03\x04", "high", "Site backup archive publicly downloadable"),
+    ("/site-backup.zip", "backup_file", rb"^PK\x03\x04", "high", "Site backup archive publicly downloadable"),
+    ("/www.zip", "backup_file", rb"^PK\x03\x04", "high", "Site backup archive publicly downloadable"),
+    ("/.htpasswd", "secret_file", rb"^[\w.\-]+:\$", "high", "Password hash file publicly downloadable"),
+    ("/web.config", "config_file", rb"(?i)<configuration", "medium", "Server configuration file publicly downloadable"),
+    ("/docker-compose.yml", "config_file", rb"(?i)^services:", "medium", "Deployment configuration file publicly downloadable"),
+    ("/phpinfo.php", "debug", rb"(?i)<title>phpinfo\(\)</title>", "medium", "Debug endpoint publicly reachable"),
+    ("/server-status", "debug", rb"(?i)apache server status", "medium", "Debug endpoint publicly reachable"),
+    ("/actuator/env", "debug", None, "medium", "Debug endpoint publicly reachable"),
+    ("/wp-login.php", "admin_panel", rb"(?i)wordpress", "low", "Administrative interface publicly reachable"),
+    ("/wp-admin/", "admin_panel", rb"(?i)wordpress", "low", "Administrative interface publicly reachable"),
+    ("/phpmyadmin/", "admin_panel", rb"(?i)phpmyadmin", "low", "Administrative interface publicly reachable"),
+    ("/administrator/", "admin_panel", rb"(?i)administrator", "low", "Administrative interface publicly reachable"),
 )
 SOURCE_MAP_SIGNATURE = rb'^\s*\{(?=[\s\S]*"version"\s*:\s*3\s*[,}])(?=[\s\S]*"(?:sources|mappings)"\s*:)'
 SENSITIVE_KEYS = re.compile(
@@ -36,6 +59,9 @@ IMPACT = {
     "health": "Detailed health output reveals internal components and versions that help target attacks.",
     "api_docs": "Public API documentation maps every endpoint and parameter for an attacker.",
     "source_map": "Source maps reveal the original front-end source, comments and internal API paths.",
+    "backup_file": "Backup archives and database dumps usually contain the same secrets and customer data as production.",
+    "config_file": "Deployment configuration files can disclose internal hostnames, ports and sometimes embedded secrets.",
+    "admin_panel": "An administrative interface reachable by anyone is a direct target for credential attacks.",
 }
 REMEDIATION = {
     "secret_file": "Remove the file from the deployed image, rotate every secret it contained, and block dotfiles.",
@@ -44,6 +70,9 @@ REMEDIATION = {
     "health": "Return only a minimal status (for example {\"status\":\"ok\"}) on unauthenticated health checks.",
     "api_docs": "Restrict API documentation to authenticated staff or remove it from production builds.",
     "source_map": "Disable productionBrowserSourceMaps or upload maps privately to your error tracker instead.",
+    "backup_file": "Remove the backup from the public web root; store backups outside it, encrypted and access-controlled.",
+    "config_file": "Remove the file from the deployed image and keep deployment config out of the web root.",
+    "admin_panel": "Confirm the interface requires strong authentication, or restrict it to a trusted network or VPN.",
 }
 
 
@@ -77,19 +106,23 @@ def candidate(kind: str, status: int, headers: dict, baseline: dict) -> bool:
     if not 200 <= status < 300 or looks_like_baseline(status, headers, baseline):
         return False
     cls = content_class(headers)
-    if kind in ("secret_file", "vcs"):
+    if kind in ("secret_file", "vcs", "backup_file", "config_file"):
         return cls in ("text", "binary", "none")
-    if kind in ("debug", "health"):
+    if kind == "health":
         return cls == "json"
+    if kind == "debug":
+        return cls in ("json", "html", "text")
     if kind == "source_map":
         return cls in ("json", "binary", "text", "none")
+    if kind == "admin_panel":
+        return cls == "html"
     return cls != "none"
 
 
 def signature_matches(kind: str, pattern, body: bytes) -> bool:
     if kind == "health":
         return len(set(match.lower() for match in SENSITIVE_KEYS.findall(body))) >= 2
-    if kind == "debug":
+    if kind == "debug" and pattern is None:
         return bool(DEBUG_SIGNATURE.search(body))
     if pattern is None:
         return False
@@ -100,14 +133,14 @@ def finding(path: str, kind: str, severity: str, title: str, confirmed: bool, no
     return {
         "title": title, "severity": severity if confirmed else ("medium" if severity == "high" else severity),
         "verification": "confirmed" if confirmed else "suspected",
-        "category": "data_exposure" if kind in ("secret_file", "vcs", "source_map") else "configuration",
+        "category": "data_exposure" if kind in ("secret_file", "vcs", "source_map", "backup_file") else "configuration",
         "owasp": "A02",
         "path": path, "impact": IMPACT[kind], "remediation": REMEDIATION[kind], "evidence": note[:300],
     }
 
 
 def run(config: dict, approval: dict, host: str, headers: dict, request, expires_at, pause,
-        *, records=None, findings=None) -> tuple[list, list]:
+        *, records=None, findings=None, on_homepage=None) -> tuple[list, list]:
     """Return (records, findings). `request` is assessment.request; `pause` sleeps between calls."""
     excluded = config["scope"]["excluded_prefixes"]
     timeout = approval.get("request_timeout_seconds", 10)
@@ -144,7 +177,7 @@ def run(config: dict, approval: dict, host: str, headers: dict, request, expires
         records.append({"path": path, "kind": kind, "status": status, "exposed": exposed, "signature": signature})
         if exposed:
             note = "HEAD was reachable and GET content signature matched in the first 2 KB; content was not stored."
-            confirmed = kind in ("secret_file", "vcs", "source_map")
+            confirmed = kind in ("secret_file", "vcs", "source_map", "backup_file")
             findings.append(finding(path, kind, severity, title, confirmed, note))
 
     for path, kind, pattern, severity, title in CHECKS:
@@ -152,6 +185,8 @@ def run(config: dict, approval: dict, host: str, headers: dict, request, expires
 
     if not any("/".startswith(prefix) for prefix in excluded):
         status, received, body = call("GET", "/", limit=262144)
+        if on_homepage is not None and 200 <= status < 300:
+            on_homepage(received, body)
         scripts = []
         if 200 <= status < 300 and content_class(received) == "html":
             scripts = list(dict.fromkeys(match.decode() for match in SCRIPT.findall(body)))[:3]

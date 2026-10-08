@@ -359,7 +359,7 @@
     },
     "exposure": {
       "type": "array",
-      "maxItems": 30,
+      "maxItems": 40,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -382,7 +382,10 @@
               "debug",
               "health",
               "api_docs",
-              "source_map"
+              "source_map",
+              "backup_file",
+              "config_file",
+              "admin_panel"
             ]
           },
           "status": {
@@ -399,6 +402,31 @@
               "null"
             ]
           }
+        }
+      }
+    },
+    "recon": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dns", "subdomains", "technologies"],
+      "properties": {
+        "dns": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["spf_present", "dmarc_present", "dmarc_policy"],
+          "properties": {
+            "spf_present": {"type": "boolean"},
+            "dmarc_present": {"type": "boolean"},
+            "dmarc_policy": {"type": ["string", "null"], "maxLength": 32}
+          }
+        },
+        "subdomains": {
+          "type": "array", "maxItems": 500,
+          "items": {"type": "string", "maxLength": 256}
+        },
+        "technologies": {
+          "type": "array", "maxItems": 20,
+          "items": {"type": "string", "maxLength": 64}
         }
       }
     },

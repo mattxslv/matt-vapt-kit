@@ -141,4 +141,15 @@ def staging_recap(result: dict) -> str:
         text += " Next, fix the confirmed header/cookie issues; they were observed twice."
     elif counts["suspected"]:
         text += " Next, review the suspected findings; they were only observed once."
+    recon = result.get("recon")
+    if recon:
+        notes = []
+        if recon["subdomains"]:
+            notes.append(f"{len(recon['subdomains'])} subdomain(s) found in certificate logs")
+        if not recon["dns"]["dmarc_present"]:
+            notes.append("no DMARC record")
+        if recon["technologies"]:
+            notes.append("detected: " + ", ".join(recon["technologies"]))
+        if notes:
+            text += " Recon: " + "; ".join(notes) + "."
     return text

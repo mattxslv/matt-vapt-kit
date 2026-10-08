@@ -130,6 +130,10 @@ class AccuracyBenchmark(unittest.TestCase):
             patch("vaptkit.assessment.ssl.create_default_context", return_value=self.client_tls),
             patch("vaptkit.assessment.time.sleep"),
             patch("vaptkit.roles.time.sleep"),
+            # Passive recon (DNS hygiene, crt.sh subdomains) talks to real third-party services,
+            # not the loopback test server this benchmark otherwise pins every connection to.
+            patch("vaptkit.recon.dns_hygiene", return_value={"spf_present": False, "dmarc_present": False, "dmarc_policy": None}),
+            patch("vaptkit.recon.subdomains", return_value=[]),
         ):
             self.stack.enter_context(mock)
 

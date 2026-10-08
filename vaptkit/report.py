@@ -366,7 +366,8 @@ def render(result: dict, screenshots=(), *, tlp="AMBER+STRICT", prepared_by="", 
     exposure_labels = {
         "baseline": "Random path baseline", "secret_file": "Environment file", "vcs": "Git metadata",
         "debug": "Debug endpoint", "health": "Health endpoint", "api_docs": "API documentation",
-        "source_map": "JavaScript source map",
+        "source_map": "JavaScript source map", "backup_file": "Backup archive or database dump",
+        "config_file": "Deployment configuration file", "admin_panel": "Administrative interface",
     }
     exposure_rows = "".join(
         f"<tr><td><code>{esc(item['path'])}</code></td><td>{esc(exposure_labels[item['kind']])}</td>"

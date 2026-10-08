@@ -82,7 +82,7 @@ class ExposureTests(unittest.TestCase):
                         return response(200 if path == "/.env" else 404)
                     with self.assertRaises(HTTPStop):
                         self.scan(request)
-                    self.assertEqual(len(calls), {"baseline": 1, "head": 2, "get": 3, "discovery": 15}[stage])
+                    self.assertEqual(len(calls), {"baseline": 1, "head": 2, "get": 3, "discovery": 37}[stage])
 
     def test_exclusions_apply_to_fixed_paths_and_discovery(self):
         fake = Mock(return_value=response(404))

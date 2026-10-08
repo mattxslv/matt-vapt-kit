@@ -385,6 +385,7 @@ def assess(config: dict, approval: dict, output: Path, baseline: dict | None = N
     validate_approval(config, approval)
     create_output(output)
     observations, findings, errors, exposure, verification_observations, requests = [], [], [], [], [], []
+    technologies = []
     start = datetime.now(timezone.utc).isoformat()
     host = urlsplit(config["target"]["url"]).hostname
     expires_at = utc(approval["expires_at"])
@@ -437,12 +438,23 @@ def assess(config: dict, approval: dict, output: Path, baseline: dict | None = N
                 def pause():
                     time.sleep(approval["interval_seconds"])
                     validate_approval(config, approval)
+
+                def capture_homepage(received_headers, body):
+                    from . import recon
+                    technologies.extend(recon.fingerprint(received_headers, body))
                 exposure_checks.run(config, approval, host, {}, recorded_request, expires_at, pause,
-                                    records=exposure, findings=findings)
+                                    records=exposure, findings=findings, on_homepage=capture_homepage)
         except (ToolError, OSError, http.client.HTTPException) as error:
             kind, message = failure_detail(error)
             errors.append({"path": error.path if isinstance(error, HTTPStop) else "/",
                            "kind": kind, "message": "Verification or exposure stage: " + message})
+    passive_recon = None
+    if approval.get("exposure_checks"):
+        from . import recon
+        # dns_hygiene/subdomains already treat DNS and crt.sh failures as "nothing found",
+        # not an assessment failure - they are best-effort third-party lookups, not the target.
+        passive_recon = {"dns": recon.dns_hygiene(host), "subdomains": recon.subdomains(host),
+                         "technologies": technologies}
     if gateway_session:
         gateway_session.clear()
     result = {
@@ -454,6 +466,7 @@ def assess(config: dict, approval: dict, output: Path, baseline: dict | None = N
         "approved_paths": approval["paths"],
         "observations": observations, "findings": findings, "errors": errors,
         "verification_observations": verification_observations, "requests": requests,
+        **({"recon": passive_recon} if passive_recon is not None else {}),
         "coverage": {
             "data_exposure": "tested" if exposure and not errors else "not_tested",
             "unauthorized_access": "not_tested",

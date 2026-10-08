@@ -246,15 +246,17 @@ def run_scan(console: Console) -> None:
         return
     scanned = scan_branches(console, repo, selected)
     finished = [folder for _, folder in scanned]
+    needs_pause = True
     if len(finished) == 1:
-        offer_scan_pdf(console, finished[0])
+        needs_pause = offer_scan_pdf(console, finished[0])
     elif finished:
         if ask(console, f"\nMake PDF reports for all {len(finished)} branches? (y/N): ").lower() == "y":
             for folder in finished:
                 offer_scan_pdf(console, folder, confirm=False, open_prompt=False)
         if len(scanned) > 1:
             show_drift(console, repo, scanned)
-    pause(console)
+    if needs_pause:
+        pause(console)
 
 
 def full_scan(console: Console) -> None:
@@ -299,8 +301,8 @@ def full_scan(console: Console) -> None:
     if not pdf_available():
         console.print(Text(PDF_TOOLS_HINT, style=ACCENT))
     console.print(Text("Reports list findings; share them only with people approved to see them.", style="dim"))
-    offer_open(console, [report for *_, report in reports if report], [folder for _, folder, _ in reports])
-    pause(console)
+    if offer_open(console, [report for *_, report in reports if report], [folder for _, folder, _ in reports]):
+        pause(console)
 
 
 def open_path(console: Console, path: Path) -> None:
@@ -315,38 +317,51 @@ def open_path(console: Console, path: Path) -> None:
 PDF_TOOLS_HINT = "The PDF tools aren't installed, so only the HTML version was made. Re-run ./install (or install.ps1) to add them."
 
 
-def offer_open(console: Console, reports: list[Path], folders: list[Path]) -> None:
-    """Let the user open the report files, the folders holding all the evidence, or neither."""
-    plural = "s" if len(reports) > 1 else ""
-    choice = ask(console, f"\nOpen: r = report{plural}, f = folder{plural}, Enter = skip: ").lower()
-    for path in (reports if choice == "r" else folders if choice == "f" else []):
+def offer_open(console: Console, reports: list[Path], folders: list[Path]) -> bool:
+    """Let the user open the report files, the folders holding all the evidence, or neither.
+
+    Returns True if something was opened, so the caller knows whether a further
+    "press Enter to continue" prompt is still needed or would just be a second one.
+    """
+    report_word = "report" + ("s" if len(reports) > 1 else "")
+    folder_word = "folder" + ("s" if len(folders) > 1 else "")
+    choice = ask(console, f"\nPress r to open the {report_word}, f to open the {folder_word}, "
+                          "or Enter to go back: ").lower()
+    paths = reports if choice == "r" else folders if choice == "f" else []
+    if paths:
+        console.print(Text(f"Opening {len(paths)} {report_word if choice == 'r' else folder_word}...", style="dim"))
+    for path in paths:
         open_path(console, path)
+    return bool(paths)
 
 
-def show_report(console: Console, html: Path, pdf: Path | None, *, open_prompt: bool = True) -> None:
+def show_report(console: Console, html: Path, pdf: Path | None, *, open_prompt: bool = True) -> bool:
+    """Returns True if the caller still needs to pause before returning to the menu."""
     console.print(Text("\nReport saved: ", style="bold") + path_link(pdf or html))
     if pdf is None:
         console.print(Text(PDF_TOOLS_HINT, style=ACCENT))
     console.print(Text("It lists findings; share it only with people approved to see them.", style="dim"))
-    if open_prompt:
-        offer_open(console, [pdf or html], [html.parent])
+    if not open_prompt:
+        return True
+    return not offer_open(console, [pdf or html], [html.parent])
 
 
-def offer_scan_pdf(console: Console, folder: Path, *, confirm: bool = True, open_prompt: bool = True) -> None:
+def offer_scan_pdf(console: Console, folder: Path, *, confirm: bool = True, open_prompt: bool = True) -> bool:
+    """Returns True if the caller still needs to pause before returning to the menu."""
     existing = next((folder / name for name in ("report.pdf", "report.html") if (folder / name).is_file()), None)
     if existing:
         console.print(Text("\nThis scan already has a report: ") + path_link(existing))
-        return
+        return True
     if confirm and ask(console, "\nMake a PDF report of this scan? (y/N): ").lower() != "y":
-        return
+        return True
     try:
         html, pdf = write_scan_report(folder, html_only=not pdf_available())
     except ToolError as error:
         console.print(Text(f"\n{error}", style=ACCENT))
         if (folder / "report.html").is_file():
             console.print(Text("HTML report: ") + path_link(folder / "report.html"))
-        return
-    show_report(console, html, pdf, open_prompt=open_prompt)
+        return True
+    return show_report(console, html, pdf, open_prompt=open_prompt)
 
 
 def latest_scan() -> Path | None:
@@ -443,8 +458,8 @@ def show_latest(console: Console) -> None:
     option(console, "b", "Back")
     choice = ask(console, "\nChoose: ").lower()
     if choice == "p":
-        offer_scan_pdf(console, folder, confirm=False)
-        pause(console)
+        if offer_scan_pdf(console, folder, confirm=False):
+            pause(console)
     elif choice == "t":
         export_tickets(console, folder)
         pause(console)
@@ -540,6 +555,7 @@ def run_staging_check(console: Console) -> None:
     console.print(Text(f"Saved to {output}", style="dim"))
     console.print()
     console.print(Text("※ recap: ", style="bold dim") + Text(staging_recap(result), style="italic dim"))
+    needs_pause = True
     if ask(console, "\nMake a PDF report of this check? (y/N): ").lower() == "y":
         html_only = not pdf_available()
         try:
@@ -547,8 +563,9 @@ def run_staging_check(console: Console) -> None:
         except ToolError as error:
             console.print(Text(f"\n{error}", style=ACCENT))
         else:
-            show_report(console, html, None if html_only else html.with_name("report.pdf"))
-    pause(console)
+            needs_pause = show_report(console, html, None if html_only else html.with_name("report.pdf"))
+    if needs_pause:
+        pause(console)
 
 
 LOCAL_HOSTS = ("localhost", "127.0.0.1")

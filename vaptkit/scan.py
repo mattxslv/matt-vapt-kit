@@ -170,8 +170,12 @@ def path_link(path: Path, label: str | None = None, *, enabled=True) -> Text:
     resolved = path.resolve()
     display = label if label is not None else str(resolved)
     display = "".join(char if char.isprintable() else "?" for char in display)
-    return Text(display,
-                style=Style(underline=True, link=resolved.as_uri()) if enabled else None)
+    text = Text(display)
+    if enabled:
+        # Span the style over the text only, not the whole Text object - otherwise table
+        # padding (appended later, past this span) inherits the underline and link too.
+        text.stylize(Style(underline=True, link=resolved.as_uri()), 0, len(display))
+    return text
 
 
 NON_RUNTIME_DIRS = {"scripts", "script", "migrations", "migration", "seed", "seeds", "tests", "test", "__tests__",

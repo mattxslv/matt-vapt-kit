@@ -92,7 +92,7 @@ class ScanTests(unittest.TestCase):
     def test_clickable_paths_are_encoded_and_plain_mode_has_no_escape_codes(self):
         path = self.root / "directory with spaces [demo]"
         link = path_link(path)
-        self.assertEqual(link.style.link, path.resolve().as_uri())
+        self.assertEqual(link.spans[0].style.link, path.resolve().as_uri())
         stream = io.StringIO()
         console = Console(file=stream, force_terminal=True)
         console.print(link)

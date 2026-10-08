@@ -21,7 +21,9 @@ an external vulnerability assessment and penetration test.
 
 ## Menu
 
-New laptop, nothing installed yet? Clone the repo and run one command:
+New laptop, nothing installed yet? Clone the repo and run one command.
+
+**Linux/macOS:**
 
 ```bash
 git clone https://github.com/mattxslv/matt-vapt-kit.git
@@ -29,11 +31,33 @@ cd matt-vapt-kit
 ./install
 ```
 
-It creates the local Python environment, installs the toolkit into it, and opens
-the menu below. Re-running `./install` later just reopens the menu (it skips
-reinstalling once the toolkit is already set up).
+**Windows (PowerShell):**
 
-Already installed? Run `vaptkit` (or `.venv/bin/vaptkit` from this folder) for a numbered menu:
+```powershell
+git clone https://github.com/mattxslv/matt-vapt-kit.git
+cd matt-vapt-kit
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+Python 3.11+ must already be installed and on PATH (from
+[python.org](https://www.python.org/downloads/), with "Add python.exe to PATH"
+checked during setup). The `-ExecutionPolicy Bypass` only applies to this one
+command; it does not change your system's script policy.
+
+> [!WARNING]
+> Native Windows has not completed a teammate pilot. The menu, scans and
+> reports are plain Python and are expected to work, but **local attack
+> testing (menu option 5) will not work on Windows** — it relies on
+> `docker run --network host`, which Docker Desktop on Windows does not
+> support the way Linux does. Use WSL for full parity with the Linux
+> experience, or stick to options 1-4 and 6 on native Windows.
+
+Either way, it creates the local Python environment, installs the toolkit into
+it, and opens the menu below. Running it again later just reopens the menu (it
+skips reinstalling once the toolkit is already set up).
+
+Already installed? Run `vaptkit` (or `.venv/bin/vaptkit`, `.venv\Scripts\vaptkit.exe`
+on Windows, from this folder) for a numbered menu:
 scan a project, see the latest results, or check prerequisites. Recently scanned
 folders are listed for one-key reruns, and a matching `projects/*.vapt.yml` policy
 is picked by folder name (for example `~/DTAP` uses `dtap.vapt.yml`). Evidence is

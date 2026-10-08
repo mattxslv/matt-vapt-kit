@@ -104,7 +104,10 @@ on Windows, from this folder) for a numbered menu:
    with synthetic data, never at staging or production. Each scanner runs
    with a memory cap and a time limit (10 minutes for Nuclei, 15 for ZAP) so
    a slow machine doesn't need a manual kill, and it warns first if free
-   memory looks low. ZAP's DOM XSS rule is turned off here: it needs a browser
+   memory looks low. Nuclei is kept to the port you entered: it runs HTTP
+   templates only and skips the few that hardcode their own port, which would
+   otherwise probe other services on your machine. ZAP's DOM XSS rule is turned
+   off here: it needs a browser
    inside the container that doesn't fit the memory cap and stalled every scan.
    Use the [local XSS browser lab](docs/cloud-armor-and-xss.md) for DOM XSS. On
    Windows the scanners reach the app through `host.docker.internal` instead;

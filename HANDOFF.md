@@ -72,9 +72,10 @@
   2 GB cap; now disabled via zap-rules.conf); ZAP alert count included the
   totals line. Not tested: option 4 (user chose to skip a live site), weekly
   workflow (no SCAN_REPOS_TOKEN yet), anything on real Windows.
-- Open finding: option 5's Nuclei run probes other ports on localhost (seen:
-  4040, 9780) because some templates hardcode ports and host networking exposes
-  the whole machine. Stays on the local machine, but wider than the chosen port.
+- Option 5 Nuclei is confined to the chosen port: `-pt http` plus an exclude
+  list built in-container from templates matching `{{Host|Hostname|BaseURL|
+  RootURL}}:<port>` (NUCLEI_SCRIPT in menu.py). Verified with decoy listeners on
+  4040/9780: 0 requests to them, 10,811 to the target, 6,901 templates run.
 
 Previous handoff (2026-10-07 menu/redesign work, DTAP finding) preserved below.
 

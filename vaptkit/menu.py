@@ -331,6 +331,15 @@ def run_staging_check(console: Console) -> None:
 
 LOCAL_HOSTS = ("localhost", "127.0.0.1")
 NUCLEI_TIMEOUT_SECONDS = 600
+# With host networking, templates that hardcode their own port (e.g. Spark UI on 4040) would probe
+# other services on this machine. Keep to HTTP templates and drop those that pin a port.
+NUCLEI_SCRIPT = (
+    'nuclei -update-templates -silent >/dev/null 2>&1; '
+    'find /root/nuclei-templates -name "*.yaml" | xargs grep -lE '
+    '"\\{\\{(BaseURL|RootURL|Host|Hostname)\\}\\}:[0-9]{2,5}" > /tmp/fixed-port-templates.txt; '
+    'exec nuclei -u "$1" -pt http -exclude-templates /tmp/fixed-port-templates.txt '
+    '-severity low,medium,high,critical -c 10 -o /output/nuclei.txt'
+)
 ZAP_NOISE = re.compile(r"^\d+ \[\S+\] |^Found Java version|^Available memory:|^Using JVM args:")
 
 
@@ -447,9 +456,9 @@ def run_local_attack(console: Console) -> None:
     nuclei_log, code, nuclei_timed_out = stream([
         "docker", "run", "--rm", *network, "--name", nuclei_name,
         "--memory=1g", "--memory-swap=1g",
-        "-v", f"{output}:/output",
+        "-v", f"{output}:/output", "--entrypoint", "sh",
         next(image for image in LOCAL_ATTACK_IMAGES if "nuclei" in image),
-        "-u", target, "-severity", "low,medium,high,critical", "-c", "10", "-o", "/output/nuclei.txt",
+        "-c", NUCLEI_SCRIPT, "sh", target,
     ], printer, timeout=NUCLEI_TIMEOUT_SECONDS, on_timeout=stop(nuclei_name))
     hits = len((output / "nuclei.txt").read_text().splitlines()) if (output / "nuclei.txt").is_file() else 0
     if nuclei_timed_out:

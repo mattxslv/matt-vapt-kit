@@ -15,6 +15,20 @@
   the first attack-test run doesn't stall on an image pull mid-scan.
 - Tests added in `tests/test_menu.py`; 221 tests pass (`.venv/bin/python -m
   unittest discover -s tests`).
+- One-command installers: `./install` (Linux/macOS) and `install.ps1` (Windows
+  PowerShell) bootstrap `.venv`, `pip install -e .`, then launch the `vaptkit`
+  menu. `./install` was tested end-to-end against a genuine fresh clone (no
+  `.venv`): first run installs and launches, second run skips straight to the
+  menu. `install.ps1` was written and reasoned through but **not run on an
+  actual Windows machine** — no Windows environment was available this
+  session. Treat it as unverified until a teammate runs it and reports back.
+- Documented a real Windows gap: menu option 5 (local attack testing) uses
+  `docker run --network host`, which Docker Desktop on Windows does not
+  support the way Linux does, so it's expected to fail there even if install
+  succeeds. WSL is the suggested path for full parity. Noted in README,
+  getting-started, and a new "Platform status" section in pilot-checklist.md,
+  which also asks for the first Windows `install.ps1` run to be reported back
+  before relying on it for other teammates.
 
 Previous handoff (2026-10-07 menu/redesign work, DTAP finding) preserved below.
 

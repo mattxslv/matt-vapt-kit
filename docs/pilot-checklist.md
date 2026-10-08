@@ -5,10 +5,22 @@
 Use one teammate and one small, approved staging scope first. This is a usability
 and operational-readiness pilot, not a certification or an independent accuracy study.
 
+## Platform status
+
+Linux/macOS is the piloted platform. A `install.ps1` bootstrap exists for native
+Windows (PowerShell) but has not been run on an actual Windows machine or
+completed a teammate pilot there — treat the first Windows install as part of
+this pilot, not as already-verified tooling. Known Windows gap: menu option 5
+(local attack testing) depends on `docker run --network host`, which Docker
+Desktop on Windows does not support; it is expected to fail there regardless of
+how the rest of the install goes. Use WSL instead of native Windows if full
+parity with the Linux experience, including local attack testing, is needed.
+
 ## Before the run
 
 - [ ] The maintainer supplies a reviewed full toolkit commit SHA.
 - [ ] The teammate installs it independently and exports the synthetic HTML report.
+- [ ] On Windows, the first `install.ps1` run and its output are reported back before relying on it for other teammates.
 - [ ] The owner verifies the exact staging host, permitted endpoints and test window.
 - [ ] The expected allowed/denied role policy is reviewed against application behavior.
 - [ ] Synthetic accounts and data are ready; email, payment and other side effects are understood.

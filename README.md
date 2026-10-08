@@ -31,6 +31,8 @@ cd matt-vapt-kit
 ./install
 ```
 
+![Linux install](docs/screenshots/01-install-linux.svg)
+
 **Windows (PowerShell):**
 
 ```powershell
@@ -38,6 +40,8 @@ git clone https://github.com/mattxslv/matt-vapt-kit.git
 cd matt-vapt-kit
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
+
+![Windows install](docs/screenshots/02-install-windows.svg)
 
 Python 3.11+ must already be installed and on PATH (from
 [python.org](https://www.python.org/downloads/), with "Add python.exe to PATH"
@@ -58,26 +62,49 @@ skips reinstalling once the toolkit is already set up).
 
 Already installed? Run `vaptkit` (or `.venv/bin/vaptkit`, `.venv\Scripts\vaptkit.exe`
 on Windows, from this folder) for a numbered menu:
-scan a project, see the latest results, or check prerequisites. Recently scanned
-folders are listed for one-key reruns, and a matching `projects/*.vapt.yml` policy
-is picked by folder name (for example `~/DTAP` uses `dtap.vapt.yml`). Evidence is
-saved under this toolkit's `.private/` directory.
 
-Two more menu options cover live targets:
+![vaptkit menu](docs/screenshots/03-menu.svg)
 
-- **Quick staging check** asks for a staging URL and your explicit permission,
-  then builds a short-lived scope and approval automatically and runs the
-  existing read-only header, cookie and exposed-file checks (`vapt run`
-  under the hood). Sites behind a login (for example Google IAP) are not
-  supported from this menu entry.
-- **Local attack testing** asks for a `localhost`/`127.0.0.1` URL and runs
-  Nuclei and an OWASP ZAP active scan against it in Docker, with
-  `--network host` so the containers can reach your machine. It sends real
-  attack payloads, so only point it at a disposable local copy of an app
-  with synthetic data, never at staging or production. Each scanner runs
-  with a memory cap and a time limit (10 minutes for Nuclei, 15 for ZAP) so
-  a slow machine doesn't need a manual kill, and it warns first if free
-  memory looks low.
+1. **Scan a project for vulnerabilities** — recently scanned folders are listed
+   for one-key reruns, and a matching `projects/*.vapt.yml` policy is picked by
+   folder name (for example `~/DTAP` uses `dtap.vapt.yml`). Evidence is saved
+   under this toolkit's `.private/` directory.
+2. **See the latest scan results** — the most recent scan's check table, with a
+   link to its saved evidence folder.
+
+   ![Latest scan results](docs/screenshots/04-latest-results.svg)
+3. **Check this computer is ready to scan** — local prerequisites (Python, Git,
+   Docker). If Docker is running, it also checks whether the Nuclei/ZAP images
+   used by local attack testing are already pulled and offers to download them
+   up front, so a later attack-test run doesn't stall mid-scan on the pull.
+
+   ![Readiness check](docs/screenshots/05-ready.svg)
+4. **Quick staging check** — asks for a staging URL and your explicit
+   permission, then builds a short-lived scope and approval automatically and
+   runs the existing read-only header, cookie and exposed-file checks
+   (`vapt run` under the hood). Sites behind a login (for example Google IAP)
+   are not supported from this menu entry.
+
+   ![Quick staging check](docs/screenshots/07-staging-check.svg)
+5. **Local attack testing** — asks for a `localhost`/`127.0.0.1` URL and runs
+   Nuclei and an OWASP ZAP active scan against it in Docker, with
+   `--network host` so the containers can reach your machine. It sends real
+   attack payloads, so only point it at a disposable local copy of an app
+   with synthetic data, never at staging or production. Each scanner runs
+   with a memory cap and a time limit (10 minutes for Nuclei, 15 for ZAP) so
+   a slow machine doesn't need a manual kill, and it warns first if free
+   memory looks low. **Does not work on Windows** — see the warning above.
+
+   ![Local attack testing](docs/screenshots/08-local-attack.svg)
+6. **Compare the last two scans** — diffs `static-findings.json` and
+   `route-review.json` between the two most recent `.private/scan-*` folders,
+   reporting new/resolved static-rule matches and new/resolved API routes with
+   no authentication check. Needs at least two scans to show anything.
+
+   ![Compare scans](docs/screenshots/06-compare.svg)
+
+Screenshots are rendered from the real menu code using synthetic scan data, not
+findings from any real project.
 
 ## One command, in your terminal
 
@@ -129,9 +156,8 @@ with explicit [scope approval](docs/pilot-checklist.md).
 If the CLI is already installed, `vapt scan /path/to/your-project` does the same work.
 Use `NO_COLOR=1 ./scan /path/to/your-project` for uncolored output. Redirected output
 has no animated spinner.
-The terminal uses a centered PyFiglet MVK wordmark and the two-line tagline
+The terminal shows a shield icon beside an MVK wordmark, the tagline
 **"anti vince vulnerability" / "to prevent spilling the beans :D"**,
-with the second line placed outside the frame at its bottom-right edge,
 and a one-word loading status such as `✻ Topsy-turvying… (37s · Static rules)`,
 picked from 60 words, with the actual task and elapsed time and no loading bar or
 invented percentages. The scan ends with a line like
@@ -140,8 +166,7 @@ plain-English `※ recap:` of what was found and what to look at first.
 There are no artificial delays.
 The header switches to a compact wordmark in narrow terminals. Scan details stay
 left-aligned for readability, and the final summary has rounded borders and row
-separators. Run metadata and saved evidence use aligned label/value columns. The centered wordmark
-uses separated letters and a tighter frame, with the tagline in normal text.
+separators. Run metadata and saved evidence use aligned label/value columns.
 Use `./scan /path/to/your-project --plain` for no colors or motion, or set
 `MVK_REDUCED_MOTION=1` to disable animation while keeping colors.
 Repository/evidence directories and generated result files are clickable OSC 8
@@ -179,7 +204,8 @@ verifies real request blocking without GCP resources; it does not verify Cloud A
 
 ## Step-by-step: use it in your terminal or VS Code
 
-This walkthrough uses **Linux/Bash**, Python **3.11+**, Git and access to this
+This walkthrough uses **Linux/Bash** (Windows users: run it in WSL, or adapt the
+commands to PowerShell), Python **3.11+**, Git and access to this
 private repository. It creates a **sample report only**. You do not need Docker,
 Google credentials or a DTAP password, and it does not scan your application.
 
@@ -200,15 +226,19 @@ for example `cd ~/matt-vapt-kit`. Run the remaining commands from this folder.
 
 ### Step 2: install once and enable the short commands
 
+Run the installer from the [Menu](#menu) section (`./install`, or `install.ps1`
+on Windows). It opens the menu when done; press `q` to quit it. Then activate
+the environment so the short commands work:
+
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e .
+source .venv/bin/activate        # Windows PowerShell: .venv\Scripts\Activate.ps1
 ```
 
-Now use **`vapt`**, instead of typing `.venv/bin/vapt` every time.
-For an existing installation, skip creation/installation and just run
-`source .venv/bin/activate`. Activate it again whenever you open a new terminal.
+Now use **`vapt`** and **`vaptkit`** instead of typing `.venv/bin/vapt` every time.
+Activate it again whenever you open a new terminal.
+
+Prefer doing it by hand? `python3 -m venv .venv`, activate it, then
+`python -m pip install -e .` is exactly what the installer does.
 
 ### Step 3: check that your local setup works
 
@@ -274,8 +304,11 @@ Running `report` against the sample fixture never tests your application.
 ```bash
 cd ~/matt-vapt-kit
 source .venv/bin/activate
-vapt --help
+vaptkit          # the menu; or vapt --help for the raw CLI
 ```
+
+Or skip activation entirely: `./install` (or `install.ps1`) reopens the menu
+without reinstalling.
 
 Use your actual checkout path if it is elsewhere. No VS Code extension or AI
 skill is required. `deactivate` leaves the Python environment when you are done.

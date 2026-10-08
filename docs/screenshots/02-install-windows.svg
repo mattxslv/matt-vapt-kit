@@ -1,0 +1,78 @@
+<svg class="rich-terminal" viewBox="0 0 1141 196.39999999999998" xmlns="http://www.w3.org/2000/svg">
+    <!-- Generated with Rich https://www.textualize.io -->
+    <style>
+
+    @font-face {
+        font-family: "Fira Code";
+        src: local("FiraCode-Regular"),
+                url("https://cdnjs.cloudflare.com/ajax/libs/firacode/6.2.0/woff2/FiraCode-Regular.woff2") format("woff2"),
+                url("https://cdnjs.cloudflare.com/ajax/libs/firacode/6.2.0/woff/FiraCode-Regular.woff") format("woff");
+        font-style: normal;
+        font-weight: 400;
+    }
+    @font-face {
+        font-family: "Fira Code";
+        src: local("FiraCode-Bold"),
+                url("https://cdnjs.cloudflare.com/ajax/libs/firacode/6.2.0/woff2/FiraCode-Bold.woff2") format("woff2"),
+                url("https://cdnjs.cloudflare.com/ajax/libs/firacode/6.2.0/woff/FiraCode-Bold.woff") format("woff");
+        font-style: bold;
+        font-weight: 700;
+    }
+
+    .terminal-2745156667-matrix {
+        font-family: Fira Code, monospace;
+        font-size: 20px;
+        line-height: 24.4px;
+        font-variant-east-asian: full-width;
+    }
+
+    .terminal-2745156667-title {
+        font-size: 18px;
+        font-weight: bold;
+        font-family: arial;
+    }
+
+    .terminal-2745156667-r1 { fill: #c5c8c6 }
+    </style>
+
+    <defs>
+    <clipPath id="terminal-2745156667-clip-terminal">
+      <rect x="0" y="0" width="1121.3999999999999" height="145.39999999999998" />
+    </clipPath>
+    <clipPath id="terminal-2745156667-line-0">
+    <rect x="0" y="1.5" width="1122.4" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2745156667-line-1">
+    <rect x="0" y="25.9" width="1122.4" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2745156667-line-2">
+    <rect x="0" y="50.3" width="1122.4" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2745156667-line-3">
+    <rect x="0" y="74.7" width="1122.4" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-2745156667-line-4">
+    <rect x="0" y="99.1" width="1122.4" height="24.65"/>
+            </clipPath>
+    </defs>
+
+    <rect fill="#292929" stroke="rgba(255,255,255,0.35)" stroke-width="1" x="1" y="1" width="1139" height="194.4" rx="8"/><text class="terminal-2745156667-title" fill="#c5c8c6" text-anchor="middle" x="569" y="27">Windows&#160;PowerShell:&#160;install.ps1&#160;(first&#160;run)</text>
+            <g transform="translate(26,22)">
+            <circle cx="0" cy="0" r="7" fill="#ff5f57"/>
+            <circle cx="22" cy="0" r="7" fill="#febc2e"/>
+            <circle cx="44" cy="0" r="7" fill="#28c840"/>
+            </g>
+        
+    <g transform="translate(9, 41)" clip-path="url(#terminal-2745156667-clip-terminal)">
+    
+    <g class="terminal-2745156667-matrix">
+    <text class="terminal-2745156667-r1" x="0" y="20" textLength="878.4" clip-path="url(#terminal-2745156667-line-0)">PS&#160;C:\Users\you&gt;&#160;git&#160;clone&#160;https://github.com/mattxslv/matt-vapt-kit.git</text><text class="terminal-2745156667-r1" x="1122.4" y="20" textLength="12.2" clip-path="url(#terminal-2745156667-line-0)">
+</text><text class="terminal-2745156667-r1" x="0" y="44.4" textLength="402.6" clip-path="url(#terminal-2745156667-line-1)">PS&#160;C:\Users\you&gt;&#160;cd&#160;matt-vapt-kit</text><text class="terminal-2745156667-r1" x="1122.4" y="44.4" textLength="12.2" clip-path="url(#terminal-2745156667-line-1)">
+</text><text class="terminal-2745156667-r1" x="0" y="68.8" textLength="1037" clip-path="url(#terminal-2745156667-line-2)">PS&#160;C:\Users\you\matt-vapt-kit&gt;&#160;powershell&#160;-ExecutionPolicy&#160;Bypass&#160;-File&#160;.\install.ps1</text><text class="terminal-2745156667-r1" x="1122.4" y="68.8" textLength="12.2" clip-path="url(#terminal-2745156667-line-2)">
+</text><text class="terminal-2745156667-r1" x="0" y="93.2" textLength="719.8" clip-path="url(#terminal-2745156667-line-3)">First&#160;run:&#160;creating&#160;the&#160;toolkit&#x27;s&#160;local&#160;Python&#160;environment.</text><text class="terminal-2745156667-r1" x="1122.4" y="93.2" textLength="12.2" clip-path="url(#terminal-2745156667-line-3)">
+</text><text class="terminal-2745156667-r1" x="0" y="117.6" textLength="939.4" clip-path="url(#terminal-2745156667-line-4)">Installing&#160;the&#160;toolkit&#160;and&#160;terminal&#160;dependencies&#160;(downloads&#160;Python&#160;packages).</text><text class="terminal-2745156667-r1" x="1122.4" y="117.6" textLength="12.2" clip-path="url(#terminal-2745156667-line-4)">
+</text><text class="terminal-2745156667-r1" x="0" y="142" textLength="390.4" clip-path="url(#terminal-2745156667-line-5)">Installed.&#160;Launching&#160;the&#160;menu...</text><text class="terminal-2745156667-r1" x="1122.4" y="142" textLength="12.2" clip-path="url(#terminal-2745156667-line-5)">
+</text>
+    </g>
+    </g>
+</svg>

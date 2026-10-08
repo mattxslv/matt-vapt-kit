@@ -24,12 +24,12 @@ VAPT.
 Needs Python 3.11+ on PATH and Docker running. Clone, then run one command:
 
 ```bash
-git clone --branch v0.7.0 https://github.com/mattxslv/matt-vapt-kit.git
+git clone --branch v0.7.1 https://github.com/mattxslv/matt-vapt-kit.git
 cd matt-vapt-kit
 ./install
 ```
 
-`--branch v0.7.0` pins the current [release](https://github.com/mattxslv/matt-vapt-kit/releases);
+`--branch v0.7.1` pins the current [release](https://github.com/mattxslv/matt-vapt-kit/releases);
 drop it to follow `main`.
 
 ![Linux install](docs/screenshots/01-install-linux.svg)
@@ -115,7 +115,9 @@ Everything is saved privately under `.private/` and never overwritten. Findings 
 - **Live staging:** `projects/<name>.standing-approval.yml` records the owner's
   approval and an expiry date. While it's valid, scans of that project add the
   read-only staging checks with no prompts; each run still gets its own one-hour
-  approval.
+  approval. DTAP and PEMEDES staging sit behind IAP and are reached through their
+  QA bot service accounts (`dtap-qa-bot`, `pemedes-qa-bot`) using your own gcloud
+  login, so this works only for accounts allowed to act as those bots.
 
 ## Without the menu
 

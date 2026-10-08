@@ -105,3 +105,9 @@ class MiddlewareAwareReviewTests(unittest.TestCase):
         result = review(repo, {"project": "fixture", "review": {}})
         self.assertIsNone(result["middleware"])
         self.assertEqual(result["summary"]["no_authentication"], 1)
+
+
+    def test_ownership_checked_by_a_helper_is_not_flagged(self):
+        helper_checked = VULNERABLE_PROFILE.replace(
+            "  await query(", "  if (!isProfileEditAuthorized({ targetUserId: userId, session })) return forbidden()\n  await query(")
+        self.assertEqual(self.build({"app/api/evaluator/profile/route.ts": helper_checked})["findings"], [])

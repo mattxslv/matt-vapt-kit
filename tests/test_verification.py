@@ -25,6 +25,7 @@ class VerificationTests(unittest.TestCase):
 
     def test_failed_verification_never_looks_clean(self):
         config = load_config(ROOT / "projects/pemedes.vapt.yml")
+        config.pop("access", None)  # these tests exercise the direct, unauthenticated path
         for status in (302, 401, 403, 404, 429, 503):
             with self.subTest(status=status), tempfile.TemporaryDirectory() as directory, patch(
                 "vaptkit.assessment.time.sleep"
@@ -70,6 +71,7 @@ class VerificationTests(unittest.TestCase):
 
     def test_baseline_target_and_schema_checked_before_traffic(self):
         config = load_config(ROOT / "projects/pemedes.vapt.yml")
+        config.pop("access", None)  # these tests exercise the direct, unauthenticated path
         baseline = json.loads((ROOT / "tests/fixtures/assessment.json").read_text())
         for bad in ([], {}, dict(baseline, project=config["project"], target="https://other.invalid")):
             with self.subTest(bad=bad), tempfile.TemporaryDirectory() as directory, patch(
@@ -81,6 +83,7 @@ class VerificationTests(unittest.TestCase):
 
     def test_retest_resolved_paths_are_repeated_even_without_new_findings(self):
         config = load_config(ROOT / "projects/pemedes.vapt.yml")
+        config.pop("access", None)  # these tests exercise the direct, unauthenticated path
         with tempfile.TemporaryDirectory() as directory, patch("vaptkit.assessment.time.sleep"), patch(
             "vaptkit.assessment.observe", return_value=observation()
         ):
@@ -97,6 +100,7 @@ class VerificationTests(unittest.TestCase):
 
     def test_exposure_opt_in_and_stops_preserve_partial_evidence(self):
         config = load_config(ROOT / "projects/pemedes.vapt.yml")
+        config.pop("access", None)  # these tests exercise the direct, unauthenticated path
         approval = approved(config)
         approval["exposure_checks"] = True
         with tempfile.TemporaryDirectory() as directory, patch("vaptkit.assessment.time.sleep"), patch(

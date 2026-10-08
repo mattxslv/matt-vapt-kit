@@ -193,6 +193,17 @@
   Remaining: the 2 example tokens need a .gitleaksignore in the DTAP repo; first IAP
   sign-in must be done by the user from the menu.
 
+- v0.7.1: DTAP and PEMEDES live checks use IAP service-account access through
+  dtap-qa-bot@example-project and pemedes-qa-bot@example-project (the user's
+  gcloud account holds Token Creator on both; no keys). Both returned HTTP 200 from the
+  apps. PEMEDES got a standing approval (until 2027-01-08) and its main config gained the
+  review block (public routes, getSessionByToken) that only pemedes-iap had. First live
+  result: PEMEDES staging CSP allows unsafe scripts (confirmed); DTAP staging headers
+  clean. Ownership check now accepts helper calls like is...Authorized(...). PEMEDES route
+  review: 7 public-looking signup/lookup endpoints to confirm. The weekly workflow has no
+  gcloud identity, so its live stage reports NOT RUN. Tests that use the real DTAP/PEMEDES
+  configs pop `access`. The Chrome seen running was the Playwright MCP plugin, not the kit.
+
 Previous handoff (2026-10-07 menu/redesign work, DTAP finding) preserved below.
 
 Replaces the Oct 5 handoff below this line's content; that session's "pending" items

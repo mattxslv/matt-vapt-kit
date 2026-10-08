@@ -428,7 +428,11 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
         except NotCovered:
             raise
         except ToolError as error:
-            if config.get("access"):
+            access = config.get("access", {})
+            if access.get("type") == "iap-service-account":
+                raise NotCovered(f"Couldn't get through IAP to {url} as {access['service_account']} ({error}). "
+                                 "This needs a gcloud login that is allowed to act as that bot.") from None
+            if access:
                 raise NotCovered(f"Couldn't sign in to {url} through IAP ({error}). Only accounts on the staging "
                                  "IAP allow-list can run this check.") from None
             raise

@@ -349,6 +349,9 @@ COMPARES_TO_SESSION = re.compile(
     SESSION_ID + r"[^;\n]*(?:===|!==|==|!=)|(?:===|!==|==|!=)[^;\n]*" + SESSION_ID
     + r"|=\s*(?:await\s+)?" + SESSION_ID
 )
+# Ownership checks delegated to a helper, e.g. isProfilePhotoUploadAuthorized({ targetUserId, authenticatedUserId }).
+OWNERSHIP_HELPER = re.compile(r"\b(?:is|can|assert|check|ensure|verify|require)\w*"
+                              r"(?:Authori[sz]ed|Authori[sz]e|Owner|Owns|Ownership|Access|Permission)\w*\s*\(")
 WRITES = re.compile(r"\b(?:UPDATE|INSERT\s+INTO|DELETE\s+FROM)\b|\.(?:update|insert|delete|upsert|destroy)\s*\(")
 PUBLIC_LIST = re.compile(r"\b\w*[Pp]ublic\w*\s*(?::[^=\n]*)?=\s*\[([^\]]*)\]")
 QUOTED = re.compile(r"['\"`]([^'\"`\s]+)['\"`]")
@@ -451,7 +454,7 @@ def review(repo: Path, config: dict, revision: str = "HEAD") -> dict:
             # Admin endpoints exist to act on other users' records; their role gate is the control that matters.
             admin_endpoint = "/admin/" in route["path"] + "/" or matches_any(route["path"], privileged)
             if (authn and not admin_endpoint and ID_FROM_REQUEST.search(body) and WRITES.search(body)
-                    and not COMPARES_TO_SESSION.search(body)):
+                    and not COMPARES_TO_SESSION.search(body) and not OWNERSHIP_HELPER.search(body)):
                 findings.append(finding(
                     route, method, "Handler changes a record chosen by a user ID from the request",
                     "high",

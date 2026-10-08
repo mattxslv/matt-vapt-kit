@@ -248,6 +248,18 @@ and heuristic, not a full TypeScript control-flow analysis. Every source-review
 finding remains **suspected** until checked against middleware and live authorized
 behavior. Seeing an auth helper does not prove that every execution path enforces it.
 
+**ASP.NET (C#)** is reviewed in the same run. Controllers (MVC and Web API, Core and
+.NET Framework) are protected by `[Authorize]` on the action, the controller or any base
+controller, by custom attributes with `Authorize` in their name (add others with
+`review.auth_attributes` regexes), by checks in the action body (`User.IsInRole`,
+`IsAuthenticated`, `AuthorizeAsync`, permission-service calls), or by a global filter,
+fallback policy or `MapControllers().RequireAuthorization()`. `[AllowAnonymous]` marks
+an action public. Minimal APIs count `.RequireAuthorization()`, authorized route groups
+and `[Authorize]` on the handler lambda. Routes come from `[Route]`/`[HttpGet("...")]`
+templates, or `/Controller/Action` for conventional routing. WebForms pages and Razor
+Pages conventions are not reviewed. On nopCommerce all 620 admin actions are recognized
+as protected; the remaining unprotected actions are its public storefront.
+
 ### Approved DTAP role matrix
 
 `vapt roles` supports the existing DTAP cookie login contract only. It is not a

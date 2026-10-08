@@ -363,7 +363,7 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
         if count:
             raise ToolError(f"{count} suspected API authentication findings. Review route-review.json; these are not confirmed exploits.")
         if not summary["handlers"]:
-            return "No supported Next.js API handlers found; route review is not applicable."
+            return "No supported Next.js or ASP.NET handlers found; route review is not applicable."
         return f"{summary['handlers']} handlers reviewed; no suspected authentication gaps reported."
     stage(f"4 / {total}  API authentication review", routes)
 

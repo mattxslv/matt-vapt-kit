@@ -139,6 +139,15 @@
   dotnet/eShop. Fixture fakes carry `gitleaks:allow` so the repo's own push
   protection doesn't block them (it did, correctly, on the first try).
 
+- ASP.NET login-check review (`vaptkit/aspnet_routes.py`, called from
+  `routes.review`, same route-review.json shape): controllers incl. inherited and
+  custom *Authorize* attributes, in-body checks, global filters/fallback policy,
+  minimal APIs incl. groups and lambda attributes. Tuned on nopCommerce (620/620
+  admin actions protected), eShop, eShopOnWeb. Real finding seen while tuning:
+  nopCommerce Brevo plugin `ImportContacts` has no auth at all. User asked NOT to
+  build the Laravel route review ("they don't use it here"); the PHP code rules from
+  925e68c are still on GitHub pending the user's call on removing them.
+
 Previous handoff (2026-10-07 menu/redesign work, DTAP finding) preserved below.
 
 Replaces the Oct 5 handoff below this line's content; that session's "pending" items

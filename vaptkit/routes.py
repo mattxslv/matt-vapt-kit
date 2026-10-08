@@ -1,4 +1,4 @@
-"""Offline white-box review of Next.js API route authentication.
+"""Offline white-box review of Next.js and ASP.NET API route authentication.
 
 Reads one committed revision through git (the working tree is never touched) and
 follows calls from each exported handler into local and imported helpers to
@@ -11,6 +11,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .aspnet_routes import review_aspnet
 from .checks import checked_revision
 from .process import ToolError, git
 
@@ -401,6 +402,29 @@ def review(repo: Path, config: dict, revision: str = "HEAD") -> dict:
                     "Check the caller's role or ownership on the server and return 403 otherwise.",
                 ))
         routes.append(route)
+    for route in review_aspnet(tree.read, {f for f in tree.files if not any(f.startswith(p) for p in excluded)},
+                               auth_attributes=settings.get("auth_attributes")):
+        handler = route["handlers"][0]
+        handler["public"] = handler["public"] or matches_any(route["path"], public)
+        routes.append(route)
+        if handler["public"]:
+            continue
+        if not handler["authentication"]:
+            findings.append(finding(
+                route, handler["method"], "API handler has no authentication check in code",
+                "high" if handler["method"] in MUTATING or matches_any(route["path"], privileged) else "medium",
+                "No [Authorize] on the action, its controller or a base controller, and no global authorization "
+                "policy was found, so anonymous visitors may be able to call it.",
+                "Add [Authorize] (or a global AuthorizeFilter / FallbackPolicy) and mark only truly public "
+                "actions [AllowAnonymous].",
+            ))
+        elif not handler["authorization"] and matches_any(route["path"], privileged):
+            findings.append(finding(
+                route, handler["method"], "Privileged API handler has no visible role check",
+                "medium",
+                "Any signed-in user passes [Authorize]; no role or policy restricts this privileged action.",
+                "Use [Authorize(Roles = \"...\")] or a policy that limits it to the right role.",
+            ))
     total = sum(len(route["handlers"]) for route in routes)
     return {
         "schema_version": 1, "project": config["project"], "kind": "route-review",

@@ -215,7 +215,7 @@ def static_summary(raw: str, *, errors: list[dict] | None = None) -> list[dict]:
 
 
 def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = None,
-         console: Console | None = None, plain=False) -> int:
+         console: Console | None = None, plain=False, pdf=False) -> int:
     console = console or Console(highlight=False, no_color=plain or bool(os.environ.get("NO_COLOR")))
     animate = console.is_terminal and not plain and os.environ.get("MVK_REDUCED_MOTION") != "1"
     repo = Path(git(repo, "rev-parse", "--show-toplevel")).resolve()
@@ -377,7 +377,8 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
               "finished_at": datetime.now(timezone.utc).isoformat(), "checks": rows,
               "status": "needs_review" if needs_review else "completed",
               "not_tested": ["live staging", "record ownership", "approval workflows", "live XSS",
-                             "Cloud Armor enforcement", "historical breach investigation"]}
+                             "Cloud Armor enforcement", "historical breach investigation"],
+              "project": repo.name, "facts": facts, "recap": recap(repo.name, rows, facts)}
     write_private(output / "summary.json", json.dumps(result, indent=2))
     done = sum(row["status"] == "DONE" for row in rows)
     attention = len(rows) - done
@@ -389,8 +390,11 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
     evidence = Table.grid(padding=(0, 2))
     evidence.add_column(style="dim", no_wrap=True)
     evidence.add_column(overflow="fold")
+    if pdf:
+        from .scan_report import write_scan_report
+        write_scan_report(output)
     for label, name in (("Summary", "summary.json"), ("Static matches", "static-findings.json"),
-                        ("API review", "route-review.json")):
+                        ("API review", "route-review.json"), ("Report", "report.html"), ("PDF report", "report.pdf")):
         if (output / name).is_file():
             evidence.add_row(label, path_link(output / name, enabled=links))
     console.print(evidence)

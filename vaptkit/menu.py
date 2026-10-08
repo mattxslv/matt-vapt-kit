@@ -24,7 +24,9 @@ from .config import ConfigError, load_config
 from .doctor import diagnose
 from .hooks import install as install_hook
 from .process import ToolError, git, stream
+from .report import generate as generate_report
 from .scan import path_link, print_header, scan
+from .scan_report import pdf_available, write_scan_report
 
 KIT = Path(__file__).resolve().parent.parent
 PRIVATE = KIT / ".private"
@@ -123,7 +125,47 @@ def run_scan(console: Console) -> None:
         console.print(Text("\nScan stopped.", style="yellow"))
     except ToolError as error:
         console.print(Text(f"\n{error}", style="yellow"))
+    else:
+        offer_scan_pdf(console, output)
     pause(console)
+
+
+def open_path(console: Console, path: Path) -> None:
+    if WINDOWS:
+        os.startfile(path)
+    elif shutil.which("xdg-open"):
+        subprocess.Popen(["xdg-open", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    else:
+        console.print(Text("xdg-open is not available; open the path above manually.", style="yellow"))
+
+
+PDF_TOOLS_HINT = "The PDF tools aren't installed, so only the HTML version was made. Re-run ./install (or install.ps1) to add them."
+
+
+def show_report(console: Console, html: Path, pdf: Path | None) -> None:
+    console.print(Text("\nReport saved: ", style="bold") + path_link(pdf or html))
+    if pdf is None:
+        console.print(Text(PDF_TOOLS_HINT, style="yellow"))
+    console.print(Text("It lists findings; share it only with people approved to see them.", style="dim"))
+    if ask(console, "Open it now? (y/N): ").lower() == "y":
+        open_path(console, pdf or html)
+
+
+def offer_scan_pdf(console: Console, folder: Path, *, confirm: bool = True) -> None:
+    existing = next((folder / name for name in ("report.pdf", "report.html") if (folder / name).is_file()), None)
+    if existing:
+        console.print(Text("\nThis scan already has a report: ") + path_link(existing))
+        return
+    if confirm and ask(console, "\nMake a PDF report of this scan? (y/N): ").lower() != "y":
+        return
+    try:
+        html, pdf = write_scan_report(folder, html_only=not pdf_available())
+    except ToolError as error:
+        console.print(Text(f"\n{error}", style="yellow"))
+        if (folder / "report.html").is_file():
+            console.print(Text("HTML report: ") + path_link(folder / "report.html"))
+        return
+    show_report(console, html, pdf)
 
 
 def latest_scan() -> Path | None:
@@ -214,17 +256,15 @@ def show_latest(console: Console) -> None:
     console.print(Text(f"Finished {summary.get('finished_at', 'unknown')}  |  commit {summary['revision'][:12]}", style="dim"))
     console.print(Text("Saved in ") + path_link(folder))
     console.print()
+    option(console, "p", "Make a PDF report of this scan")
     option(console, "o", "Open this folder")
     option(console, "b", "Back")
-    if ask(console, "\nChoose: ").lower() == "o":
-        if WINDOWS:
-            os.startfile(folder)
-            return
-        if not shutil.which("xdg-open"):
-            console.print(Text("xdg-open is not available; open the folder above manually.", style="yellow"))
-            pause(console)
-            return
-        subprocess.Popen(["xdg-open", str(folder)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    choice = ask(console, "\nChoose: ").lower()
+    if choice == "p":
+        offer_scan_pdf(console, folder, confirm=False)
+        pause(console)
+    elif choice == "o":
+        open_path(console, folder)
 
 
 HOSTNAME = re.compile(r"^[a-z0-9]+([.-][a-z0-9]+)*$")
@@ -326,6 +366,14 @@ def run_staging_check(console: Console) -> None:
     console.print(Text(f"Saved to {output}", style="dim"))
     console.print()
     console.print(Text("※ recap: ", style="bold dim") + Text(staging_recap(result), style="italic dim"))
+    if ask(console, "\nMake a PDF report of this check? (y/N): ").lower() == "y":
+        html_only = not pdf_available()
+        try:
+            html = generate_report(path, output / "report", reviewed=True, html_only=html_only)
+        except ToolError as error:
+            console.print(Text(f"\n{error}", style="yellow"))
+        else:
+            show_report(console, html, None if html_only else html.with_name("report.pdf"))
     pause(console)
 
 

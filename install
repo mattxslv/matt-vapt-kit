@@ -11,9 +11,16 @@ if [ ! -x "$kit_dir/.venv/bin/python" ]; then
 fi
 first_install=0
 if ! "$kit_dir/.venv/bin/python" -c 'import rich, vaptkit.menu' >/dev/null 2>&1; then
-    printf '%s\n' "Installing the toolkit and terminal dependencies (downloads Python packages)."
-    "$kit_dir/.venv/bin/python" -m pip install --quiet -e "$kit_dir"
+    printf '%s\n' "Installing the toolkit, terminal and PDF report dependencies (downloads Python packages)."
+    "$kit_dir/.venv/bin/python" -m pip install --quiet -e "$kit_dir[report]"
     first_install=1
+elif ! "$kit_dir/.venv/bin/python" -c 'import playwright' >/dev/null 2>&1; then
+    printf '%s\n' "Adding the PDF report tools (downloads Python packages)."
+    "$kit_dir/.venv/bin/python" -m pip install --quiet -e "$kit_dir[report]"
+fi
+if ! "$kit_dir/.venv/bin/python" -c 'from playwright.sync_api import sync_playwright as s; p = s().start(); b = p.chromium.launch(); b.close(); p.stop()' >/dev/null 2>&1; then
+    printf '%s\n' "Downloading the browser used to print PDF reports (about 150 MB, one time)."
+    "$kit_dir/.venv/bin/python" -m playwright install chromium || printf '%s\n' "PDF browser download failed; reports will be saved as HTML until you re-run ./install."
 fi
 if [ "$first_install" = 1 ]; then
     printf '%s\n' "Installed. Next, choose which projects to protect on every git push..."

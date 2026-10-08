@@ -49,12 +49,13 @@ jobs:
         with:
           package_json_file: target/package.json
           run_install: false
-      - run: pip install --quiet -e .
+      - run: pip install --quiet -e ".[report]"
+      - run: python -m playwright install --with-deps chromium
       - name: Scan
         env:
           CONFIG: ${{ matrix.config }}
         run: |
-          args=(--plain --output "$RUNNER_TEMP/scan-output")
+          args=(--plain --pdf --output "$RUNNER_TEMP/scan-output")
           if [[ -n "$CONFIG" ]]; then args+=(--config "$CONFIG"); fi
           vapt scan target "${args[@]}"
       - name: Save evidence

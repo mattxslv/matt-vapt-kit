@@ -23,6 +23,7 @@ def main(argv=None) -> int:
     combined.add_argument("--config", type=Path, help="Optional project policy for offline API authentication review")
     combined.add_argument("--output", type=Path, help="New private output directory (default: .private/scan-*)")
     combined.add_argument("--plain", action="store_true", help="Disable color and loading animation")
+    combined.add_argument("--pdf", action="store_true", help="Also write report.html and report.pdf with the evidence")
     validate = commands.add_parser("validate", help="Validate staging config offline")
     validate.add_argument("config", type=Path)
     doctor = commands.add_parser("doctor", help="Check core tools or task-specific prerequisites without scans")
@@ -85,7 +86,7 @@ def main(argv=None) -> int:
     try:
         if args.command == "scan":
             from .scan import scan
-            return scan(args.repo, config_path=args.config, output=args.output, plain=args.plain)
+            return scan(args.repo, config_path=args.config, output=args.output, plain=args.plain, pdf=args.pdf)
         if args.command == "doctor":
             from .doctor import diagnose
             if args.config is not None and args.profile != "roles":

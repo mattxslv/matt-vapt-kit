@@ -200,6 +200,60 @@ def check(repo: Path, revision: str, *, static: bool = False) -> None:
         scan_static(repo, sha)
 
 
+def clone_history(repo: Path, bare: Path, execute) -> None:
+    # A mirror copies every ref, including remote-tracking branches, so scanning origin/main from a staging
+    # checkout finds its commits even without --shared (which Windows can't use: it records host paths).
+    shared = [] if WINDOWS else ["--shared"]
+    execute(["git", "clone", "--quiet", "--mirror", *shared, str(repo), str(bare)])
+
+
+PLACEHOLDER_VALUE = re.compile(r"(?i)your[_-]|example|sample|dummy|placeholder|changeme|change[_-]me|fake|lorem"
+                               r"|x{4,}|abc|123456|<[^>]*>|\*{3,}|\.\.\.|test[_-]?(?:token|key|secret|password)")
+DOC_FILE = re.compile(r"(?i)\.(?:md|mdx|markdown|rst|adoc|txt)$|(?:^|/)docs?/")
+
+
+def history_findings(repo: Path, sha: str) -> list[dict]:
+    """Gitleaks matches in the history reachable from sha, as metadata only.
+
+    Matched values are inspected in memory to recognize documentation placeholders, then dropped: they are never
+    stored or printed. Each result keeps rule, file, line, short commit and the .gitleaksignore fingerprint.
+    """
+    with tempfile.TemporaryDirectory(prefix="matt-vapt-history-") as directory:
+        bare = Path(directory) / "history.git"
+        clone_history(repo, bare, run)
+        has_ignore = False
+        try:
+            (Path(directory) / ".gitleaksignore").write_text(git(repo, "show", f"{sha}:.gitleaksignore") + "\n")
+            has_ignore = True
+        except ToolError:
+            pass
+        if WINDOWS:
+            command = windows_history_command(directory, sha, has_ignore)
+        else:
+            command = docker_repo(repo) + [
+                "-v", f"{directory}:{directory}:ro", "-w", str(bare), GITLEAKS, "git", str(bare), "--no-banner",
+                f"--log-opts=--no-textconv --no-ext-diff {sha}",
+            ] + (["--gitleaks-ignore-path", str(Path(directory) / ".gitleaksignore")] if has_ignore else [])
+        command = [arg for arg in command if arg != "--redact"] + ["--report-format", "json", "--report-path", "-"]
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, check=False)
+        except OSError:
+            raise ToolError("Cannot start docker; install it before continuing.") from None
+    if result.returncode not in (0, 1):
+        raise ToolError(f"The secret scanner did not complete (exit {result.returncode}).")
+    try:
+        raw = json.loads(result.stdout) if result.stdout.strip() else []
+    except ValueError:
+        raise ToolError("The secret scanner returned unreadable output.") from None
+    findings = [{
+        "rule": item.get("RuleID", ""), "file": item.get("File", ""), "line": item.get("StartLine"),
+        "commit": (item.get("Commit") or "")[:12], "fingerprint": item.get("Fingerprint", ""),
+        "placeholder": bool(DOC_FILE.search(item.get("File", "")) or PLACEHOLDER_VALUE.search(item.get("Secret", ""))),
+    } for item in raw]
+    raw.clear()
+    return findings
+
+
 def scan_history(repo: Path, sha: str, *, runner=None, revisions: str | None = None,
                  leak_exit_code: int | None = None, verbose: bool = False) -> None:
     """Gitleaks over the history reachable from sha, or only over `revisions` (git log arguments)."""
@@ -207,11 +261,7 @@ def scan_history(repo: Path, sha: str, *, runner=None, revisions: str | None = N
     revisions = revisions or sha
     with tempfile.TemporaryDirectory(prefix="matt-vapt-history-") as directory:
         bare = Path(directory) / "history.git"
-        # --shared records the host object path, which a Linux container can't resolve on Windows.
-        shared = [] if WINDOWS else ["--shared"]
-        # A mirror keeps remote-tracking refs, so revisions such as "--not --remotes" still resolve.
-        kind = "--bare" if revisions == sha else "--mirror"
-        execute(["git", "clone", "--quiet", kind, *shared, str(repo), str(bare)])
+        clone_history(repo, bare, execute)
         # Honor the committed .gitleaksignore (reviewed historical findings).
         ignore_blob = []
         try:

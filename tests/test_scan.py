@@ -132,7 +132,7 @@ class ScanTests(unittest.TestCase):
             return real_run(command, **kwargs)
         with patch("vaptkit.scan.shutil.which", return_value="/fixture/docker"), patch(
             "vaptkit.scan.subprocess.run", side_effect=process
-        ), patch("vaptkit.scan.scan_history", return_value=None), patch(
+        ), patch("vaptkit.scan.history_findings", return_value=[]), patch(
             "vaptkit.scan.audit_commit", return_value=None
         ), patch("vaptkit.scan.review", return_value={"summary": {"handlers": 0}, "findings": []}):
             code = scan(self.repo, output=self.root / "out", console=self.console)
@@ -157,7 +157,7 @@ class ScanTests(unittest.TestCase):
             return real_run(command, **kwargs)
         with patch("vaptkit.scan.shutil.which", return_value="/fixture/docker"), patch(
             "vaptkit.scan.subprocess.run", side_effect=process
-        ), patch("vaptkit.scan.scan_history", return_value=None), patch(
+        ), patch("vaptkit.scan.history_findings", return_value=[]), patch(
             "vaptkit.scan.audit_commit", return_value=None
         ), patch("vaptkit.scan.review", return_value={"summary": {"handlers": 0}, "findings": []}):
             code = scan(self.repo, output=self.root / "out", console=self.console)
@@ -192,7 +192,7 @@ class ScanTests(unittest.TestCase):
         ), patch("vaptkit.scan.git", side_effect=lambda repo, *args: (
             str(self.repo) if args[0] == "rev-parse" else "package.json\npnpm-lock.yaml"
         )), patch("vaptkit.scan.checked_revision", return_value="a" * 40), patch(
-            "vaptkit.scan.scan_history", side_effect=ToolError("Synthetic scanner needs review.")
+            "vaptkit.scan.history_findings", side_effect=ToolError("Synthetic scanner needs review.")
         ) as history, patch("vaptkit.scan.audit_commit", return_value=None) as audit, patch(
             "vaptkit.scan.scan_static", return_value=None
         ) as static, patch("vaptkit.scan.review", return_value={
@@ -211,7 +211,7 @@ class ScanTests(unittest.TestCase):
 
     def test_missing_docker_is_explicit_and_other_checks_still_run(self):
         with patch("vaptkit.scan.shutil.which", return_value=None), patch(
-            "vaptkit.scan.scan_history"
+            "vaptkit.scan.history_findings"
         ) as history, patch("vaptkit.scan.scan_static") as static, patch(
             "vaptkit.scan.audit_commit", return_value=None
         ) as audit, patch("vaptkit.scan.review", return_value={"summary": {"handlers": 0}, "findings": []}):
@@ -237,7 +237,7 @@ class ScanTests(unittest.TestCase):
         (self.repo / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n")
         with patch("vaptkit.scan.shutil.which", return_value="/fixture/docker"), patch(
             "vaptkit.scan.subprocess.run", side_effect=docker_ready
-        ), patch("vaptkit.scan.scan_history", return_value=None), patch("vaptkit.scan.scan_static", return_value=None), patch(
+        ), patch("vaptkit.scan.history_findings", return_value=[]), patch("vaptkit.scan.scan_static", return_value=None), patch(
             "vaptkit.scan.audit_commit", return_value=None
         ) as audit, patch("vaptkit.scan.review", return_value={"summary": {"handlers": 0}, "findings": []}):
             scan(self.repo, output=self.root / "out", console=self.console)
@@ -251,7 +251,7 @@ class ScanTests(unittest.TestCase):
     def test_cancellation_preserves_partial_summary_and_stops_following_checks(self):
         with patch("vaptkit.scan.shutil.which", return_value="/fixture/docker"), patch(
             "vaptkit.scan.subprocess.run", side_effect=docker_ready
-        ), patch("vaptkit.scan.scan_history", return_value=None), patch(
+        ), patch("vaptkit.scan.history_findings", return_value=[]), patch(
             "vaptkit.scan.audit_commit", side_effect=KeyboardInterrupt
         ), patch("vaptkit.scan.review") as routes:
             with self.assertRaises(KeyboardInterrupt):

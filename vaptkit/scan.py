@@ -24,7 +24,7 @@ from rich.table import Table
 from rich.text import Text
 
 from .assessment import create_output, write_private
-from .checks import audit_commit, checked_revision, lockfiles, scan_history, scan_static, severity_text
+from .checks import audit_commit, checked_revision, history_findings, lockfiles, scan_static, severity_text
 from .config import load_config
 from .live import (NotCovered, browser_sign_in_possible, run_read_only, standing_approval_path, staging_counts,
                    staging_recap, standing_approval)
@@ -327,7 +327,30 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
         except (OSError, subprocess.TimeoutExpired):
             docker_ready = False
     docker_gap = None if docker_ready else "Docker is unavailable. Start Docker and rerun; remaining independent checks still run."
-    stage(f"1 / {total}  Secret history", lambda: scan_history(repo, sha, runner=execute), docker_gap)
+    def secrets():
+        found = history_findings(repo, sha)
+        write_private(output / "secret-findings.json", json.dumps({"revision": sha, "findings": found}, indent=2))
+        real = [item for item in found if not item["placeholder"]]
+        placeholders = [item for item in found if item["placeholder"]]
+        facts.update(leaks=len(real), placeholders=len(placeholders))
+        for item in real[:8] + placeholders[:max(0, 8 - len(real))]:
+            note = "  (likely placeholder)" if item["placeholder"] else ""
+            console.print(Text(f"  {item['rule']}  {item['file']}:{item['line']}  commit {item['commit'][:8]}{note}",
+                               style="dim" if item["placeholder"] else ACCENT))
+        if placeholders:
+            write_private(output / "gitleaksignore-suggestions.txt",
+                          "# Likely placeholders (docs or example values). After checking each one, add these lines\n"
+                          "# to the project's .gitleaksignore so they stop being reported.\n"
+                          + "".join(item["fingerprint"] + "\n" for item in placeholders))
+        placeholder_note = (f" {len(placeholders)} more look like placeholders in docs or example values; "
+                            "gitleaksignore-suggestions.txt has ready-made ignore lines." if placeholders else "")
+        if real:
+            raise ToolError(f"{len(real)} possible secrets in the Git history (values withheld).{placeholder_note} "
+                            "Rotate any that are real, even if later deleted. See secret-findings.json.")
+        if placeholders:
+            return f"No likely real secrets.{placeholder_note}"
+        return "No possible secrets found in the Git history."
+    stage(f"1 / {total}  Secret history", secrets, docker_gap)
     listing = git(repo, "ls-tree", "-r", "--name-only", sha).splitlines()
     def dependencies():
         report = audit_commit(repo, sha)

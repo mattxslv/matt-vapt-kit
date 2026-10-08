@@ -98,6 +98,16 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
 
     leaks = facts.get("leaks")
     history = next((row for row in summary["checks"] if stage(row) == "Secret history"), None)
+    secret_rows = (read(folder, "secret-findings.json") or {}).get("findings", [])
+    secret_table = ""
+    if secret_rows:
+        rows = "".join(
+            f'<tr><td>{esc(item["rule"])}</td><td><code>{esc(item["file"])}:{esc(item["line"])}</code></td>'
+            f'<td><code>{esc(item["commit"][:8])}</code></td><td><span class="chip {"gap" if item["placeholder"] else "review"}">'
+            f'{"Likely placeholder" if item["placeholder"] else "Review"}</span></td></tr>' for item in secret_rows[:ROUTE_LIMIT])
+        secret_table = ('<table><thead><tr><th>Rule</th><th>Where</th><th>Commit</th><th>Assessment</th></tr></thead>'
+                        f'<tbody>{rows}</tbody></table><p class="more">Values are never stored. Placeholders are matches in '
+                        'documentation or with example values; gitleaksignore-suggestions.txt has ignore lines for them.</p>')
     if leaks:
         secrets = (f'<p class="lede"><span class="count">{leaks}</span> possible secrets were found in the '
                    "commit history. The values are redacted and were never saved by the kit.</p>"
@@ -106,6 +116,9 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
                    "<li>Rotate or revoke it with the provider first.</li>"
                    "<li>Then decide whether the history needs rewriting.</li>"
                    "<li>Add reviewed false positives to <code>.gitleaksignore</code> so they stop reappearing.</li></ul>")
+    elif history and history["status"] == "DONE" and facts.get("placeholders"):
+        secrets = (f'<p class="lede">No likely real secrets. {facts["placeholders"]} matches look like placeholders in '
+                   "documentation or example values.</p>")
     elif history and history["status"] == "DONE":
         secrets = '<p class="lede">No possible secrets were found in the commit history.</p>'
     else:
@@ -250,7 +263,7 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
 
 <section class="chapter page">
   <header class="chapter-head"><p class="eyebrow">§§</p><h2>Secrets in the commit history</h2></header>
-  {secrets}
+  {secrets}{secret_table}
 </section>
 
 {dependency_html}<section class="chapter">

@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from vaptkit.checks import (audit_commit, check, checked_revision, dependency_scopes, lockfiles, pnpm_runtime,
+from vaptkit.checks import (audit_commit, check, checked_revision, dependency_scopes, history_findings, lockfiles, pnpm_runtime,
                             pushed_updates, severity_band, summarize_osv)
 from vaptkit.hooks import Findings, install, protect, uninstall
 from vaptkit.process import ToolError, git
@@ -245,3 +245,38 @@ class DependencyScopeTests(unittest.TestCase):
         self.assertEqual(summary["runtime_severity"]["critical"], 0)
         self.assertEqual(summary["runtime_severity"]["high"], 1)
         self.assertEqual(summary["top"][0]["package"], "next")
+
+
+class HistoryFindingsTests(unittest.TestCase):
+    def test_placeholders_are_marked_and_values_never_returned(self):
+        report = json.dumps([
+            {"RuleID": "curl-auth-header", "File": "docs/DEPLOY.md", "StartLine": 203, "Commit": "a" * 40,
+             "Fingerprint": "a:docs/DEPLOY.md:curl-auth-header:203", "Secret": "REAL_LOOKING_9f8e7d6c"},  # gitleaks:allow (deliberate fake for tests)
+            {"RuleID": "generic-api-key", "File": "lib/config.ts", "StartLine": 4, "Commit": "b" * 40,
+             "Fingerprint": "b:lib/config.ts:generic-api-key:4", "Secret": "YOUR_API_KEY_HERE"},  # gitleaks:allow (deliberate fake for tests)
+            {"RuleID": "generic-api-key", "File": "lib/client.ts", "StartLine": 9, "Commit": "c" * 40,
+             "Fingerprint": "c:lib/client.ts:generic-api-key:9", "Secret": "k9Q2vX7pL4mN8rT1"},  # gitleaks:allow (deliberate fake for tests)
+        ])
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            git(repo, "init", "-q")
+            git(repo, "config", "user.email", "t@example.invalid")
+            git(repo, "config", "user.name", "T")
+            (repo / "a.txt").write_text("x")
+            git(repo, "add", ".")
+            git(repo, "commit", "-qm", "init")
+            real_run = subprocess.run
+
+            def process(command, **kwargs):
+                if command[0] == "docker":
+                    self.assertIn("-", command)
+                    self.assertNotIn("--redact", command)
+                    return subprocess.CompletedProcess(command, 1, stdout=report, stderr="")
+                return real_run(command, **kwargs)
+
+            with patch("vaptkit.checks.subprocess.run", side_effect=process), patch("vaptkit.checks.run", side_effect=lambda c, **k: real_run(c, check=True)):
+                found = history_findings(repo, git(repo, "rev-parse", "HEAD"))
+        self.assertEqual([item["placeholder"] for item in found], [True, True, False])
+        self.assertEqual(found[2]["commit"], "c" * 12)
+        self.assertNotIn("k9Q2vX7pL4mN8rT1", json.dumps(found))
+        self.assertTrue(all("Secret" not in item and "secret" not in item for item in found))

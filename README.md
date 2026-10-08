@@ -165,8 +165,7 @@ with explicit [scope approval](docs/pilot-checklist.md).
 If the CLI is already installed, `vapt scan /path/to/your-project` does the same work.
 Use `NO_COLOR=1 ./scan /path/to/your-project` for uncolored output. Redirected output
 has no animated spinner.
-The terminal shows a shield icon beside an MVK wordmark, the tagline
-**"anti vince vulnerability" / "to prevent spilling the beans :D"**,
+The terminal shows a shield icon beside an MVK wordmark,
 and a one-word loading status such as `✻ Topsy-turvying… (37s · Static rules)`,
 picked from 60 words, with the actual task and elapsed time and no loading bar or
 invented percentages. The scan ends with a line like

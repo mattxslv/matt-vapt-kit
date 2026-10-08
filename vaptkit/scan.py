@@ -149,18 +149,8 @@ SHIELD = (
 
 def print_header(console: Console) -> None:
     width = min(console.width, 60)
-    caption = Text(justify="center")
-    caption.append("Matt VAPT Kit", style="bold")
-    caption.append("\n")
-    caption.append("anti vince vulnerability", style="dim")
-    caption.append("\n")
-    caption.append("to prevent spilling the beans :D", style="dim italic")
     if width < 42:
-        content = Group(
-            Text("MVK", style=f"bold {ACCENT}", justify="center"),
-            Text(""),
-            caption,
-        )
+        content = Text("MVK", style=f"bold {ACCENT}", justify="center")
     else:
         rendered = Figlet(font="ansi_shadow", width=60).renderText("MVK")
         wordmark_lines = [line.rstrip() for line in rendered.splitlines() if line.strip()]
@@ -175,11 +165,7 @@ def print_header(console: Console) -> None:
             lockup.append(shield_line, style=ACCENT)
             lockup.append("  ")
             lockup.append(wordmark_line, style=f"bold {ACCENT}")
-        content = Group(
-            Align.center(lockup, width=width),
-            Text(""),
-            Align.center(caption, width=width),
-        )
+        content = Align.center(lockup, width=width)
     console.print()
     console.print(Align.center(content))
     console.print()

@@ -204,6 +204,22 @@
   gcloud identity, so its live stage reports NOT RUN. Tests that use the real DTAP/PEMEDES
   configs pop `access`. The Chrome seen running was the Playwright MCP plugin, not the kit.
 
+- Two-account ownership checks (`vaptkit/ownership.py`, `vapt ownership`/`vapt scope-template
+  --ownership`): config-driven, reuses `roles.sign_in`/`sign_out` (extracted from roles.py's run(),
+  behavior-preserved, 284/284 role tests still pass after the extraction). Each check reads the
+  target's value, has the acting account overwrite it via the target's id, re-reads as target to
+  confirm, restores regardless of outcome -- including restoring the acting account's own record if
+  a properly-scoped endpoint wrote there instead (that's how a fixed endpoint is told apart from a
+  truly ambiguous accepted-but-nothing-changed result; first version of this flagged fixed endpoints
+  as "suspected", caught by its own test suite). DTAP config now has one real check,
+  evaluator-profile-department, targeting the exact live bug (evaluator vs evaluator-2, PUT
+  /api/evaluator/profile, id_field userId). Schema updated (project.json) for `ownership_checks`.
+  Tested only against a mocked HTTP app simulating the real vulnerable and fixed route code (5 new
+  tests, all pass) -- NOT run against real DTAP/PEMEDES staging. That needs the DTAP_EVALUATOR_EMAIL
+  /DTAP_EVALUATOR2_EMAIL/DTAP_QA_PASSWORD values and the user's explicit go-ahead, since it performs
+  real (reversible) writes under the evaluator accounts. CLI-only, like `vapt roles`; not added to
+  the menu given the password-prompt/approval flow doesn't fit the current menu UI.
+
 Previous handoff (2026-10-07 menu/redesign work, DTAP finding) preserved below.
 
 Replaces the Oct 5 handoff below this line's content; that session's "pending" items

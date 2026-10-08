@@ -54,6 +54,7 @@ def main(argv=None) -> int:
     scope = commands.add_parser("scope-template", help="Print an unapproved HEAD-only scope template")
     scope.add_argument("config", type=Path)
     scope.add_argument("--roles", action="store_true", help="Print an unapproved role-login and GET matrix scope")
+    scope.add_argument("--ownership", action="store_true", help="Print an unapproved two-account ownership-check scope")
     roles = commands.add_parser("roles", help="Test an approved read-only role matrix with isolated DTAP logins")
     roles.add_argument("config", type=Path)
     roles.add_argument("--approval", type=Path, required=True)
@@ -61,6 +62,13 @@ def main(argv=None) -> int:
     roles.add_argument("--acknowledge-scope", action="store_true")
     roles.add_argument("--prompt-passwords", action="store_true",
                        help="Prompt with hidden input for missing QA passwords; never saved to environment or files")
+    ownership = commands.add_parser("ownership", help="Test configured two-account ownership checks with isolated DTAP logins")
+    ownership.add_argument("config", type=Path)
+    ownership.add_argument("--approval", type=Path, required=True)
+    ownership.add_argument("--output", type=Path, required=True)
+    ownership.add_argument("--acknowledge-scope", action="store_true")
+    ownership.add_argument("--prompt-passwords", action="store_true",
+                           help="Prompt with hidden input for missing QA passwords; never saved to environment or files")
     scan = commands.add_parser("run", help="Run approved header checks and optional bounded public exposure checks")
     scan.add_argument("config", type=Path)
     scan.add_argument("--approval", type=Path, required=True)
@@ -146,8 +154,14 @@ def main(argv=None) -> int:
             return 0
         if args.command == "scope-template":
             from .assessment import approval_template
-            from .roles import template
-            print(json.dumps(template(config) if args.roles else approval_template(config), indent=2))
+            from .roles import template as role_template
+            from .ownership import template as ownership_template
+            if args.roles:
+                print(json.dumps(role_template(config), indent=2))
+            elif args.ownership:
+                print(json.dumps(ownership_template(config), indent=2))
+            else:
+                print(json.dumps(approval_template(config), indent=2))
             return 0
         if args.command == "roles":
             from .assessment import load_json
@@ -158,6 +172,20 @@ def main(argv=None) -> int:
                              prompt_passwords=args.prompt_passwords)
             print(f"Role assessment written to {path}; " + ("incomplete." if code else "scoped matrix completed."))
             print_assessment_summary(path)
+            return code
+        if args.command == "ownership":
+            from .assessment import load_json
+            from .ownership import run as run_ownership
+            if not args.acknowledge_scope:
+                raise ToolError("Pass --acknowledge-scope only with explicit owner approval for ownership checks.")
+            path, code = run_ownership(config, load_json(args.approval), args.output,
+                                       prompt_passwords=args.prompt_passwords)
+            print(f"Ownership assessment written to {path}; " + ("incomplete." if code else "no coverage gaps."))
+            result = json.loads(path.read_text())
+            for item in result["findings"]:
+                print(f"  [{item['severity'].upper():6}] {item['verification']:9} {item['path']}  {item['title']}")
+            if not result["findings"]:
+                print("  No ownership findings.")
             return code
         if args.command == "run":
             from .assessment import assess, load_json

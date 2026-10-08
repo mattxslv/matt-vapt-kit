@@ -141,6 +141,47 @@ def response_quality(status: int, headers: dict, body: bytes, shape: dict, accou
     return "matched"
 
 
+def sign_in(call, secrets: dict, account_id: str, account: dict, host: str, session: dict) -> dict:
+    """POST login into `session` (mutated before any validation, so the caller can still log out if validation
+    then fails) and return the parsed identity."""
+    status, headers, body = call("POST", LOGIN, body=json.dumps(secrets[account_id]).encode())
+    session.clear()
+    session.update(collect_cookies(headers, host))
+    if not 200 <= status < 300:
+        raise HTTPStop(LOGIN, status)
+    identity = json_object(body) if content_class(headers) == "json" else None
+    user = identity.get("user") if identity else None
+    if (not isinstance(user, dict) or not isinstance(user.get("email"), str)
+            or user["email"].lower() != secrets[account_id]["email"].lower()
+            or user.get("user_type") != account["role"] or (identity and identity.get("error"))
+            or set(session) != set(COOKIE_NAMES)):
+        raise ToolError("Login identity, role or required session cookies did not match; values withheld.")
+    return identity
+
+
+def sign_out(call, account_id: str, session: dict, cleanup: list, error_record, stop_cleanup: bool) -> None:
+    """POST logout and record whether it was acknowledged; never raises, so callers can run it in `finally`.
+
+    An unacknowledged sign-out is recorded as an error (not just a cleanup note), so the report cannot be marked
+    completed while a session may still be live.
+    """
+    if not session or stop_cleanup:
+        if not any(item["account"] == account_id for item in cleanup):
+            cleanup.append({"account": account_id, "status": "unconfirmed"})
+        return
+    try:
+        status, headers, body = call("POST", LOGOUT, session, body=b"{}")
+        acknowledged = (200 <= status < 300 and content_class(headers) == "json"
+                        and (json_object(body) or {}).get("success") is True)
+        cleanup.append({"account": account_id, "status": "acknowledged" if acknowledged else "unconfirmed"})
+        if not acknowledged:
+            raise ToolError("Sign-out was not acknowledged; manual session cleanup may be required.")
+    except (ToolError, OSError, http.client.HTTPException) as error:
+        error_record(error)
+        if not any(item["account"] == account_id for item in cleanup):
+            cleanup.append({"account": account_id, "status": "unconfirmed"})
+
+
 def role_outcome(record: dict, controls: set[str]) -> str:
     """Classify derived evidence, retaining the original criteria for legacy records."""
     attempts = record["attempts"]
@@ -271,36 +312,11 @@ def run(config: dict, approval: dict, output: Path, *, prompt_passwords=False) -
         for account_id in approval["role_accounts"]:
             account = accounts[account_id]
             session = {}
-            attempted_login = False
             try:
-                attempted_login = True
-                status, headers, body = call("POST", LOGIN, body=json.dumps(secrets[account_id]).encode())
-                session = collect_cookies(headers, host)
-                if not 200 <= status < 300:
-                    raise HTTPStop(LOGIN, status)
-                identity = json_object(body) if content_class(headers) == "json" else None
-                user = identity.get("user") if identity else None
-                if (not isinstance(user, dict) or not isinstance(user.get("email"), str)
-                        or user["email"].lower() != secrets[account_id]["email"].lower()
-                        or user.get("user_type") != account["role"] or (identity and identity.get("error"))
-                        or set(session) != set(COOKIE_NAMES)):
-                    raise ToolError("Login identity, role or required session cookies did not match; values withheld.")
+                sign_in(call, secrets, account_id, account, host, session)
                 inspect(account_id, account["role"], session)
             finally:
-                if session and not stop_cleanup:
-                    try:
-                        status, headers, body = call("POST", LOGOUT, session, body=b"{}")
-                        acknowledged = (200 <= status < 300 and content_class(headers) == "json"
-                                        and (json_object(body) or {}).get("success") is True)
-                        cleanup.append({"account": account_id, "status": "acknowledged" if acknowledged else "unconfirmed"})
-                        if not acknowledged:
-                            raise ToolError("Sign-out was not acknowledged; manual session cleanup may be required.")
-                    except (ToolError, OSError, http.client.HTTPException) as error:
-                        error_record(error)
-                        if not any(item["account"] == account_id for item in cleanup):
-                            cleanup.append({"account": account_id, "status": "unconfirmed"})
-                elif attempted_login:
-                    cleanup.append({"account": account_id, "status": "unconfirmed"})
+                sign_out(call, account_id, session, cleanup, error_record, stop_cleanup)
                 session.clear()
             if errors:
                 break

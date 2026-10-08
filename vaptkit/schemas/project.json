@@ -23,12 +23,19 @@
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["type", "service_account"],
+          "required": [
+            "type",
+            "service_account"
+          ],
           "properties": {
-            "type": {"const": "iap-service-account"},
+            "type": {
+              "const": "iap-service-account"
+            },
             "service_account": {
               "type": "string",
-              "not": {"pattern": "\\s"},
+              "not": {
+                "pattern": "\\s"
+              },
               "pattern": "^[a-z][a-z0-9-]{4,28}[a-z0-9]@[a-z][a-z0-9-]{4,28}[a-z0-9]\\.iam\\.gserviceaccount\\.com$"
             }
           }
@@ -154,37 +161,90 @@
     "role_testing": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["adapter", "accounts", "routes"],
+      "required": [
+        "adapter",
+        "accounts",
+        "routes"
+      ],
       "properties": {
-        "adapter": {"const": "dtap-cookie-v1"},
+        "adapter": {
+          "const": "dtap-cookie-v1"
+        },
         "accounts": {
-          "type": "array", "minItems": 1, "maxItems": 8,
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
           "items": {
-            "type": "object", "additionalProperties": false,
-            "required": ["id", "role", "email_env", "password_env"],
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "role",
+              "email_env",
+              "password_env"
+            ],
             "properties": {
-              "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"},
-              "role": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"},
-              "email_env": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]*$"},
-              "password_env": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]*$"}
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,63}$"
+              },
+              "role": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,63}$"
+              },
+              "email_env": {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]*$"
+              },
+              "password_env": {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]*$"
+              }
             }
           }
         },
         "routes": {
-          "type": "array", "minItems": 1, "maxItems": 10,
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10,
           "items": {
-            "type": "object", "additionalProperties": false,
-            "required": ["path", "allowed_roles", "response_shape"],
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "allowed_roles",
+              "response_shape"
+            ],
             "properties": {
-              "path": {"type": "string", "maxLength": 256},
+              "path": {
+                "type": "string",
+                "maxLength": 256
+              },
               "allowed_roles": {
-                "type": "array", "minItems": 1, "uniqueItems": true,
-                "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"}
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9-]{0,63}$"
+                }
               },
               "response_shape": {
-                "type": "object", "minProperties": 1, "maxProperties": 10,
-                "propertyNames": {"pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$"},
-                "additionalProperties": {"enum": ["array", "object", "string", "number", "boolean"]}
+                "type": "object",
+                "minProperties": 1,
+                "maxProperties": 10,
+                "propertyNames": {
+                  "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$"
+                },
+                "additionalProperties": {
+                  "enum": [
+                    "array",
+                    "object",
+                    "string",
+                    "number",
+                    "boolean"
+                  ]
+                }
               }
             }
           }
@@ -229,6 +289,69 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 200
+          }
+        }
+      }
+    },
+    "ownership_checks": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "acting_account",
+          "target_account",
+          "write_path",
+          "read_field",
+          "probe_field",
+          "id_field"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,63}$"
+          },
+          "acting_account": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,63}$"
+          },
+          "target_account": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,63}$"
+          },
+          "write_path": {
+            "type": "string",
+            "pattern": "^/[!-~]*$"
+          },
+          "read_path": {
+            "type": "string",
+            "pattern": "^/[!-~]*$"
+          },
+          "write_method": {
+            "enum": [
+              "PUT",
+              "PATCH"
+            ]
+          },
+          "read_field": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 4,
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            }
+          },
+          "probe_field": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "id_field": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
           }
         }
       }

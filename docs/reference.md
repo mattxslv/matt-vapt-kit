@@ -270,6 +270,29 @@ templates, or `/Controller/Action` for conventional routing. WebForms pages and 
 Pages conventions are not reviewed. On nopCommerce all 620 admin actions are recognized
 as protected; the remaining unprotected actions are its public storefront.
 
+### Two-account ownership checks
+
+```sh
+mkdir -m 700 .private
+.venv/bin/vapt scope-template projects/dtap.vapt.yml --ownership > .private/ownership-approval.json
+# Owner reviews the selected check IDs, paths and time window, and sets ownership_login to true.
+.venv/bin/vapt ownership projects/dtap.vapt.yml \
+  --approval .private/ownership-approval.json --acknowledge-scope \
+  --prompt-passwords --output .private/ownership-run-001
+```
+
+Each configured check (`ownership_checks` in the project file) names an acting account and a
+target account with the same role, a write endpoint, the request field carrying the target's id,
+and where to read the field being probed. A check reads the target's current value, has the acting
+account attempt to overwrite it using the target's id, re-reads it as the target to see whether it
+actually changed, and restores the original value immediately regardless of outcome — including
+restoring the acting account's own record if a properly scoped endpoint wrote the probe there
+instead (the signal used to tell a fixed endpoint apart from a genuinely ambiguous result). Only
+one write per check per account is attempted; this is not a general ownership fuzzer. A write that
+returns success but changes neither record is reported as suspected, not confirmed. Credentials
+and gateway access work exactly as for the role matrix above; it is not a generic tool, only the
+configured DTAP cookie-login contract.
+
 ### Approved DTAP role matrix
 
 `vapt roles` supports the existing DTAP cookie login contract only. It is not a

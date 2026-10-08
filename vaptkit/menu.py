@@ -28,6 +28,7 @@ from .assessment import approval_template, assess
 from .config import ConfigError, load_config
 from .doctor import diagnose
 from .hooks import install as install_hook
+from .drift import build_drift, render_markdown
 from .live import staging_recap
 from .support import diagnostics, issue_url, record_error, repo_slug, sanitize
 from .process import ToolError, git, stream
@@ -202,6 +203,40 @@ def scan_branches(console: Console, repo: Path, selected: list[tuple[str, str]])
     return finished
 
 
+def show_drift(console: Console, repo: Path, finished: list[tuple[str, Path]]) -> None:
+    """Compare the first two branch scans, print the headline and save the full report."""
+    try:
+        drift = build_drift(repo, finished)
+    except (ToolError, OSError, KeyError, ValueError) as error:
+        record_error("branch drift", str(error))
+        console.print(Text(f"\nCouldn't compare the branches: {error}", style=ACCENT))
+        return
+    folder = PRIVATE / ("drift-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6])
+    folder.mkdir(mode=0o700)
+    (folder / "drift.json").write_text(json.dumps(drift, indent=2))
+    (folder / "drift.md").write_text(render_markdown(drift, repo.name))
+    left, right = drift["branches"]
+    console.print(Text(f"\nBranch drift · {left} vs {right}", style="bold"))
+    for branch, other in ((left, right), (right, left)):
+        items = drift["open_only_on"][branch]
+        important = [item for item in items if item["kind"] != "Dependency"]
+        deps = len(items) - len(important)
+        line = Text(f"  Open on {branch}, fixed on {other}: ", style="bold")
+        line.append(f"{len(important)} findings" + (f" + {deps} vulnerable packages" if deps else ""),
+                    style=ACCENT if items else "green")
+        console.print(line)
+        for item in important[:5]:
+            fix = f"  ← fix on {other}: {item['fix_commits'][0]}" if item["fix_commits"] else ""
+            console.print(Text(f"    {item['kind']}: {item['what']} · {item['where']}{fix}"[:150], style="dim"))
+    for branch in (left, right):
+        commits = drift["security_commits_only_on"][branch]
+        if commits:
+            console.print(Text(f"  Security-related commits only on {branch}: {len(commits)}", style="bold"))
+            for commit in commits[:4]:
+                console.print(Text(f"    {commit}"[:120], style="dim"))
+    console.print(Text("Full drift report: ") + path_link(folder / "drift.md"))
+
+
 def run_scan(console: Console) -> None:
     repo = prepare_project(console)
     if repo is None:
@@ -209,15 +244,16 @@ def run_scan(console: Console) -> None:
     selected = pick_branches(console, branch_choices(repo))
     if not selected:
         return
-    finished = [folder for _, folder in scan_branches(console, repo, selected)]
+    scanned = scan_branches(console, repo, selected)
+    finished = [folder for _, folder in scanned]
     if len(finished) == 1:
         offer_scan_pdf(console, finished[0])
     elif finished:
         if ask(console, f"\nMake PDF reports for all {len(finished)} branches? (y/N): ").lower() == "y":
             for folder in finished:
                 offer_scan_pdf(console, folder, confirm=False, open_prompt=False)
-        console.print(Text("Tip: option 3 compares the last two scans, so it shows what differs between these branches.",
-                           style="dim"))
+        if len(scanned) > 1:
+            show_drift(console, repo, scanned)
     pause(console)
 
 
@@ -258,6 +294,8 @@ def full_scan(console: Console) -> None:
                       path_link(report, report.name) if report else Text("not made", style=ACCENT))
     console.print()
     console.print(table)
+    if len(finished) > 1:
+        show_drift(console, repo, [(branch, folder) for branch, folder in finished])
     if not pdf_available():
         console.print(Text(PDF_TOOLS_HINT, style=ACCENT))
     console.print(Text("Reports list findings; share them only with people approved to see them.", style="dim"))

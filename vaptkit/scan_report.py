@@ -33,8 +33,12 @@ def chip(status: str) -> str:
 
 
 def rule_messages() -> dict[str, str]:
-    rules = yaml.safe_load(files("vaptkit").joinpath("rules/javascript.yml").read_text())
-    return {f"rules.{rule['id']}": rule["message"] for rule in rules.get("rules", [])}
+    messages = {}
+    for path in files("vaptkit").joinpath("rules").iterdir():
+        if path.name.endswith(".yml"):
+            for rule in yaml.safe_load(path.read_text()).get("rules", []):
+                messages[f"rules.{rule['id']}"] = rule["message"]
+    return messages
 
 
 def next_steps(summary: dict, facts: dict, static_count: int, route_count: int) -> list[tuple[str, str]]:

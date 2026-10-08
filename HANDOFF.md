@@ -122,8 +122,12 @@
   chapters are auto-numbered. Verified on real pnpm (DTAP: 15, matching pnpm
   audit), composer and npm projects, and a blocked composer.lock push. pnpm/Node
   setup removed from action.yml and the weekly workflow.
-- Still JS/TS-only: bundled code rules (3) and the Next.js route review. Next
-  candidate per the user's earlier choice: more offline code rules (PHP/Laravel).
+- PHP/Laravel code rules added (`vaptkit/rules/php.yml`, fixture
+  `tests/semgrep/php.php`, run by CI's `semgrep --test`): raw SQL with variables,
+  shell with variables, client filename on upload, hardcoded secrets (value must
+  contain a digit, skips lang/tests), debug => true. Blade templates excluded
+  (unparseable as PHP). Tuned against laravel/laravel (0) and BookStack (43 -> 6,
+  all real raw-SQL review items). Route review is still Next.js-only.
 
 Previous handoff (2026-10-07 menu/redesign work, DTAP finding) preserved below.
 

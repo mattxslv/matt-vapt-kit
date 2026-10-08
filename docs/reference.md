@@ -107,9 +107,17 @@ Results remain in the private repository's Actions logs.
 CodeQL is a separate optional job, gated by repository variable `ENABLE_CODEQL=true`.
 Confirm private-repository GitHub Code Security eligibility and enable code scanning
 before setting it. Check each application's current eligibility and settings.
-The three bundled Semgrep rules are a small starter set, **not equivalent to CodeQL
-or comprehensive OWASP coverage**. They check explicitly disabled TLS verification,
-dynamic code evaluation and interpolated shell commands. Findings require triage.
+The bundled Semgrep rules are a small starter set, **not equivalent to CodeQL
+or comprehensive OWASP coverage**. Findings require triage.
+
+| Language | Rules |
+|---|---|
+| JavaScript / TypeScript | disabled TLS verification, dynamic code evaluation, interpolated shell commands |
+| PHP / Laravel | raw SQL built from variables, shell commands built from variables, uploads saved under the client's filename, hardcoded passwords/keys/tokens, debug mode switched on in code |
+
+The PHP rules skip Blade templates, `lang/`, `tests/` and (for SQL) `database/migrations/`.
+On the official Laravel starter they report nothing; on a large open-source Laravel app
+(BookStack, about 1,800 PHP files) they report six raw-SQL locations, all worth review.
 
 **Deployment is unchanged.** Cloud Build may deploy concurrently with these checks.
 A failed advisory GitHub Action does not stop that deployment. A real release gate

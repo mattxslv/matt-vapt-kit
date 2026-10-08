@@ -141,7 +141,7 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
 <title>{esc(rid)} | {esc(project)} Repository Scan</title><style>{css}</style></head><body>
-<div class="watermark" aria-hidden="true">MATT VAPT KIT | SELF-ASSESSMENT</div>
+<div class="watermark" aria-hidden="true">MATT VAPT KIT</div>
 
 <section class="cover">
   <div class="ribbon">MATT VAPT KIT · INTERNAL REPOSITORY SCAN · NOT ISSUED BY CERT-PH</div>

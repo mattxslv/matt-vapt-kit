@@ -588,7 +588,7 @@ def render(result: dict, screenshots=(), *, tlp="AMBER+STRICT", prepared_by="", 
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
 <title>{esc(rid)} | {esc(project)} Self-Assessment Report</title><style>{css}</style></head><body>
-<div class="watermark" aria-hidden="true">MATT VAPT KIT | SELF-ASSESSMENT</div>
+<div class="watermark" aria-hidden="true">MATT VAPT KIT</div>
 <main>
 <section class="cover">
   <div class="mvk-ribbon">MATT VAPT KIT | INTERNAL SELF-ASSESSMENT | NOT ISSUED BY CERT-PH</div>

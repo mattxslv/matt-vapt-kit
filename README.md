@@ -195,7 +195,7 @@ If the CLI is already installed, `vapt scan /path/to/your-project` does the same
 add `--pdf` to also write `report.pdf` and `report.html` into the evidence folder.
 Use `NO_COLOR=1 ./scan /path/to/your-project` for uncolored output. Redirected output
 has no animated spinner.
-The terminal shows a shield icon beside an MVK wordmark,
+The terminal shows the MVK wordmark,
 and a one-word loading status such as `✻ Topsy-turvying… (37s · Static rules)`,
 picked from 60 words, with the actual task and elapsed time. Under it, a step
 track (`━━━━━ ━━━━━ ━━━━━ ─────  step 3 of 4`) shows which check is running; there

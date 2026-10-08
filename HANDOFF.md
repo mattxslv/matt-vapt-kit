@@ -42,7 +42,7 @@
 - New finding from a local dry run: **startup-ph has 29 possible secrets in its
   git history** (untriaged, like DTAP's 74 and PEMEDES's 2).
 
-- Terminal header is now just the shield + MVK lockup (caption removed). Logo,
+- Terminal header is now just the MVK lockup (caption removed). Logo,
   README banner and social preview in `docs/brand/` are drawn from that same
   block art.
 - Windows: Docker scan stages skip `--user` (no `os.getuid`) and gitleaks uses a
@@ -94,6 +94,15 @@
   rules grouped with their yml messages, running header/footer via CSS
   `@page` margin boxes (Playwright header/footer templates printed over the
   cover). The staging report (report.py/report.css) was not restyled.
+
+- Logo is now the MVK wordmark only: the shield was removed everywhere at the
+  user's request (terminal header, PDF cover, docs/brand logo/banner/social
+  preview, README screenshots). `SHIELD` is gone; `wordmark_lines()` in scan.py
+  is the single source and `vaptkit/brand.py` draws it as SVG. PDF cover centres
+  it. Watermark text is just "MATT VAPT KIT" in both reports, positioned in mm
+  because Chromium sizes fixed elements to the margin-less cover page.
+- Terminal: every former yellow (REVIEW, MISSING, warnings, "need attention")
+  is the logo orange `ACCENT` (#d68b68), per the user.
 
 Previous handoff (2026-10-07 menu/redesign work, DTAP finding) preserved below.
 

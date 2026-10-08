@@ -133,34 +133,17 @@ def recap(project: str, rows: list[dict], facts: dict) -> str:
     return text
 
 
-SHIELD = (
-    "  ▄▄▄▄▄  ",
-    " █ ▀ ▀ █ ",
-    " █  ◆  █ ",
-    "  █▀▀▀█  ",
-    "   ▀▀▀   ",
-)
+def wordmark_lines() -> list[str]:
+    rendered = Figlet(font="ansi_shadow", width=60).renderText("MVK")
+    return [line.rstrip() for line in rendered.splitlines() if line.strip()]
 
 
 def print_header(console: Console) -> None:
-    width = min(console.width, 60)
-    if width < 42:
+    lines = wordmark_lines()
+    if console.width < max(len(line) for line in lines) + 2:
         content = Text("MVK", style=f"bold {ACCENT}", justify="center")
     else:
-        rendered = Figlet(font="ansi_shadow", width=60).renderText("MVK")
-        wordmark_lines = [line.rstrip() for line in rendered.splitlines() if line.strip()]
-        shield_lines = list(SHIELD)
-        pad = len(wordmark_lines) - len(shield_lines)
-        blank = " " * len(SHIELD[0])
-        shield_lines = [blank] * (pad // 2) + shield_lines + [blank] * (pad - pad // 2)
-        lockup = Text()
-        for index, (shield_line, wordmark_line) in enumerate(zip(shield_lines, wordmark_lines)):
-            if index:
-                lockup.append("\n")
-            lockup.append(shield_line, style=ACCENT)
-            lockup.append("  ")
-            lockup.append(wordmark_line, style=f"bold {ACCENT}")
-        content = Align.center(lockup, width=width)
+        content = Text("\n".join(lines), style=f"bold {ACCENT}")
     console.print()
     console.print(Align.center(content))
     console.print()
@@ -288,7 +271,7 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
                 detail = str(error) if isinstance(error, ToolError) else "Tool operation failed; raw details withheld."
                 row = {"check": name, "status": "REVIEW", "detail": detail}
         rows.append(row)
-        color = {"DONE": "green", "REVIEW": "yellow", "NOT RUN": "yellow"}[row["status"]]
+        color = {"DONE": "green", "REVIEW": ACCENT, "NOT RUN": ACCENT}[row["status"]]
         state = Table.grid(padding=(0, 2))
         state.add_column(no_wrap=True)
         state.add_column(overflow="fold")
@@ -330,7 +313,7 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
         }, indent=2))
         counts = Counter(item["rule"] for item in findings)
         for rule, count in counts.most_common():
-            console.print(Text(f"  {count} matches  {rule}", style="yellow"))
+            console.print(Text(f"  {count} matches  {rule}", style=ACCENT))
             locations = list(dict.fromkeys(f"{item['path']}:{item['line']}" for item in findings if item["rule"] == rule))
             for location in locations[:3]:
                 console.print(Text("    " + location, style="dim"))
@@ -361,7 +344,7 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
     table.add_column("Status", no_wrap=True)
     table.add_column("Detail", ratio=4, overflow="fold")
     for row in rows:
-        color = "green" if row["status"] == "DONE" else "yellow"
+        color = "green" if row["status"] == "DONE" else ACCENT
         label = re.sub(r"^\d+ / \d+\s+", "", row["check"])
         table.add_row(Text(label), Text(row["status"], style=f"bold {color}"), Text(row["detail"]))
     table.caption = Text("REVIEW = investigate findings or errors. NOT RUN = a coverage gap.", style="dim")
@@ -395,7 +378,7 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
     console.print(evidence)
     if links:
         console.print("Paths are terminal links. Use your terminal's open-link gesture (often Ctrl+click).", style="dim")
-    console.print("\nNot a live VAPT or an all-clear. Static matches require review.", style="yellow")
+    console.print("\nNot a live VAPT or an all-clear. Static matches require review.", style=ACCENT)
     console.print("Next: review saved evidence. Approved staging checks use vapt run / vapt roles.", style="dim")
     console.print()
     console.print(Text("※ recap: ", style="bold dim") + Text(recap(repo.name, rows, facts), style="italic dim"))

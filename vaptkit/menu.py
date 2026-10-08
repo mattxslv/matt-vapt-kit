@@ -26,7 +26,7 @@ from .doctor import diagnose
 from .hooks import install as install_hook
 from .process import ToolError, git, stream
 from .report import generate as generate_report
-from .scan import path_link, print_header, scan
+from .scan import ACCENT, path_link, print_header, scan
 from .scan_report import pdf_available, write_scan_report
 
 KIT = Path(__file__).resolve().parent.parent
@@ -79,7 +79,7 @@ def retry_input(console: Console, prompt: str, parse):
         try:
             return parse(entry)
         except ToolError as error:
-            console.print(Text(f"{error} (type b to go back to the menu)", style="yellow"))
+            console.print(Text(f"{error} (type b to go back to the menu)", style=ACCENT))
 
 
 def option(console: Console, key: str, label: str) -> None:
@@ -112,7 +112,7 @@ def run_scan(console: Console) -> None:
     try:
         repo = Path(git(repo, "rev-parse", "--show-toplevel")).resolve()
     except ToolError:
-        console.print(Text(f"\n{repo} is not a Git project folder.", style="yellow"))
+        console.print(Text(f"\n{repo} is not a Git project folder.", style=ACCENT))
         pause(console)
         return
     remember(repo)
@@ -123,9 +123,9 @@ def run_scan(console: Console) -> None:
     try:
         scan(repo, config_path=config, output=output, console=console)
     except KeyboardInterrupt:
-        console.print(Text("\nScan stopped.", style="yellow"))
+        console.print(Text("\nScan stopped.", style=ACCENT))
     except ToolError as error:
-        console.print(Text(f"\n{error}", style="yellow"))
+        console.print(Text(f"\n{error}", style=ACCENT))
     else:
         offer_scan_pdf(console, output)
     pause(console)
@@ -137,7 +137,7 @@ def open_path(console: Console, path: Path) -> None:
     elif shutil.which("xdg-open"):
         subprocess.Popen(["xdg-open", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     else:
-        console.print(Text("xdg-open is not available; open the path above manually.", style="yellow"))
+        console.print(Text("xdg-open is not available; open the path above manually.", style=ACCENT))
 
 
 PDF_TOOLS_HINT = "The PDF tools aren't installed, so only the HTML version was made. Re-run ./install (or install.ps1) to add them."
@@ -146,7 +146,7 @@ PDF_TOOLS_HINT = "The PDF tools aren't installed, so only the HTML version was m
 def show_report(console: Console, html: Path, pdf: Path | None) -> None:
     console.print(Text("\nReport saved: ", style="bold") + path_link(pdf or html))
     if pdf is None:
-        console.print(Text(PDF_TOOLS_HINT, style="yellow"))
+        console.print(Text(PDF_TOOLS_HINT, style=ACCENT))
     console.print(Text("It lists findings; share it only with people approved to see them.", style="dim"))
     if ask(console, "Open it now? (y/N): ").lower() == "y":
         open_path(console, pdf or html)
@@ -162,7 +162,7 @@ def offer_scan_pdf(console: Console, folder: Path, *, confirm: bool = True) -> N
     try:
         html, pdf = write_scan_report(folder, html_only=not pdf_available())
     except ToolError as error:
-        console.print(Text(f"\n{error}", style="yellow"))
+        console.print(Text(f"\n{error}", style=ACCENT))
         if (folder / "report.html").is_file():
             console.print(Text("HTML report: ") + path_link(folder / "report.html"))
         return
@@ -208,7 +208,7 @@ def compare_scans(older: Path, newer: Path) -> dict:
 def show_compare(console: Console) -> None:
     scans = list_scans()
     if len(scans) < 2:
-        console.print(Text("\nNeed at least two scans to compare. Run another scan first.", style="yellow"))
+        console.print(Text("\nNeed at least two scans to compare. Run another scan first.", style=ACCENT))
         pause(console)
         return
     older, newer = scans[-2], scans[-1]
@@ -227,9 +227,9 @@ def show_compare(console: Console) -> None:
         if len(items) > 20:
             console.print(Text(f"  ... and {len(items) - 20} more", style="dim"))
 
-    section("New static-rule matches", diff["new_static"], "yellow")
+    section("New static-rule matches", diff["new_static"], ACCENT)
     section("Resolved static-rule matches", diff["resolved_static"], "green")
-    section("API routes newly missing authentication", diff["new_no_auth_routes"], "yellow")
+    section("API routes newly missing authentication", diff["new_no_auth_routes"], ACCENT)
     section("API routes that now have authentication", diff["resolved_no_auth_routes"], "green")
     if not any(diff.values()):
         console.print(Text("\nNo change in static matches or no-authentication routes between these two scans.", style="dim"))
@@ -239,7 +239,7 @@ def show_compare(console: Console) -> None:
 def show_latest(console: Console) -> None:
     folder = latest_scan()
     if folder is None:
-        console.print(Text("\nNo scans yet. Choose 1 to run one.", style="yellow"))
+        console.print(Text("\nNo scans yet. Choose 1 to run one.", style=ACCENT))
         pause(console)
         return
     summary = json.loads((folder / "summary.json").read_text())
@@ -249,7 +249,7 @@ def show_latest(console: Console) -> None:
     table.add_column("Status", no_wrap=True)
     table.add_column("Detail", ratio=4, overflow="fold")
     for row in summary["checks"]:
-        color = "green" if row["status"] == "DONE" else "yellow"
+        color = "green" if row["status"] == "DONE" else ACCENT
         label = row["check"].split("  ", 1)[-1]
         table.add_row(Text(label), Text(row["status"], style=f"bold {color}"), Text(row["detail"]))
     console.print()
@@ -323,9 +323,9 @@ def run_staging_check(console: Console) -> None:
     config = retry_input(console, "\nStaging URL (or b to go back): ", staging_config)
     if config is None:
         return
-    console.print(Text(f"\nThis will send a small number of HEAD/GET requests to {config['target']['url']}.", style="yellow"))
+    console.print(Text(f"\nThis will send a small number of HEAD/GET requests to {config['target']['url']}.", style=ACCENT))
     if ask(console, "Do you have permission to test this site? (y/N): ").lower() != "y":
-        console.print(Text("\nStopped. Get permission from the site owner first.", style="yellow"))
+        console.print(Text("\nStopped. Get permission from the site owner first.", style=ACCENT))
         pause(console)
         return
     approver = ask(console, f"Your name [{getpass.getuser()}]: ") or getpass.getuser()
@@ -342,7 +342,7 @@ def run_staging_check(console: Console) -> None:
     try:
         config = load_config(config_path)
     except ConfigError as error:
-        console.print(Text(f"\n{error}", style="yellow"))
+        console.print(Text(f"\n{error}", style=ACCENT))
         pause(console)
         return
     now = datetime.now(timezone.utc)
@@ -359,7 +359,7 @@ def run_staging_check(console: Console) -> None:
     try:
         path, code = assess(config, approval, output)
     except ToolError as error:
-        console.print(Text(f"\n{error}", style="yellow"))
+        console.print(Text(f"\n{error}", style=ACCENT))
         pause(console)
         return
     result = json.loads(path.read_text())
@@ -372,7 +372,7 @@ def run_staging_check(console: Console) -> None:
         try:
             html = generate_report(path, output / "report", reviewed=True, html_only=html_only)
         except ToolError as error:
-            console.print(Text(f"\n{error}", style="yellow"))
+            console.print(Text(f"\n{error}", style=ACCENT))
         else:
             show_report(console, html, None if html_only else html.with_name("report.pdf"))
     pause(console)
@@ -452,7 +452,7 @@ def run_local_attack(console: Console) -> None:
     console.print(Text("Runs active security scanners (Nuclei, OWASP ZAP) against an app running on "
                        "this machine. These send real test payloads, not just observations.", style="dim"))
     console.print(Text("Only use this on a disposable local copy with synthetic data, never on staging "
-                       "or production.", style="yellow"))
+                       "or production.", style=ACCENT))
     url = retry_input(console, "\nLocal port or URL [3000] (or b to go back): ", local_url)
     if url is None:
         return
@@ -461,13 +461,13 @@ def run_local_attack(console: Console) -> None:
         pause(console)
         return
     if not shutil.which("docker"):
-        console.print(Text("\nDocker is required for local attack testing.", style="yellow"))
+        console.print(Text("\nDocker is required for local attack testing.", style=ACCENT))
         pause(console)
         return
     available = available_memory_mb()
     if available is not None and available < LOW_MEMORY_MB:
         console.print(Text(f"\nOnly {available} MiB RAM is free; these scanners can make the machine "
-                           "slow or unresponsive. Close other apps first.", style="yellow"))
+                           "slow or unresponsive. Close other apps first.", style=ACCENT))
         if ask(console, "Continue anyway? (y/N): ").lower() != "y":
             console.print(Text("\nStopped; nothing was run.", style="dim"))
             pause(console)
@@ -514,7 +514,7 @@ def run_local_attack(console: Console) -> None:
         summary.append(f"Nuclei: stopped after {NUCLEI_TIMEOUT_SECONDS // 60} minute(s); {hits} matched issue(s) so far.")
     else:
         summary.append(f"Nuclei: {hits} matched issue(s)." if code == 0 else "Nuclei: scan did not complete; see nuclei.txt.")
-    console.print(Text(f"  {summary[-1]}", style="bold " + ("yellow" if hits or code else "green")))
+    console.print(Text(f"  {summary[-1]}", style="bold " + (ACCENT if hits or code else "green")))
     console.print()
 
     zap_name = f"mvk-zap-{stamp}"
@@ -532,7 +532,7 @@ def run_local_attack(console: Console) -> None:
         summary.append(f"ZAP: stopped after {ZAP_TIMEOUT_SECONDS // 60} minute(s); partial results may be in zap-report.html.")
     else:
         summary.append(f"ZAP: {alerts} alert(s) raised." if (output / "zap-report.html").is_file() else "ZAP: scan did not complete.")
-    console.print(Text(f"  {summary[-1]}", style="bold " + ("yellow" if alerts or zap_timed_out else "green")))
+    console.print(Text(f"  {summary[-1]}", style="bold " + (ACCENT if alerts or zap_timed_out else "green")))
 
     console.print()
     console.print(Text("Saved evidence", style="bold"))
@@ -608,7 +608,7 @@ def protect_pushes(console: Console) -> None:
     console.print(Text("\nLooking for Git projects in your home folder...", style="dim"))
     repos = find_repos(Path.home())
     if not repos:
-        console.print(Text("No Git projects found. Clone a project first, then come back here.", style="yellow"))
+        console.print(Text("No Git projects found. Clone a project first, then come back here.", style=ACCENT))
         pause(console)
         return
     console.print()
@@ -631,7 +631,7 @@ def protect_pushes(console: Console) -> None:
             with contextlib.redirect_stdout(io.StringIO()):
                 install_hook(repo)
         except (ToolError, OSError) as error:
-            console.print(Text(f"  not protected      {label}: {error}", style="yellow"))
+            console.print(Text(f"  not protected      {label}: {error}", style=ACCENT))
             continue
         remember(repo)
         console.print(Text("  protected          ", style="bold green") + Text(label))
@@ -648,7 +648,7 @@ def check_ready(console: Console) -> None:
         rows.append(("docker running", docker_running, "Docker is running." if docker_running else "Start Docker first."))
     console.print()
     for name, ready, detail in rows:
-        mark = Text("  OK    ", style="bold green") if ready else Text("  MISSING ", style="bold yellow")
+        mark = Text("  OK    ", style="bold green") if ready else Text("  MISSING ", style=f"bold {ACCENT}")
         console.print(mark + Text(f"{name}: ", style="bold") + Text(detail))
     console.print(Text("\nThe project's own pnpm version is checked during the scan.", style="dim"))
     if docker_running:
@@ -658,7 +658,7 @@ def check_ready(console: Console) -> None:
         else:
             names = ", ".join(LOCAL_ATTACK_IMAGES[image] for image in missing)
             console.print(Text(f"\n{names} not downloaded yet; local attack testing would download "
-                               "them on first use (a few hundred MB).", style="yellow"))
+                               "them on first use (a few hundred MB).", style=ACCENT))
             if ask(console, "Download now instead? (y/N): ").lower() == "y":
                 for image in missing:
                     console.print(Text(f"\nPulling {image}...", style="dim"))
@@ -706,11 +706,11 @@ def status_line() -> Text:
         line.append(name, style="bold")
         line.append(f" · {when} · ")
         line.append(f"{attention} need attention" if attention else "all checks done",
-                    style="yellow" if attention else "green")
+                    style=ACCENT if attention else "green")
     protected = sum(is_protected(Path(entry)) for entry in load_recent())
     line.append("\nPush protection  ")
     line.append(f"on for {protected} recent project{'s' if protected != 1 else ''}" if protected
-                else "off (choose 7 to turn it on)", style="green" if protected else "yellow")
+                else "off (choose 7 to turn it on)", style="green" if protected else ACCENT)
     return line
 
 

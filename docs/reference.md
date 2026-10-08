@@ -594,7 +594,7 @@ D (searchable evidence record).
 Every file is marked as ours so it can never be mistaken for a CERT-PH report:
 
 - `MVK` badge and amber **"MATT VAPT KIT | INTERNAL SELF-ASSESSMENT | NOT ISSUED BY CERT-PH"** cover ribbon.
-- Diagonal **"MATT VAPT KIT | SELF-ASSESSMENT"** watermark on every page.
+- Diagonal **"MATT VAPT KIT"** watermark centered on every page.
 - Report ID `MVK-<PROJECT>-<YYYYMMDD>-<scope hash>` on the cover, details table and footer.
 - PDF footer: `MVK-SAR v<version> | <report ID> | Matt VAPT Kit self-assessment, not a CERT-PH report`.
 

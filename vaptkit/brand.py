@@ -1,20 +1,9 @@
-"""The shield + MVK block-art lockup from the terminal header, drawn as inline SVG."""
-from pyfiglet import Figlet
-
-from .scan import ACCENT, SHIELD
+"""The MVK block-art wordmark from the terminal header, drawn as inline SVG."""
+from .scan import ACCENT, wordmark_lines
 
 CELL_W, CELL_H = 10, 20
 STROKE = 1.3
 GAP = 2.2
-
-
-def lockup_lines() -> list[str]:
-    wordmark = [line.rstrip() for line in Figlet(font="ansi_shadow", width=60).renderText("MVK").splitlines()
-                if line.strip()]
-    pad = len(wordmark) - len(SHIELD)
-    blank = " " * len(SHIELD[0])
-    shield = [blank] * (pad // 2) + list(SHIELD) + [blank] * (pad - pad // 2)
-    return [left + "  " + right for left, right in zip(shield, wordmark)]
 
 
 def cell(char: str, x: float, y: float) -> list[str]:
@@ -29,9 +18,6 @@ def cell(char: str, x: float, y: float) -> list[str]:
     o = GAP
     shapes = {
         "█": [rect(x, y, CELL_W + 0.5, CELL_H + 0.5)],
-        "▀": [rect(x, y, CELL_W + 0.5, CELL_H / 2 + 0.5)],
-        "▄": [rect(x, cy, CELL_W + 0.5, CELL_H / 2 + 0.5)],
-        "◆": [f'<path stroke="none" d="M{cx} {cy - 5}L{cx + 5} {cy}L{cx} {cy + 5}L{cx - 5} {cy}Z"/>'],
         "═": [line((x, cy - o), (right, cy - o)), line((x, cy + o), (right, cy + o))],
         "║": [line((cx - o, y), (cx - o, bottom)), line((cx + o, y), (cx + o, bottom))],
         "╔": [line((right, cy - o), (cx - o, cy - o), (cx - o, bottom)),
@@ -48,7 +34,7 @@ def cell(char: str, x: float, y: float) -> list[str]:
 
 
 def lockup_svg(color: str = ACCENT, *, label: str = "Matt VAPT Kit") -> str:
-    lines = lockup_lines()
+    lines = wordmark_lines()
     width = max(len(line) for line in lines) * CELL_W
     height = len(lines) * CELL_H
     shapes = "".join(shape for row, text in enumerate(lines) for col, char in enumerate(text)

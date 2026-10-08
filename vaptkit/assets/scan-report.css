@@ -45,9 +45,11 @@ body {
 code, .mono { font-family: var(--mono); font-size: 8.4pt; color: var(--ink); overflow-wrap: anywhere; }
 
 .watermark {
-  position: fixed; top: 52%; left: 50%; z-index: 0; pointer-events: none; white-space: nowrap;
+  /* Chromium sizes fixed elements to the margin-less cover page, so % would drift; these are the A4 centre
+     measured from the content box (page margins 20mm top, 17mm sides). The cover hides it behind its panels. */
+  position: fixed; top: 128.5mm; left: 88mm; z-index: 0; pointer-events: none; white-space: nowrap;
   transform: translate(-50%, -50%) rotate(-32deg);
-  font: 800 34pt/1 var(--sans); letter-spacing: .1em; color: oklch(60% 0.12 50 / .06);
+  font: 800 44pt/1 var(--sans); letter-spacing: .14em; color: oklch(60% 0.12 50 / .06);
 }
 
 /* Cover */
@@ -60,7 +62,7 @@ code, .mono { font-family: var(--mono); font-size: 8.4pt; color: var(--ink); ove
   background: var(--night); color: oklch(92% 0.012 60);
   padding: 30mm 20mm 22mm; display: flex; flex-direction: column; justify-content: flex-end;
 }
-.cover-logo { width: 92mm; margin-bottom: auto; }
+.cover-logo { width: 78mm; margin: 0 auto auto; }
 .cover-logo svg { display: block; width: 100%; height: auto; }
 .kicker { font: 700 7.5pt/1 var(--sans); letter-spacing: .26em; text-transform: uppercase; color: var(--brand); margin: 26mm 0 5mm; }
 .cover h1 { font: 700 40pt/1.02 var(--serif); color: oklch(97% 0.008 60); margin: 0; letter-spacing: -.01em; overflow-wrap: anywhere; }

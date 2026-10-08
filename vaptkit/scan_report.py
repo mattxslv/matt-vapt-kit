@@ -134,9 +134,32 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
     else:
         routes_html = '<p class="lede">Every API handler that was reviewed has an authentication check in code.</p>'
 
+    staging = read(folder / "staging", "assessment.json")
+    staging_html = ""
+    if staging is not None:
+        verification = {"confirmed": ("review", "Confirmed"), "suspected": ("gap", "Suspected"),
+                        "observation": ("gap", "Observed")}
+        rows = "".join(
+            f'<tr><td class="check">{esc(item["title"])}</td><td class="state"><span class="chip '
+            f'{verification.get(item["verification"], ("gap", ""))[0]}">'
+            f'{esc(verification.get(item["verification"], ("gap", item["verification"]))[1])}</span></td>'
+            f'<td><code>{esc(item.get("path", "/"))}</code></td></tr>' for item in staging["findings"])
+        table_html = (f'<table><thead><tr><th>Finding</th><th>Status</th><th>Path</th></tr></thead><tbody>{rows}</tbody></table>'
+                      if rows else '<p class="lede">Nothing was flagged on the pages checked.</p>')
+        errors = (f'<p class="more">{len(staging["errors"])} requests did not complete, so those paths are not covered.</p>'
+                  if staging["errors"] else "")
+        staging_html = f"""<section class="chapter page">
+  <header class="chapter-head"><p class="eyebrow">05</p><h2>Live staging checks</h2></header>
+  <p class="lede">Read-only requests to <code>{esc(staging["target"])}</code>: security headers, cookies and a short list
+  of commonly exposed files. No logins and no attack payloads. Confirmed means the same result was seen twice.</p>
+  {table_html}{errors}
+</section>
+"""
     not_tested = "".join(f"<li>{esc(item[:1].upper() + item[1:])}</li>" for item in summary.get("not_tested", []))
-    covered = "".join(f"<li>{esc(stage(row))}</li>" for row in summary["checks"] if row["status"] == "DONE"
-                      or row["status"] == "REVIEW")
+    live_gap = "live staging" in summary.get("not_tested", [])
+    covered = "".join(f"<li>{esc(stage(row))}</li>" for row in summary["checks"]
+                      if row["status"] in ("DONE", "REVIEW")
+                      and not (live_gap and stage(row).startswith("Live staging")))
 
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
@@ -191,14 +214,15 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
   {routes_html}
 </section>
 
-<section class="chapter">
-  <header class="chapter-head"><p class="eyebrow">05</p><h2>Scope and limits</h2></header>
+{staging_html}<section class="chapter">
+  <header class="chapter-head"><p class="eyebrow">{"06" if staging_html else "05"}</p><h2>Scope and limits</h2></header>
   <div class="scope">
     <div><h3>Covered by this scan</h3><ul>{covered or "<li>Nothing completed</li>"}</ul></div>
     <div><h3>Not covered</h3><ul>{not_tested}</ul></div>
   </div>
   <p class="closing">{esc(rid)} · Matt VAPT Kit {kit_version}. Committed code at
-  {esc(summary["revision"][:12])} only; working-tree changes, live systems and business logic were not tested.
+  {esc(summary["revision"][:12])}{" and read-only staging checks" if staging_html else ""}; working-tree changes,
+  logged-in behaviour and business logic were not tested.
   Share this report only with people approved to see its findings.</p>
 </section>
 </body></html>"""

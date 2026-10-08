@@ -89,7 +89,7 @@ class StagingRecapTests(unittest.TestCase):
     def test_confirmed_suspected_and_exposure_are_counted_and_prioritized(self):
         text = staging_recap(self.result(
             findings=[{"verification": "confirmed"}, {"verification": "suspected"}],
-            exposure=[{"path": "/.env"}],
+            exposure=[{"path": "/.env", "exposed": True}, {"path": "/.git/HEAD", "exposed": False}],
             errors=[{"path": "/", "kind": "http", "message": "blocked"}],
         ))
         self.assertIn("1 confirmed", text)

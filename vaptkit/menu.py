@@ -24,6 +24,7 @@ from .assessment import approval_template, assess
 from .config import ConfigError, load_config
 from .doctor import diagnose
 from .hooks import install as install_hook
+from .live import staging_recap
 from .process import ToolError, git, stream
 from .report import generate as generate_report
 from .scan import ACCENT, path_link, print_header, scan
@@ -288,31 +289,6 @@ def staging_config(url: str) -> dict:
         "scope": {"api_prefixes": ["/api/"], "excluded_prefixes": [], "roles": []},
         "credentials": {},
     }
-
-
-def staging_recap(result: dict) -> str:
-    confirmed = sum(item["verification"] == "confirmed" for item in result["findings"])
-    suspected = sum(item["verification"] == "suspected" for item in result["findings"])
-    exposed = len(result.get("exposure", []))
-    parts = []
-    if confirmed:
-        parts.append(f"{confirmed} confirmed header/cookie issues")
-    if suspected:
-        parts.append(f"{suspected} suspected header/cookie issues")
-    if exposed:
-        parts.append(f"{exposed} exposed files or endpoints")
-    if result["errors"]:
-        parts.append(f"{len(result['errors'])} requests that did not complete")
-    if not parts:
-        return "Nothing was flagged on the pages checked. This only covered headers, cookies and a short exposure list, not a full test."
-    text = "Found " + (parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]) + "."
-    if exposed:
-        text += " Next, open assessment.json's exposure section and confirm each exposed path, then restrict or remove it."
-    elif confirmed:
-        text += " Next, fix the confirmed header/cookie issues; they were observed twice."
-    elif suspected:
-        text += " Next, review the suspected findings; they were only observed once."
-    return text
 
 
 def run_staging_check(console: Console) -> None:

@@ -25,6 +25,7 @@ from rich.text import Text
 from .assessment import create_output, write_private
 from .checks import audit_commit, checked_revision, scan_history, scan_static
 from .config import load_config
+from .live import run_read_only, standing_approval_path, staging_counts, staging_recap, standing_approval
 from .process import ToolError, git
 from .routes import review
 
@@ -108,6 +109,11 @@ def recap(project: str, rows: list[dict], facts: dict) -> str:
             found.append(f"{facts['static']} static-rule matches")
         elif stage == "API authentication review" and facts.get("routes"):
             found.append(f"{facts['routes']} API routes that may be missing auth checks")
+        elif stage == "Live staging (read-only)" and facts.get("staging"):
+            live = facts["staging"]
+            issues = live["confirmed"] + live["suspected"] + live["exposed"]
+            found.append(f"{issues} header, cookie or exposed-file issues on live staging" if issues
+                         else f"{live['errors']} live staging requests that did not complete")
         else:
             found.append(f"a {stage.lower()} result that needs a look")
     skipped = [re.sub(r"^\d+ / \d+\s+", "", row["check"]) for row in rows if row["status"] in ("NOT RUN", "CANCELLED")]
@@ -198,6 +204,8 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
     animate = console.is_terminal and not plain and os.environ.get("MVK_REDUCED_MOTION") != "1"
     repo = Path(git(repo, "rev-parse", "--show-toplevel")).resolve()
     sha = checked_revision(repo, "HEAD")
+    standing = standing_approval(config_path)
+    total = 5 if standing else 4
     config = load_config(config_path) if config_path else {
         "project": re.sub(r"[^a-z0-9-]", "-", repo.name.lower()).strip("-")[:64] or "repository",
         "review": {},
@@ -220,7 +228,12 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
     context.add_row("Save to", path_link(output, enabled=links))
     console.print(context)
     console.print()
-    console.print("Scope  ", Text("Committed code only. No live target requests, logins or cloud changes."), style="dim")
+    if standing and standing["active"]:
+        scope = (f"Committed code, plus read-only checks of {config['target']['url']} under the standing approval "
+                 f"until {standing['expires_on']:%Y-%m-%d}. No logins, attack payloads or cloud changes.")
+    else:
+        scope = "Committed code only. No live target requests, logins or cloud changes."
+    console.print("Scope  ", Text(scope), style="dim")
     console.print("Network", Text("Image downloads if needed; dependency metadata sent to npm."), style="dim")
     console.print()
     rows = []
@@ -289,12 +302,12 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
         except (OSError, subprocess.TimeoutExpired):
             docker_ready = False
     docker_gap = None if docker_ready else "Docker is unavailable. Start Docker and rerun; remaining independent checks still run."
-    stage("1 / 4  Secret history", lambda: scan_history(repo, sha, runner=execute), docker_gap)
+    stage(f"1 / {total}  Secret history", lambda: scan_history(repo, sha, runner=execute), docker_gap)
     listing = git(repo, "ls-tree", "-r", "--name-only", sha).splitlines()
     def dependencies():
         audit_commit(repo, sha, runner=execute)
         return "High/critical threshold check completed. Lower-severity advisories may still appear above."
-    stage("2 / 4  Dependency audit", dependencies,
+    stage(f"2 / {total}  Dependency audit", dependencies,
           None if "package.json" in listing else "No root package.json. Dependency auditing for this ecosystem is not implemented.")
 
     def static_command(command, **kwargs):
@@ -324,7 +337,7 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
                             f"(scanner exit {result.returncode}). Coverage incomplete. See static-findings.json.")
         if findings:
             raise ToolError(f"{len(findings)} static matches across {len(counts)} rules. Full locations: static-findings.json. These require review.")
-    stage("3 / 4  Static rules", lambda: scan_static(repo, sha, runner=static_command, json_output=True), docker_gap)
+    stage(f"3 / {total}  Static rules", lambda: scan_static(repo, sha, runner=static_command, json_output=True), docker_gap)
 
     def routes():
         result = review(repo, config, sha)
@@ -337,7 +350,21 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
         if not summary["handlers"]:
             return "No supported Next.js API handlers found; route review is not applicable."
         return f"{summary['handlers']} handlers reviewed; no suspected authentication gaps reported."
-    stage("4 / 4  API authentication review", routes)
+    stage(f"4 / {total}  API authentication review", routes)
+
+    def staging():
+        result = run_read_only(config, standing, output / "staging")
+        counts = staging_counts(result)
+        facts["staging"] = counts
+        facts["staging_covered"] = bool(result.get("observations"))
+        if counts["confirmed"] or counts["suspected"] or counts["exposed"] or counts["errors"]:
+            raise ToolError(staging_recap(result) + " Evidence: staging/assessment.json.")
+        return staging_recap(result)
+    if standing:
+        expired = (None if standing["active"] else
+                   f"The standing approval expired on {standing['expires_on']:%Y-%m-%d}; renew it in "
+                   f"projects/{standing_approval_path(config_path).name} to resume live checks.")
+        stage(f"5 / {total}  Live staging (read-only)", staging, expired)
     table = Table(title="Assessment summary", title_style="bold", header_style="bold",
                   box=box.ROUNDED, border_style="grey50", show_lines=True, padding=(0, 1))
     table.add_column("Check", ratio=2)
@@ -354,8 +381,10 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
     result = {"schema_version": 1, "kind": "repository-scan", "revision": sha,
               "finished_at": datetime.now(timezone.utc).isoformat(), "checks": rows,
               "status": "needs_review" if needs_review else "completed",
-              "not_tested": ["live staging", "record ownership", "approval workflows", "live XSS",
-                             "Cloud Armor enforcement", "historical breach investigation"],
+              "not_tested": ([] if facts.get("staging_covered") else ["live staging"]) + [
+                  "logged-in pages and role access", "record ownership", "approval workflows", "live XSS",
+                  "Cloud Armor enforcement", "historical breach investigation"],
+              "target": config.get("target", {}).get("url") if facts.get("staging_covered") else None,
               "project": repo.name, "facts": facts, "recap": recap(repo.name, rows, facts)}
     write_private(output / "summary.json", json.dumps(result, indent=2))
     done = sum(row["status"] == "DONE" for row in rows)

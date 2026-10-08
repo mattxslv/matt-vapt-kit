@@ -104,6 +104,15 @@
 - Terminal: every former yellow (REVIEW, MISSING, warnings, "need attention")
   is the logo orange `ACCENT` (#d68b68), per the user.
 
+- Live staging without per-run setup: `projects/<name>.standing-approval.yml`
+  (approved_by, expires_on) turns on a 5th scan stage, "Live staging
+  (read-only)" (`vaptkit/live.py`), which builds a fresh one-hour, HEAD-only,
+  exposure-check approval each run; the 4-hour/digest rules are unchanged. User
+  ruled out anything needing setup (accounts, IAP, URLs), so only DTAP has one
+  (approved_by mattxslv, until 2027-01-08). As of 2026-10-08
+  test.dtap.dict.gov.ph does not resolve in DNS; the stage reports it as not
+  covered. Do not repoint it at production without the owner's say-so.
+
 Previous handoff (2026-10-07 menu/redesign work, DTAP finding) preserved below.
 
 Replaces the Oct 5 handoff below this line's content; that session's "pending" items

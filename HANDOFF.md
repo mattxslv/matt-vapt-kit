@@ -86,6 +86,15 @@
   prompt. Tested from a fresh clone with scratch HOME/XDG_CACHE_HOME/
   XDG_STATE_HOME (this shell's XDG vars point at the real user dirs).
 
+- Design pass: loading view shows a shimmer word + real 4-step track (fake
+  code lines removed). Main menu grouped (Scan / Live checks / Setup) with
+  hints and a status line (`MENU`, `print_menu`, `status_line` in menu.py);
+  logo untouched. Repo-scan PDF redesigned: `assets/scan-report.css`, dark cover
+  with inline block-art logo (`vaptkit/brand.py`), "What to do first" list,
+  rules grouped with their yml messages, running header/footer via CSS
+  `@page` margin boxes (Playwright header/footer templates printed over the
+  cover). The staging report (report.py/report.css) was not restyled.
+
 Previous handoff (2026-10-07 menu/redesign work, DTAP finding) preserved below.
 
 Replaces the Oct 5 handoff below this line's content; that session's "pending" items

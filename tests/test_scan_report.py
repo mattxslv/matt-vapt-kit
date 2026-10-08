@@ -29,7 +29,7 @@ class ScanReportTests(unittest.TestCase):
     def test_report_lists_recap_leak_count_static_matches_and_unauthenticated_handlers(self):
         document = render_scan(self.folder)
         for expected in ("demo-app", "3 possible secrets", "rules.eval-usage", "scripts/seed.js",
-                         "/api/users", "MVK-SCAN-20261008-010203-abcdef", "live staging"):
+                         "/api/users", "MVK-SCAN-20261008-010203-abcdef", "Live staging"):
             self.assertIn(expected, document)
         self.assertEqual(document.count("<code>/api/users</code>"), 1)
 

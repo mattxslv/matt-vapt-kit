@@ -457,8 +457,29 @@ def assess(config: dict, approval: dict, output: Path, baseline: dict | None = N
         # same as every other check in this function that talks to the target.
         open_ports = recon.scan_ports(public_addresses(host)[0]) if not errors else []
         tls = recon.tls_hygiene(host) if not errors and urlsplit(config["target"]["url"]).scheme == "https" else None
+
+        def fetch_published_file(path):
+            # robots.txt/sitemap.xml are files a site publishes on purpose; still scope-excludable
+            # and still goes through recorded_request, but a missing file or redirect is not an
+            # assessment failure - it is treated the same as "nothing found" everywhere else in recon.
+            if any(path.startswith(prefix) for prefix in config["scope"]["excluded_prefixes"]):
+                return b""
+            try:
+                status, _, body = recorded_request(host, "GET", path, headers=request_headers(),
+                                                    expires_at=expires_at, timeout_seconds=timeout, body_limit=65536)
+                return body if 200 <= status < 300 else b""
+            except (ToolError, OSError, http.client.HTTPException):
+                return b""
+
+        discovered_paths = []
+        if not errors:
+            discovered_paths = sorted(set(
+                recon.parse_robots(fetch_published_file("/robots.txt"))
+                + recon.parse_sitemap(fetch_published_file("/sitemap.xml"))
+            ))[:100]
         passive_recon = {"dns": recon.dns_hygiene(host), "subdomains": recon.subdomains(host),
                          "technologies": technologies, "open_ports": open_ports,
+                         "discovered_paths": discovered_paths,
                          **({"tls": tls} if tls is not None else {})}
     if gateway_session:
         gateway_session.clear()

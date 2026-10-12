@@ -11,6 +11,8 @@ from vaptkit.recon import (
     dmarc_policy,
     dns_hygiene,
     fingerprint,
+    parse_robots,
+    parse_sitemap,
     parse_txt_response,
     scan_ports,
     subdomains,
@@ -193,6 +195,37 @@ class TlsHygieneTests(unittest.TestCase):
         self.assertEqual(result["legacy_protocols_supported"], ["TLSv1.0"])
         self.assertEqual(result["negotiated_cipher"], "TLS_AES_128_GCM_SHA256")
         self.assertEqual(result["cert_days_to_expiry"], 9)
+
+
+class ParseRobotsTests(unittest.TestCase):
+    def test_extracts_disallow_paths(self):
+        body = b"User-agent: *\nDisallow: /admin\nDisallow: /api/internal\nAllow: /\n"
+        self.assertEqual(parse_robots(body), ["/admin", "/api/internal"])
+
+    def test_ignores_blanket_disallow_and_wildcards(self):
+        body = b"Disallow: /\nDisallow: /tmp/*\n"
+        self.assertEqual(parse_robots(body), [])
+
+    def test_empty_body_returns_empty_list(self):
+        self.assertEqual(parse_robots(b""), [])
+
+    def test_dedupes_repeated_paths(self):
+        body = b"Disallow: /admin\nDisallow: /admin\n"
+        self.assertEqual(parse_robots(body), ["/admin"])
+
+
+class ParseSitemapTests(unittest.TestCase):
+    def test_extracts_path_only_from_urls(self):
+        body = b"<urlset><url><loc>https://example.invalid/a/b</loc></url>" \
+               b"<url><loc>https://example.invalid/c</loc></url></urlset>"
+        self.assertEqual(parse_sitemap(body), ["/a/b", "/c"])
+
+    def test_dedupes_and_sorts(self):
+        body = b"<loc>https://x.invalid/b</loc><loc>https://x.invalid/a</loc><loc>https://x.invalid/a</loc>"
+        self.assertEqual(parse_sitemap(body), ["/a", "/b"])
+
+    def test_empty_body_returns_empty_list(self):
+        self.assertEqual(parse_sitemap(b""), [])
 
 
 class FingerprintTests(unittest.TestCase):

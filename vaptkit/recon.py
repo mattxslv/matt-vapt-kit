@@ -15,6 +15,7 @@ import re
 import socket
 import ssl
 import struct
+from urllib.parse import urlsplit
 
 DNS_SERVERS = ("8.8.8.8", "1.1.1.1")
 CRT_SH_HOST = "crt.sh"
@@ -188,6 +189,29 @@ TECH_SIGNATURES = (
     ("Apache", None, re.compile(r"^Apache(?:/([\d.]+))?", re.IGNORECASE)),
     ("nginx", None, re.compile(r"^nginx(?:/([\d.]+))?", re.IGNORECASE)),
 )
+
+
+ROBOTS_DISALLOW = re.compile(rb"(?im)^\s*disallow\s*:\s*(\S+)")
+SITEMAP_LOC = re.compile(rb"<loc>\s*([^<\s]+)\s*</loc>")
+
+
+def parse_robots(body: bytes) -> list[str]:
+    """Disallowed paths listed in a robots.txt body - free recon from a file sites publish on purpose."""
+    paths = set()
+    for match in ROBOTS_DISALLOW.finditer(body):
+        path = match.group(1).decode("ascii", "replace")
+        if path and path != "/" and "*" not in path:
+            paths.add(path[:256])
+    return sorted(paths)[:100]
+
+
+def parse_sitemap(body: bytes) -> list[str]:
+    """Paths listed in a sitemap.xml's <loc> entries - scheme and host stripped, path only."""
+    paths = set()
+    for match in SITEMAP_LOC.finditer(body):
+        url = match.group(1).decode("ascii", "replace")
+        paths.add((urlsplit(url).path or "/")[:256])
+    return sorted(paths)[:100]
 
 
 def fingerprint(headers: dict[str, list[str]], body: bytes) -> list[str]:

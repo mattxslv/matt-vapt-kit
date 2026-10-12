@@ -4,7 +4,34 @@
 
 ## What this session added (2026-10-12, latest)
 
-Current version: **v0.7.6**. 322 tests pass (`.venv/bin/python -m unittest discover -s tests`).
+Current version: **v0.7.7**. 329 tests pass (`.venv/bin/python -m unittest discover -s tests`).
+
+### robots.txt / sitemap.xml path discovery
+Checked what else was worth adding beyond the NCERT toolset parity work: HTTP
+security headers and cookie-flag checks turned out to already be fully
+covered by `headers.py::grade()` (HSTS, CSP, X-Frame-Options, nosniff,
+referrer-policy, cookie Secure/HttpOnly) -- no duplicate work needed there.
+Favicon/JS-library hash fingerprinting was considered and skipped: it is
+only useful against a reference hash database (the way Shodan/FOFA do it),
+which this kit has none of and isn't going to maintain, the same reasoning
+that ruled out `nmap --script vuln`.
+
+What was actually missing: `vaptkit/recon.py::parse_robots()` /
+`parse_sitemap()` (pure, body-in-paths-out, tested without any network) plus
+a fetch in `assess()` (`vaptkit/assessment.py`) for `/robots.txt` and
+`/sitemap.xml` via the existing `recorded_request`, gated the same as
+`scan_ports`/`tls_hygiene` (only once earlier stages are clean, still
+excluded-prefix-checked) since it touches the target. A missing file,
+redirect or any transport error is treated as "nothing found", not an
+assessment failure, matching the rest of recon.py's convention. Result
+surfaces as `recon["discovered_paths"]` (schema updated, capped at 100
+entries), called out in `live.py`'s recap. These are discovered candidate
+paths for follow-up, not findings on their own -- a site publishing
+robots.txt/sitemap.xml on purpose is normal, not a vulnerability.
+
+Smoke-tested against a real robots.txt (google.com) end to end. 7 new tests
+in `tests/test_recon.py` (parse_robots/parse_sitemap: dedup, wildcard and
+blanket-disallow exclusion, empty body).
 
 ### TLS/cipher hygiene (closes the last gap in the NCERT/CERT-PH recon parity work)
 `vaptkit/recon.py::tls_hygiene()` is the stdlib equivalent of `nmap --script

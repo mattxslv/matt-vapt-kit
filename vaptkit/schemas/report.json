@@ -408,7 +408,7 @@
     "recon": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["dns", "subdomains", "technologies", "open_ports"],
+      "required": ["dns", "subdomains", "technologies", "open_ports", "discovered_paths"],
       "properties": {
         "dns": {
           "type": "object",
@@ -431,6 +431,10 @@
         "open_ports": {
           "type": "array", "maxItems": 30,
           "items": {"type": "integer", "minimum": 1, "maximum": 65535}
+        },
+        "discovered_paths": {
+          "type": "array", "maxItems": 100,
+          "items": {"type": "string", "maxLength": 256}
         },
         "tls": {
           "type": "object",

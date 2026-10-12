@@ -152,6 +152,8 @@ def staging_recap(result: dict) -> str:
             notes.append("detected: " + ", ".join(recon["technologies"]))
         if recon["open_ports"]:
             notes.append(f"open ports: {', '.join(str(port) for port in recon['open_ports'])}")
+        if recon.get("discovered_paths"):
+            notes.append(f"{len(recon['discovered_paths'])} path(s) found in robots.txt/sitemap.xml")
         tls = recon.get("tls")
         if tls and tls["legacy_protocols_supported"]:
             notes.append("legacy TLS still accepted: " + ", ".join(tls["legacy_protocols_supported"]))

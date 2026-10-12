@@ -6,6 +6,40 @@
 
 Current version: **v0.9.2**. 403 Python tests pass.
 
+### Reverted the gitleaks "commit count mismatch" check - it was a false-positive generator, not a real bug fix
+User asked directly why the secret-history scan kept coming back incomplete and said they want it
+to always be a full scan. That question prompted re-investigating the "fix" from earlier this
+session, and it turned out to be **wrong** - a correction, not a refinement.
+
+What actually happened: gitleaks's own "N commits scanned" log line **deliberately excludes merge
+commits and commits with zero added lines** from its tally - confirmed via gitleaks's own debug
+output: `"Note: this number might be smaller than expected due to commits with no additions"`.
+Earlier this session, that lower number was misread as "gitleaks silently stopped scanning early,"
+and a check was added comparing it against `git rev-list --count` (the *true* total including
+merges), failing the scan on any mismatch - which is every repo with merge commits, i.e. nearly
+every real repo. That is exactly why this kept firing.
+
+Proved gitleaks was never actually missing commits before reverting anything: re-ran the real DTAP
+scan (`origin/staging`, 1485 total commits, gitleaks reports "1235 commits scanned") and found one
+of its two real secret matches sits at **position 1341** in the full commit list - past the
+"1235" mark gitleaks itself reported. That is only possible if gitleaks actually walked that far;
+the displayed count just isn't a true progress/completion number. Counted commits with zero
+additions (44) plus merge commits (231) in that same repo - 275, in the same ballpark as the
+1485-1235=250 gap - consistent with gitleaks's own stated reason, not a stopped scan.
+
+Removed `history_findings()`'s commit-count verification entirely (the `expected_commits`/
+`scanned_commits` comparison and its `ToolError`), along with the 2 tests that asserted the
+now-known-wrong behavior, and simplified the 3 other tests' mocked stderr back to not needing a
+fake "N commits scanned." line. Verified against the real DTAP repo end to end:
+`vapt check /home/tonky/repos/dtap --revision origin/staging` now correctly completes
+("0 possible secrets... 2 more look like placeholders") instead of failing with a fabricated
+"incomplete" error.
+
+Lesson for next time flagged in-line in the function's docstring area: gitleaks's log output is not
+a reliable completeness signal, and don't re-add a check based on it without first proving gitleaks
+actually missed something (a secret existing only in commits beyond the reported count) rather than
+just noticing the count looks low.
+
 ### Fixed real PDF bloat/blank-page bug, reverted cards to table, reverted watermark on user feedback
 User screenshot showed a near-totally blank page before "Secrets in the commit history", plus "why
 is this PDF so long (27 pages)". Root cause of both: three sections (`class="chapter page"` on

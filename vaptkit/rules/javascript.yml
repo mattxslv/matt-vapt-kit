@@ -47,3 +47,47 @@ rules:
         - "**/Scripts/jquery*.js"
         - "**/Scripts/bootstrap*.js"
         - "**/Scripts/modernizr*.js"
+
+  - id: console-log-statement
+    message: console.log/debug/info left in source; remove it or replace it with a real logger before shipping to production - it can leak internal state to the browser console or server logs.
+    severity: ERROR
+    languages: [javascript, typescript]
+    patterns:
+      - pattern-either:
+          - pattern: console.log(...)
+          - pattern: console.debug(...)
+          - pattern: console.info(...)
+    paths:
+      exclude:
+        - "*.min.js"
+        - "*.umd.js"
+        - "**/wwwroot/lib/**"
+        - "**/wwwroot/lib_npm/**"
+        - "**/Scripts/jquery*.js"
+        - "**/Scripts/bootstrap*.js"
+        - "**/Scripts/modernizr*.js"
+
+  - id: console-emoji-debug
+    message: Console output contains an emoji, a strong sign of leftover ad-hoc debug logging (e.g. "🚀 starting"); remove it before shipping to production.
+    severity: ERROR
+    languages: [javascript, typescript]
+    patterns:
+      - pattern-either:
+          - pattern: console.log($MSG, ...)
+          - pattern: console.warn($MSG, ...)
+          - pattern: console.error($MSG, ...)
+          - pattern: console.info($MSG, ...)
+          - pattern: console.debug($MSG, ...)
+      - metavariable-pattern:
+          metavariable: $MSG
+          patterns:
+            - pattern-regex: '[\x{1F300}-\x{1FAFF}\x{2600}-\x{27BF}\x{2190}-\x{21FF}]'
+    paths:
+      exclude:
+        - "*.min.js"
+        - "*.umd.js"
+        - "**/wwwroot/lib/**"
+        - "**/wwwroot/lib_npm/**"
+        - "**/Scripts/jquery*.js"
+        - "**/Scripts/bootstrap*.js"
+        - "**/Scripts/modernizr*.js"

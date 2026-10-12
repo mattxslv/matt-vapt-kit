@@ -4,7 +4,56 @@
 
 ## What this session added (2026-10-12, latest)
 
-Current version: **v0.8.1**. 349 tests pass (`.venv/bin/python -m unittest discover -s tests`).
+Current version: **v0.8.2**. 349 Python tests pass
+(`.venv/bin/python -m unittest discover -s tests`); 15/15 semgrep rule tests
+pass (`docker run ... semgrep --test --config=/rules /src/tests/semgrep`).
+
+### Leftover console.log / emoji-debug static rules
+User asked directly: is there something that checks for hardcoded
+console.logs and things like emoji that shouldn't be in production code?
+Yes - this is exactly what the kit's existing semgrep layer is for
+(it already flags `eval`, disabled TLS verification, and shell injection
+via template strings the same way). Two new rules in
+`vaptkit/rules/javascript.yml`:
+
+- `console-log-statement`: flags `console.log`/`console.debug`/
+  `console.info` anywhere in JS/TS source. Deliberately does NOT flag
+  `console.error`/`console.warn` - those are commonly intentional
+  production error reporting, and flagging them would make the rule too
+  noisy to trust.
+- `console-emoji-debug`: flags ANY `console.*` call (including error/warn)
+  whose message argument contains an emoji character, via
+  `metavariable-pattern` + a unicode `pattern-regex`
+  (`\x{1F300}-\x{1FAFF}`/`\x{2600}-\x{27BF}`/`\x{2190}-\x{21FF}`) - an emoji
+  in a log line is a near-certain sign of leftover ad-hoc debugging
+  (`console.log("🚀 starting")`) regardless of which console method carries
+  it, so this one deliberately overrides the error/warn exemption above.
+
+Explicitly asked the user first whether this should block pushes (like the
+existing 3 JS rules do, since semgrep's `--error` flag in `scan_static()`
+fails on ANY rule match regardless of declared severity - there is no
+severity-based filtering in this kit today) or just show up as a
+non-blocking report finding; answer was block, same as the existing rules,
+so no new plumbing was needed in `checks.py`.
+
+Verified against the real pinned semgrep image, not just written and
+assumed correct: a scratch fixture with `console.log`/`debug`/`info`/
+`error`/`warn` (plain and with emoji) plus a `pino` structured-logger call
+confirmed every expected line matched, including both rules firing on the
+one line that should trigger both (`console.log("🚀 ...")`). Hit a real
+`semgrep --test` syntax gotcha while writing the fixture: stacking two
+separate `// ruleid: X` / `// ruleid: Y` comment lines above the same code
+line does NOT associate both rule IDs with that line the way it looks like
+it should - semgrep's test parser needs the comma form,
+`// ruleid: console-log-statement,console-emoji-debug`, on one line.
+Worth remembering for any future rule whose test fixture needs a line that
+two rules are expected to both match.
+
+Also confirmed `vapt check . --static` still exits 0 against this repo's
+own committed tree after adding the rules (the repo is Python; the only
+tracked `.js` file is the semgrep test fixture itself, already excluded via
+`.semgrepignore`), and that `semgrep --test` (what CI's "Test local Semgrep
+rules" step runs) passes 15/15 after fixing the annotation gotcha above.
 
 ### Dependency-audit waiver (osv-scanner.toml) - unrelated to the recon work below
 Came from a different concurrent session working on DTAP's push: that AI flagged

@@ -162,6 +162,45 @@ class PushTests(unittest.TestCase):
         self.assertEqual(report["severity"]["medium"], 1)
         self.assertEqual(report["lockfiles"], ["composer.lock"])
 
+    def test_committed_osv_scanner_toml_is_passed_as_config(self):
+        (self.repo / "composer.lock").write_text('{"packages": ["committed"]}')
+        (self.repo / "osv-scanner.toml").write_text('[[IgnoredVulns]]\nid = "GHSA-1"\nreason = "waived"\n')
+        git(self.repo, "add", "composer.lock", "osv-scanner.toml")
+        git(self.repo, "commit", "-qm", "Add lockfile and waiver")
+        real_run = subprocess.run
+        seen = {}
+
+        def process(command, **kwargs):
+            if command[0] != "docker":
+                return real_run(command, **kwargs)
+            mount = next(arg for arg in command if arg.endswith(":/src:ro")).rsplit(":/src:ro", 1)[0]
+            seen["waiver"] = (Path(mount) / "osv-scanner.toml").read_text()
+            seen["command"] = command
+            return subprocess.CompletedProcess(command, 0, stdout=json.dumps({"results": []}), stderr="")
+
+        with patch("vaptkit.checks.subprocess.run", side_effect=process):
+            audit_commit(self.repo, git(self.repo, "rev-parse", "HEAD"))
+        self.assertIn('id = "GHSA-1"', seen["waiver"])
+        self.assertIn("--config", seen["command"])
+        self.assertEqual(seen["command"][seen["command"].index("--config") + 1], "/src/osv-scanner.toml")
+
+    def test_no_osv_scanner_toml_omits_config_flag(self):
+        (self.repo / "composer.lock").write_text('{"packages": ["committed"]}')
+        git(self.repo, "add", "composer.lock")
+        git(self.repo, "commit", "-qm", "Add lockfile")
+        real_run = subprocess.run
+        seen = {}
+
+        def process(command, **kwargs):
+            if command[0] != "docker":
+                return real_run(command, **kwargs)
+            seen["command"] = command
+            return subprocess.CompletedProcess(command, 0, stdout=json.dumps({"results": []}), stderr="")
+
+        with patch("vaptkit.checks.subprocess.run", side_effect=process):
+            audit_commit(self.repo, git(self.repo, "rev-parse", "HEAD"))
+        self.assertNotIn("--config", seen["command"])
+
     def test_scanner_finding_no_packages_counts_as_no_audit(self):
         (self.repo / "package-lock.json").write_text("{}")
         git(self.repo, "add", "package-lock.json")

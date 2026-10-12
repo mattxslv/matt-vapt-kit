@@ -4,7 +4,69 @@
 
 ## What this session added (2026-10-12, latest)
 
-Current version: **v0.7.9**. 342 tests pass (`.venv/bin/python -m unittest discover -s tests`).
+Current version: **v0.8.1**. 349 tests pass (`.venv/bin/python -m unittest discover -s tests`).
+
+### Dependency-audit waiver (osv-scanner.toml) - unrelated to the recon work below
+Came from a different concurrent session working on DTAP's push: that AI flagged
+a real asymmetry rather than just agreeing to `--no-verify` a push blocked by a
+node-forge RSA-signature-forgery advisory with no upstream fix yet (used by
+`lib/pnpki/verify-signature.ts`). Secrets have a reviewed, committed waiver
+(`.gitleaksignore`); the dependency audit had none, so a team hits a genuine,
+accepted, un-fixable advisory and is stuck choosing between `--no-verify`
+(bypasses everything, not just that one advisory) or never touching the
+lockfile again until upstream ships a fix.
+
+Fixed in `checks.py::audit_commit()`: if the commit being checked has a
+committed `osv-scanner.toml` at its root, it's copied into the scan's temp
+directory (same `git show {sha}:...` pattern as `.gitleaksignore`, same
+"missing is fine" `except ToolError` handling) and passed to osv-scanner via
+`--config /src/osv-scanner.toml`. Deliberately uses osv-scanner's own native
+`[[IgnoredVulns]]` waiver format instead of inventing a custom one - nothing
+in this kit has to parse or trust it, osv-scanner does.
+
+Verified against the real pinned osv-scanner image (not mocked) before
+trusting this, since the docs were ambiguous about auto-detection: confirmed
+`osv-scanner.toml` sitting in the scan root is NOT picked up automatically -
+the `--config` flag is required, or the waived advisory still blocks. Ran a
+real audit_commit() end to end against a throwaway repo with a known
+minimatch CVE: 4 vulnerabilities without the waiver, 3 with it (the exact
+waived GHSA-ID gone, the other 3 unrelated minimatch advisories unaffected).
+2 new tests in `test_checks.py` (`test_committed_osv_scanner_toml_is_passed_as_config`,
+`test_no_osv_scanner_toml_omits_config_flag`).
+
+Not documented anywhere user-facing yet - checked, and `.gitleaksignore`
+itself isn't documented in README/docs either, so this isn't a new gap,
+just an existing one. Worth a docs pass for both waiver mechanisms together
+if a teammate asks how to use either.
+
+### Open redirect check
+Last pick from the original "what else can we add" list. Probes 8 common
+redirect-param names (`next`, `redirect`, `redirect_uri`, `return`,
+`returnUrl`, `url`, `continue`, `dest`) on `/` with a random, never-before-
+seen external marker URL (`https://mvk-redirect-<16 hex>.invalid/`) as the
+value, right alongside the existing homepage fetch and CORS probe in
+`exposure.py::run()`. Flags only when a response is a real 3xx AND the
+Location header contains that exact marker - an unambiguous signal, not a
+guess, since no real external site was ever contacted and the marker can't
+pre-exist anywhere.
+
+Deliberately bypasses `call()`/`stop_on_http` for these specific probes
+(calls `request`/`pause` directly instead): a 3xx is the signal being
+looked for, not a reason to abort the rest of the exposure scan, and any
+other status from a guessed query parameter the app may not even read
+(401/403/429/5xx included) is "nothing found," the same convention as every
+other best-effort probe in recon.py. Transport errors (`OSError`,
+`TimeoutError`) are caught per-param and just move to the next one.
+
+New `open_redirect` exposure kind (medium severity), IMPACT/REMEDIATION
+entries, schema enum, and `report.py`'s PDF label dict updated (the same
+dict whose missing-key crash the CORS work fixed earlier this session -
+caught immediately this time instead of needing a second bug hunt).
+Verified end to end against a real stub server simulating a vulnerable
+echo-redirect endpoint, not just mocks. 5 new tests in `test_exposure.py`
+(flagged when marker echoed back in a 3xx Location; not flagged for an
+unrelated redirect target, a non-3xx response, or a network failure) plus
+1 regression test in `test_report.py` for the new kind's PDF label.
 
 ### DKIM selector discovery (completes SPF/DMARC email-hygiene triage)
 `recon.py::dkim_selectors_found(domain)` checks a fixed list of 11 common

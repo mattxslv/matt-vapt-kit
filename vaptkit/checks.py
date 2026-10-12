@@ -177,12 +177,24 @@ def audit_commit(repo: Path, sha: str) -> dict | None:
             destination.write_bytes(subprocess.run(
                 ["git", "-C", str(repo), "show", f"{sha}:{path}"], capture_output=True, check=True,
             ).stdout)
+        has_waiver = False
+        try:
+            # Same shape as .gitleaksignore below: a committed, reviewed, auditable waiver for a
+            # specific advisory (e.g. a transitive dependency with no upstream fix yet), read
+            # natively by osv-scanner itself via --config - not a custom format this kit parses or
+            # trusts. osv-scanner does NOT auto-detect this file at the scan root; verified against
+            # the real pinned image that the flag is required or the waived advisory still blocks.
+            (root / "osv-scanner.toml").write_text(git(repo, "show", f"{sha}:osv-scanner.toml") + "\n")
+            has_waiver = True
+        except ToolError:
+            pass
         try:
             result = subprocess.run([
                 "docker", "run", "--rm", "--cap-drop=ALL", "--security-opt=no-new-privileges", *user_flag(),
                 "-e", "HOME=/tmp", "-v", f"{root}:/src:ro", OSV_SCANNER,
-                "scan", "source", "--recursive", "--format", "json", "/src",
-            ], capture_output=True, text=True, check=False)
+                "scan", "source", "--recursive", "--format", "json",
+            ] + (["--config", "/src/osv-scanner.toml"] if has_waiver else []) + ["/src"],
+            capture_output=True, text=True, check=False)
         except OSError:
             raise ToolError("Cannot start docker; install it before continuing.") from None
         unused = frozenset(unused_dependencies(repo, sha)) if "package.json" in found or any(

@@ -4,8 +4,47 @@
 
 ## What this session added (2026-10-12, latest)
 
-Current version: **v0.8.5**. 377 Python tests pass
+Current version: **v0.8.6**. 379 Python tests pass
 (`.venv/bin/python -m unittest discover -s tests`).
+
+### Fixed a real gitleaks silent-undercounting bug (found by a peer session, verified independently)
+A separate Claude session working the DTAP incident reported that the vaptkit secret-history
+wrapper undercounts commits on a large repo. Verified this independently against the real repo
+before trusting it (the peer's first two claims in the same exchange turned out to need
+correction - a stale GitHub-mirror remote check, and a misattributed branch for the secrets count
+- so this one got the same scrutiny): confirmed `/home/tonky/repos/dtap`'s `origin/staging` has
+1483 commits by plain `git rev-list`, reproduced the exact wrapper invocation (mirror clone +
+`docker_repo()`'s mount flags) against the real pinned gitleaks image, and got the identical
+result - **"1232 commits scanned."**, zero errors or warnings printed, silently stopping 251
+commits short and missing real secrets that only existed in the unwalked tail. Root cause is
+inside gitleaks's own git-log piping (no shallow clone, no grafts, no `--first-parent`/`--no-merges`
+explanation fit the exact number) - not something to fix upstream from here, but something this
+kit must never trust blindly.
+
+Fixed in `checks.py::history_findings()` (used by `vapt check`, `vapt scan`, and CI - the
+full-history audit path, where "no leaks found" is a claim about the *entire* repo): after
+cloning the mirror, compute the real expected commit count with `git rev-list --count sha` on the
+mirror itself, parse gitleaks's own "N commits scanned." line from its stderr, and raise a
+`ToolError` - not a quiet pass - the moment the two numbers disagree, or the line is missing
+entirely. Verified end to end against the real DTAP repo after the fix: `vapt check
+/home/tonky/repos/dtap --revision origin/staging` now correctly fails with "Secret history scan
+covered 1232 of 1483 commits reachable from e4a7443fed92; the scanner stopped early. Results are
+incomplete and have been withheld." instead of silently reporting clean.
+
+Deliberately NOT applied to `scan_history()` (the pre-push hook's bounded, new-commits-only scan):
+that path streams gitleaks's output live to the terminal via the plain `run()` helper instead of
+capturing it, for real-time push feedback; adding the same check would mean capturing output and
+losing that live streaming UX. The push hook only ever scans the commits being pushed (small,
+bounded), not a repo's entire history, so it's a fundamentally smaller-scale operation less likely
+to trip this - flagging as a known, narrower-scope gap rather than changing streaming behavior
+without being asked. `vapt check`/full scans remain the authoritative "is this repo's history
+clean" answer, which is exactly the path this fix covers.
+
+2 new tests in `test_checks.py` (`test_undercounted_commit_scan_is_rejected_not_reported_as_clean`,
+`test_missing_commits_scanned_line_is_also_rejected`) plus 3 existing tests
+(`HistoryFindingsTests`, two in `PushTests`) updated to include a realistic "N commits scanned."
+line in their mocked gitleaks stderr, since they previously mocked `stderr=""` and would now
+correctly fail the new check.
 
 ### Fixed stale version display after repeated updates (real bug, user-caught)
 User noticed the terminal banner on a real scan (in ~/repos/dtap) still said

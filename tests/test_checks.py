@@ -92,7 +92,8 @@ class PushTests(unittest.TestCase):
             if command[0] != "docker":
                 return real_run(command, *args, **kwargs)
             if "gitleaks" in str(command):
-                return subprocess.CompletedProcess(command, 0, stdout="[]", stderr="")
+                count = git(self.repo, "rev-list", "--count", "HEAD")
+                return subprocess.CompletedProcess(command, 0, stdout="[]", stderr=f"{count} commits scanned.")
             if command[-1] == "/src":
                 self.assertIn("--user", command)
                 self.assertIn(f"{os.getuid()}:{os.getgid()}", command)
@@ -116,7 +117,8 @@ class PushTests(unittest.TestCase):
             if command[0] != "docker":
                 return real_run(command, *args, **kwargs)
             if "gitleaks" in str(command):
-                return subprocess.CompletedProcess(command, 0, stdout="[]", stderr="")
+                count = git(self.repo, "rev-list", "--count", "HEAD")
+                return subprocess.CompletedProcess(command, 0, stdout="[]", stderr=f"{count} commits scanned.")
             return real_run(command, *args, **kwargs)
 
         with patch("vaptkit.checks.WINDOWS", True), patch("vaptkit.checks.run", side_effect=process), \
@@ -323,7 +325,8 @@ class HistoryFindingsTests(unittest.TestCase):
                 if command[0] == "docker":
                     self.assertIn("-", command)
                     self.assertNotIn("--redact", command)
-                    return subprocess.CompletedProcess(command, 1, stdout=report, stderr="")
+                    count = git(repo, "rev-list", "--count", "HEAD")
+                    return subprocess.CompletedProcess(command, 1, stdout=report, stderr=f"{count} commits scanned.")
                 return real_run(command, **kwargs)
 
             with patch("vaptkit.checks.subprocess.run", side_effect=process), patch("vaptkit.checks.run", side_effect=lambda c, **k: real_run(c, check=True)):
@@ -332,6 +335,53 @@ class HistoryFindingsTests(unittest.TestCase):
         self.assertEqual(found[2]["commit"], "c" * 12)
         self.assertNotIn("k9Q2vX7pL4mN8rT1", json.dumps(found))
         self.assertTrue(all("Secret" not in item and "secret" not in item for item in found))
+
+    def test_undercounted_commit_scan_is_rejected_not_reported_as_clean(self):
+        # Reproduces a real gitleaks bug found against an actual 1483-commit repository: it
+        # silently stopped at 1232 commits scanned, no error or warning, missing 74 real secrets
+        # that only existed in the unwalked tail of history. A scan that covered fewer commits
+        # than the branch actually has must never be reported as "no leaks found".
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            git(repo, "init", "-q")
+            git(repo, "config", "user.email", "t@example.invalid")
+            git(repo, "config", "user.name", "T")
+            for message in ("first", "second", "third"):
+                (repo / "a.txt").write_text(message)
+                git(repo, "add", ".")
+                git(repo, "commit", "-qm", message)
+            real_run = subprocess.run
+
+            def process(command, **kwargs):
+                if command[0] == "docker":
+                    return subprocess.CompletedProcess(command, 0, stdout="[]", stderr="2 commits scanned.")
+                return real_run(command, **kwargs)
+
+            with patch("vaptkit.checks.subprocess.run", side_effect=process), \
+                    patch("vaptkit.checks.run", side_effect=lambda c, **k: real_run(c, check=True)):
+                with self.assertRaises(ToolError):
+                    history_findings(repo, git(repo, "rev-parse", "HEAD"))
+
+    def test_missing_commits_scanned_line_is_also_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            git(repo, "init", "-q")
+            git(repo, "config", "user.email", "t@example.invalid")
+            git(repo, "config", "user.name", "T")
+            (repo / "a.txt").write_text("x")
+            git(repo, "add", ".")
+            git(repo, "commit", "-qm", "init")
+            real_run = subprocess.run
+
+            def process(command, **kwargs):
+                if command[0] == "docker":
+                    return subprocess.CompletedProcess(command, 0, stdout="[]", stderr="")
+                return real_run(command, **kwargs)
+
+            with patch("vaptkit.checks.subprocess.run", side_effect=process), \
+                    patch("vaptkit.checks.run", side_effect=lambda c, **k: real_run(c, check=True)):
+                with self.assertRaises(ToolError):
+                    history_findings(repo, git(repo, "rev-parse", "HEAD"))
 
 
 class RouteReviewInCheckTests(unittest.TestCase):

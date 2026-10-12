@@ -302,6 +302,7 @@ def history_findings(repo: Path, sha: str) -> list[dict]:
     with tempfile.TemporaryDirectory(prefix="matt-vapt-history-") as directory:
         bare = Path(directory) / "history.git"
         clone_history(repo, bare, run)
+        expected_commits = int(git(bare, "rev-list", "--count", sha))
         has_ignore = False
         try:
             (Path(directory) / ".gitleaksignore").write_text(git(repo, "show", f"{sha}:.gitleaksignore") + "\n")
@@ -322,6 +323,18 @@ def history_findings(repo: Path, sha: str) -> list[dict]:
             raise ToolError("Cannot start docker; install it before continuing.") from None
     if result.returncode not in (0, 1):
         raise ToolError(f"The secret scanner did not complete (exit {result.returncode}).")
+    # Gitleaks can silently stop walking history early on some large/complex repositories
+    # (confirmed against a real 1483-commit repo: it stopped at 1232 commits with no error or
+    # warning at all, missing 74 real secrets that were only reachable in the unwalked tail).
+    # A scan that covered fewer commits than the branch actually has is not a trustworthy
+    # "no leaks found" - fail loudly instead of reporting an incomplete scan as clean.
+    scanned_match = re.search(r"(\d+) commits scanned", result.stderr)
+    scanned_commits = int(scanned_match.group(1)) if scanned_match else 0
+    if expected_commits and scanned_commits != expected_commits:
+        raise ToolError(
+            f"Secret history scan covered {scanned_commits} of {expected_commits} commits reachable from "
+            f"{sha[:12]}; the scanner stopped early. Results are incomplete and have been withheld."
+        )
     try:
         raw = json.loads(result.stdout) if result.stdout.strip() else []
     except ValueError:

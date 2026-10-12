@@ -6,6 +6,33 @@
 
 Current version: **v0.9.2**. 403 Python tests pass.
 
+### Fixed real PDF bloat/blank-page bug, reverted cards to table, reverted watermark on user feedback
+User screenshot showed a near-totally blank page before "Secrets in the commit history", plus "why
+is this PDF so long (27 pages)". Root cause of both: three sections (`class="chapter page"` on
+Secrets, API access control, and Live staging) forced a hard CSS page break
+(`.chapter.page { break-before: page; }`) regardless of how much room was left on the current
+page - if the previous section ended early on its page, the rest of that page was wasted as blank
+space before the forced break kicked in, and tripling that effect was clearly a factor in the long
+page count. Removed the `.chapter.page` modifier from all three sections and the now-dead CSS rule;
+sections now flow continuously and only break where content genuinely doesn't fit (`break-inside:
+avoid` on individual rows/cards already handles that). Verified by rendering a real report and
+confirming sections flow back-to-back with no gap.
+
+User also asked to revert two earlier choices from this same session rather than keep them:
+- The per-finding "cards" in Vulnerable dependencies went back to a table (kept the Suggested fix/
+  Advisory link/severity-disagreement content, now shown as a small note under the severity chip
+  instead of its own row) - re-added the `.dep-table` column-width CSS that was removed when cards
+  replaced the table, removed the now-dead `.finding-card*` CSS.
+- The repo-scan PDF's page watermark went back to "MATT VAPT KIT" (the footer/ribbon MVK rebrand
+  from earlier this session was not what was being pointed at - only the large background
+  watermark text specifically).
+
+Also improved the "secret-history check did not finish cleanly" message (another user screenshot,
+same underlying cause as the gitleaks-undercounting fix from earlier) to inline the actual reason
+(e.g. "covered 1233 of 1484 commits... stopped early") instead of just pointing back to section 1 -
+it's not a new bug, it's the fix from earlier correctly reporting a real incomplete scan, but the
+message was vague enough to prompt confusion on its own.
+
 ### Removed redundant "step X of Y" text under the loading progress bar
 User screenshot: the stage header already says "3 / 4  Static rules" and the loading indicator's
 progress track (`━━━ ━━━ ─── ───`) already visually encodes the same position, so the extra

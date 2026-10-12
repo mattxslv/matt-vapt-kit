@@ -127,8 +127,10 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
     elif history and history["status"] == "DONE":
         secrets = '<p class="lede">No possible secrets were found in the commit history.</p>'
     else:
-        secrets = ('<p class="lede">The secret-history check did not finish cleanly, so this part is not covered. '
-                   "See the table in section 1 and run the scan again.</p>")
+        reason = f" {esc(history['detail'])}" if history and history.get("detail") else ""
+        secrets = (f'<p class="lede">The secret-history check did not finish cleanly, so this part is not covered.'
+                   f"{reason} Run the scan again; if it keeps not finishing, treat the history as unverified rather "
+                   "than clean.</p>")
 
     messages = rule_messages()
 
@@ -195,31 +197,28 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
             fix = entry.get("fixed_version")
             return f"Upgrade to <strong>{esc(fix)}</strong> or later" if fix else "No fix published yet"
 
-        def card(entry):
-            severity_disagreement = (
-                f'<dd>{esc(entry["severity_disagreement"])} <span class="muted">(per the advisory source)</span></dd>'
-                if entry.get("severity_disagreement") else ""
-            )
-            return f"""<div class="finding-card">
-  <div class="finding-card-head">
-    <span class="finding-card-name">{esc(entry["package"])} <span class="muted">{esc(entry["version"])}</span></span>
-    <span class="chip {band_chip[entry["severity"]]}">{esc(entry["severity"])}</span>
-  </div>
-  <dl class="finding-card-grid">
-    <div><dt>Advisory</dt><dd><a href="https://osv.dev/vulnerability/{esc(entry["id"])}"><code>{esc(entry["id"])}</code></a></dd></div>
-    <div><dt>Suggested fix</dt><dd>{fix_cell(entry)}</dd></div>
-    <div><dt>Used in</dt><dd>{esc(SCOPE_LABEL.get(entry.get("scope"), "Runtime"))}</dd></div>
-    {f'<div><dt>Disputed severity</dt>{severity_disagreement}</div>' if severity_disagreement else ""}
-  </dl>
-</div>"""
+        def severity_cell(entry):
+            chip = f'<span class="chip {band_chip[entry["severity"]]}">{esc(entry["severity"])}</span>'
+            disagreement = entry.get("severity_disagreement")
+            note = f'<br><span class="muted">({esc(disagreement)} per advisory)</span>' if disagreement else ""
+            return chip + note
 
-        cards = "".join(card(entry) for entry in dependencies["top"][:ROUTE_LIMIT])
+        rows = "".join(
+            f'<tr><td class="dep-package">{esc(entry["package"])} <span class="muted">{esc(entry["version"])}</span></td>'
+            f'<td class="dep-severity">{severity_cell(entry)}</td>'
+            f'<td class="dep-advisory"><a href="https://osv.dev/vulnerability/{esc(entry["id"])}"><code>{esc(entry["id"])}</code></a></td>'
+            f'<td class="dep-fix">{fix_cell(entry)}</td>'
+            f'<td class="dep-used">{esc(SCOPE_LABEL.get(entry.get("scope"), "Runtime"))}</td></tr>'
+            for entry in dependencies["top"][:ROUTE_LIMIT])
         listed = ", ".join(f"<code>{esc(path)}</code>" for path in dependencies["lockfiles"])
         removable = [item for item in dependencies.get("unused_dependencies", []) if item["clears"]]
         removal = ("<p><strong>Quick win:</strong> nothing imports " + ", ".join(
             f'<code>{esc(item["name"])}</code> (clears {item["clears"]})' for item in removable)
                    + ". Removing them from package.json clears those high/critical findings.</p>") if removable else ""
-        body = cards if cards else '<p class="lede">No known vulnerabilities in these lockfiles.</p>'
+        body = (f'<table class="dep-table"><thead><tr><th>Package</th><th>Severity</th><th>Advisory</th>'
+                f'<th>Suggested fix</th><th>Used in</th></tr></thead>'
+                f"<tbody>{rows}</tbody></table>" if rows else
+                '<p class="lede">No known vulnerabilities in these lockfiles.</p>')
         dependency_html = f"""<section class="chapter">
   <header class="chapter-head"><p class="eyebrow">§§</p><h2>Vulnerable dependencies</h2></header>
   <p class="lede">Known advisories for the exact package versions pinned in {listed}, from the public OSV
@@ -229,7 +228,7 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
   {removal}
   {body}
   {'<p class="muted">Click an advisory ID above to open its official public database page (osv.dev) for the full '
-    'technical write-up of that vulnerability.</p>' if cards else ""}
+    'technical write-up of that vulnerability.</p>' if rows else ""}
 </section>
 """
     staging = read(folder / "staging", "assessment.json")
@@ -246,7 +245,7 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
                       if rows else '<p class="lede">Nothing was flagged on the pages checked.</p>')
         errors = (f'<p class="more">{len(staging["errors"])} requests did not complete, so those paths are not covered.</p>'
                   if staging["errors"] else "")
-        staging_html = f"""<section class="chapter page">
+        staging_html = f"""<section class="chapter">
   <header class="chapter-head"><p class="eyebrow">§§</p><h2>Live staging checks</h2></header>
   <p class="lede">Read-only requests to <code>{esc(staging["target"])}</code>: security headers, cookies and a short list
   of commonly exposed files. No logins and no attack payloads. Confirmed means the same result was seen twice.</p>
@@ -260,7 +259,7 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
     document = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
 <title>{esc(rid)} | {esc(project)} Repository Scan</title><style>{css}</style></head><body>
-<div class="watermark" aria-hidden="true">MVK</div>
+<div class="watermark" aria-hidden="true">MATT VAPT KIT</div>
 
 <section class="cover">
   <div class="ribbon">MVK · INTERNAL REPOSITORY SCAN · NOT ISSUED BY CERT-PH</div>
@@ -291,7 +290,7 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
   <span class="chip gap">Not run</span> a coverage gap, not a pass</p>
 </section>
 
-<section class="chapter page">
+<section class="chapter">
   <header class="chapter-head"><p class="eyebrow">§§</p><h2>Secrets in the commit history</h2></header>
   {secrets}{secret_table}
 </section>
@@ -303,7 +302,7 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
   {static_html}
 </section>
 
-<section class="chapter page">
+<section class="chapter">
   <header class="chapter-head"><p class="eyebrow">§§</p><h2>API access control</h2></header>
   <p class="lede">Handlers where no session or token check was found in the code. Middleware may still protect
   some of them, so confirm each one before treating it as a vulnerability.</p>

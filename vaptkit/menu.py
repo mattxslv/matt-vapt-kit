@@ -260,6 +260,8 @@ def run_scan(console: Console) -> None:
                 offer_scan_pdf(console, folder, confirm=False, open_prompt=False)
         if len(scanned) > 1:
             show_drift(console, repo, scanned)
+            console.print()
+            console.rule(Text("Scan complete", style="bold green"), style="grey37")
     if needs_pause:
         pause(console)
 
@@ -305,6 +307,8 @@ def full_scan(console: Console) -> None:
         show_drift(console, repo, [(branch, folder) for branch, folder in finished])
     if not pdf_available():
         console.print(Text(PDF_TOOLS_HINT, style=ACCENT))
+    console.print()
+    console.rule(Text("Scan complete", style="bold green"), style="grey37")
     console.print(Text("Reports list findings; share them only with people approved to see them.", style="dim"))
     if offer_open(console, [report for *_, report in reports if report], [folder for _, folder, _ in reports]):
         pause(console)

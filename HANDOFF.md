@@ -4,7 +4,17 @@
 
 ## What this session added (2026-10-12, latest)
 
-Current version: **v0.9.1**. 403 Python tests pass.
+Current version: **v0.9.2**. 403 Python tests pass.
+
+### Added a "Scan complete" divider after long scroll-back output
+User screenshot: after a full scan's branch table + drift comparison (which can run to dozens of
+lines), the output ran straight into the "r/f/b" open-report prompt with nothing marking where the
+actual scan output ended and the prompt began. Added `console.rule(Text("Scan complete", style=
+"bold green"), ...)` - the same Rich horizontal-rule style already used elsewhere in the menu (e.g.
+"Next: {branch}" between multi-branch scans) - right before the final prompt in both `full_scan()`
+and `run_scan()`'s multi-branch path. Left the single-branch `show_report()` completion alone since
+that one is already short (a single "Report saved:" line), not the long-scrollback case this was
+about.
 
 ### Repo-scan PDF: removed the misleading blanket "Not covered" list, rebranded to MVK, clearer footer, and a real suggested-fix column
 User feedback on a real report, four changes in one pass:

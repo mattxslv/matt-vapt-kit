@@ -8,6 +8,7 @@ from unittest.mock import patch
 from vaptkit.recon import (
     _accepts_protocol,
     _days_to_expiry,
+    dkim_selectors_found,
     dmarc_policy,
     dns_hygiene,
     fingerprint,
@@ -55,7 +56,8 @@ class DnsHygieneTests(unittest.TestCase):
     def test_both_absent_when_dns_unreachable(self):
         with patch("vaptkit.recon.dns_txt", return_value=[]):
             self.assertEqual(dns_hygiene("example.invalid"),
-                             {"spf_present": False, "dmarc_present": False, "dmarc_policy": None})
+                             {"spf_present": False, "dmarc_present": False, "dmarc_policy": None,
+                              "dkim_selectors_found": []})
 
     def test_detects_spf_and_dmarc(self):
         def fake(name, **kwargs):
@@ -64,7 +66,30 @@ class DnsHygieneTests(unittest.TestCase):
             return ["v=DMARC1; p=quarantine"]
         with patch("vaptkit.recon.dns_txt", side_effect=fake):
             self.assertEqual(dns_hygiene("example.invalid"),
-                             {"spf_present": True, "dmarc_present": True, "dmarc_policy": "quarantine"})
+                             {"spf_present": True, "dmarc_present": True, "dmarc_policy": "quarantine",
+                              "dkim_selectors_found": []})
+
+
+class DkimSelectorsFoundTests(unittest.TestCase):
+    def test_no_selectors_found_returns_empty_list(self):
+        with patch("vaptkit.recon.dns_txt", return_value=[]):
+            self.assertEqual(dkim_selectors_found("example.invalid"), [])
+
+    def test_matching_selector_reported(self):
+        def fake(name, **kwargs):
+            if name == "google._domainkey.example.invalid":
+                return ["v=DKIM1; k=rsa; p=MIGfMA0..."]
+            return []
+        with patch("vaptkit.recon.dns_txt", side_effect=fake):
+            self.assertEqual(dkim_selectors_found("example.invalid"), ["google"])
+
+    def test_non_dkim_txt_record_at_selector_is_ignored(self):
+        def fake(name, **kwargs):
+            if name == "default._domainkey.example.invalid":
+                return ["google-site-verification=x"]
+            return []
+        with patch("vaptkit.recon.dns_txt", side_effect=fake):
+            self.assertEqual(dkim_selectors_found("example.invalid"), [])
 
 
 class SubdomainsTests(unittest.TestCase):

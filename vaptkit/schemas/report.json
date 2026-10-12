@@ -414,11 +414,15 @@
         "dns": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["spf_present", "dmarc_present", "dmarc_policy"],
+          "required": ["spf_present", "dmarc_present", "dmarc_policy", "dkim_selectors_found"],
           "properties": {
             "spf_present": {"type": "boolean"},
             "dmarc_present": {"type": "boolean"},
-            "dmarc_policy": {"type": ["string", "null"], "maxLength": 32}
+            "dmarc_policy": {"type": ["string", "null"], "maxLength": 32},
+            "dkim_selectors_found": {
+              "type": "array", "maxItems": 11,
+              "items": {"type": "string", "maxLength": 16}
+            }
           }
         },
         "subdomains": {

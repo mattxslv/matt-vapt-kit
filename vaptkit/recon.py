@@ -138,11 +138,27 @@ def parse_txt_response(response: bytes) -> list[str]:
     return records
 
 
+COMMON_DKIM_SELECTORS = (
+    "default", "selector1", "selector2", "google", "k1", "k2", "dkim", "mail", "smtp", "s1", "s2",
+)
+
+
+def dkim_selectors_found(domain: str) -> list[str]:
+    """Common DKIM selectors that publish a v=DKIM1 TXT record for `domain`. Not exhaustive: the
+    actual selector is chosen by the mail provider and is not discoverable without seeing a real
+    signed email's DKIM-Signature header, so an empty result does not mean DKIM is unconfigured -
+    only that none of these common names are in use.
+    """
+    return [selector for selector in COMMON_DKIM_SELECTORS
+           if any(record.lower().startswith("v=dkim1") for record in dns_txt(f"{selector}._domainkey.{domain}"))]
+
+
 def dns_hygiene(domain: str) -> dict:
-    """SPF and DMARC presence for `domain` - zero network calls to the target, DNS only."""
+    """SPF, DMARC and best-effort DKIM presence for `domain` - zero network calls to the target, DNS only."""
     spf = [record for record in dns_txt(domain) if record.lower().startswith("v=spf1")]
     dmarc = [record for record in dns_txt(f"_dmarc.{domain}") if record.lower().startswith("v=dmarc1")]
-    return {"spf_present": bool(spf), "dmarc_present": bool(dmarc), "dmarc_policy": dmarc_policy(dmarc)}
+    return {"spf_present": bool(spf), "dmarc_present": bool(dmarc), "dmarc_policy": dmarc_policy(dmarc),
+           "dkim_selectors_found": dkim_selectors_found(domain)}
 
 
 def dmarc_policy(dmarc_records: list[str]) -> str | None:

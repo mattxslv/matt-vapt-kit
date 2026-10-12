@@ -132,7 +132,8 @@ class AccuracyBenchmark(unittest.TestCase):
             patch("vaptkit.roles.time.sleep"),
             # Passive recon (DNS hygiene, crt.sh subdomains) talks to real third-party services,
             # not the loopback test server this benchmark otherwise pins every connection to.
-            patch("vaptkit.recon.dns_hygiene", return_value={"spf_present": False, "dmarc_present": False, "dmarc_policy": None}),
+            patch("vaptkit.recon.dns_hygiene", return_value={"spf_present": False, "dmarc_present": False,
+                                                             "dmarc_policy": None, "dkim_selectors_found": []}),
             patch("vaptkit.recon.subdomains", return_value=[]),
             patch("vaptkit.recon.scan_ports", return_value=[]),
             patch("vaptkit.recon.tls_hygiene", return_value={

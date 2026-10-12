@@ -4,7 +4,35 @@
 
 ## What this session added (2026-10-12, latest)
 
-Current version: **v0.7.8**. 339 tests pass (`.venv/bin/python -m unittest discover -s tests`).
+Current version: **v0.7.9**. 342 tests pass (`.venv/bin/python -m unittest discover -s tests`).
+
+### DKIM selector discovery (completes SPF/DMARC email-hygiene triage)
+`recon.py::dkim_selectors_found(domain)` checks a fixed list of 11 common
+DKIM selector names (`google`, `selector1`/`selector2` for Microsoft 365,
+`k1`/`k2` for Mailchimp/common ESPs, `default`, etc.) and reports which ones
+publish a `v=DKIM1` TXT record, reusing the exact same `dns_txt()` plumbing
+as SPF/DMARC -- zero new network primitives, passive, off-target, no
+approval needed, same as the rest of `dns_hygiene()`.
+
+Explicitly NOT a presence/absence signal the way SPF/DMARC are: the real
+DKIM selector is chosen by whatever mail provider is in use and is not
+discoverable without seeing a real signed email's `DKIM-Signature` header,
+so an empty result only means "none of these 11 common names," never
+"DKIM is unconfigured." Documented inline and in the docstring so nobody
+mistakes this for a confirmed finding later.
+
+Wired into `dns_hygiene()`'s return value (`dkim_selectors_found` field),
+schema updated, `live.py` recap calls it out only when something is found
+(a positive signal is worth surfacing; a negative one here is not
+meaningful, unlike the existing "no DMARC record" note). Smoke-tested
+against real domains: airbnb.com/stripe.com -> `google`, github.com ->
+`selector1`, `google`, `k2`; google.com/notion.so/slack.com -> none of the
+11, as expected since they use rotating or less common selectors not on
+this list.
+
+3 new tests in `tests/test_recon.py` (`DkimSelectorsFoundTests`: no match,
+matching selector, TXT record present but not DKIM-shaped is ignored);
+`DnsHygieneTests`' 2 existing tests updated for the new field.
 
 ### CORS misconfiguration check
 Next pick from the "what else can we add" list: the classic exploitable CORS

@@ -148,6 +148,8 @@ def staging_recap(result: dict) -> str:
             notes.append(f"{len(recon['subdomains'])} subdomain(s) found in certificate logs")
         if not recon["dns"]["dmarc_present"]:
             notes.append("no DMARC record")
+        if recon["dns"]["dkim_selectors_found"]:
+            notes.append("DKIM selector(s) found: " + ", ".join(recon["dns"]["dkim_selectors_found"]))
         if recon["technologies"]:
             notes.append("detected: " + ", ".join(recon["technologies"]))
         if recon["open_ports"]:

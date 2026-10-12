@@ -330,8 +330,11 @@ def offer_open(console: Console, reports: list[Path], folders: list[Path]) -> bo
     """
     report_word = "report" + ("s" if len(reports) > 1 else "")
     folder_word = "folder" + ("s" if len(folders) > 1 else "")
-    choice = ask(console, f"\nPress r to open the {report_word}, f to open the {folder_word}, "
-                          "b for both, or Enter to go back: ").lower()
+    console.print()
+    option(console, "r", f"Open the {report_word}")
+    option(console, "f", f"Open the {folder_word}")
+    option(console, "b", "Open both")
+    choice = ask(console, "\nChoose (or Enter to go back): ").lower()
     paths = (reports + folders if choice == "b" else
              reports if choice == "r" else folders if choice == "f" else [])
     if paths:

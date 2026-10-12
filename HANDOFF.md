@@ -4,7 +4,19 @@
 
 ## What this session added (2026-10-12, latest)
 
-Current version: **v0.8.9**. 397 Python tests pass.
+Current version: **v0.9.0**. 397 Python tests pass.
+
+### Reformatted the open-report prompt into a short option list
+Was one long run-on sentence ("Press r to open the reports, f to open the folders, b for both, or
+Enter to go back:"). Now matches the rest of the menu's `option()` list style (same pattern as the
+project picker just above it):
+```
+  r  Open the report
+  f  Open the folder
+  b  Open both
+
+Choose (or Enter to go back):
+```
 
 ### Grouped the project picker into "Recent" / "Other projects" sections
 User screenshot showed a flat 28-entry numbered list (`choose_project` in `menu.py`) with no

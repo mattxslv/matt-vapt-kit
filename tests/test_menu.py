@@ -8,9 +8,74 @@ from vaptkit.process import ToolError, stream
 from unittest.mock import patch
 
 from vaptkit.menu import (
-    MENU, ago, branch_choices, compare_scans, project_list, container_target, find_repos, zap_alert_count, parse_selection, is_local_target, is_noisy_zap_line, local_url, missing_local_attack_images,
+    MENU, ago, branch_choices, check_for_update, compare_scans, project_list, container_target, find_repos,
+    zap_alert_count, parse_selection, is_local_target, is_noisy_zap_line, local_url, missing_local_attack_images,
     offer_open, retry_input, scan_findings, staging_config, staging_recap, available_memory_mb,
 )
+
+
+class CheckForUpdateTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.state_path = Path(self.directory.name) / "update-check.json"
+
+    def test_behind_main_returns_a_message(self):
+        def fake_git_output(*args, **kwargs):
+            if args[:2] == ("rev-parse", "HEAD"):
+                return "a" * 40
+            if args[:2] == ("rev-parse", "origin/main"):
+                return "b" * 40
+            if args[0] == "rev-list":
+                return "3"
+            return ""
+        with patch("vaptkit.menu.update_check_file", return_value=self.state_path), \
+                patch("vaptkit.menu.git_output", side_effect=fake_git_output):
+            message = check_for_update()
+        self.assertIn("3 commits behind main", message)
+        self.assertIn("git pull", message)
+
+    def test_up_to_date_returns_none(self):
+        def fake_git_output(*args, **kwargs):
+            if args[:2] in (("rev-parse", "HEAD"), ("rev-parse", "origin/main")):
+                return "a" * 40
+            return ""
+        with patch("vaptkit.menu.update_check_file", return_value=self.state_path), \
+                patch("vaptkit.menu.git_output", side_effect=fake_git_output):
+            self.assertIsNone(check_for_update())
+
+    def test_result_is_cached_and_not_rechecked_within_the_interval(self):
+        calls = []
+
+        def fake_git_output(*args, **kwargs):
+            calls.append(args)
+            return ""
+        with patch("vaptkit.menu.update_check_file", return_value=self.state_path), \
+                patch("vaptkit.menu.git_output", side_effect=fake_git_output):
+            check_for_update()
+            first_call_count = len(calls)
+            check_for_update()
+        self.assertEqual(len(calls), first_call_count)
+
+    def test_offline_or_git_failure_is_silent(self):
+        with patch("vaptkit.menu.update_check_file", return_value=self.state_path), \
+                patch("vaptkit.menu.git_output", side_effect=OSError("no network")):
+            self.assertIsNone(check_for_update())
+
+    def test_single_commit_behind_uses_singular_wording(self):
+        def fake_git_output(*args, **kwargs):
+            if args[:2] == ("rev-parse", "HEAD"):
+                return "a" * 40
+            if args[:2] == ("rev-parse", "origin/main"):
+                return "b" * 40
+            if args[0] == "rev-list":
+                return "1"
+            return ""
+        with patch("vaptkit.menu.update_check_file", return_value=self.state_path), \
+                patch("vaptkit.menu.git_output", side_effect=fake_git_output):
+            message = check_for_update()
+        self.assertIn("1 commit behind main", message)
+        self.assertNotIn("1 commits", message)
 
 
 class StagingConfigTests(unittest.TestCase):

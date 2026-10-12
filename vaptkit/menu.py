@@ -44,6 +44,58 @@ SEARCH_DEPTH = 4
 SKIP_DIRS = {"node_modules", "AppData", "Library", "snap", "venv", "site-packages", "vendor", "go", "Downloads"}
 
 
+UPDATE_CHECK_INTERVAL = timedelta(hours=24)
+
+
+def update_check_file() -> Path:
+    return Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state") / "matt-vapt-kit/update-check.json"
+
+
+def git_output(*args: str, timeout: float = 5.0) -> str:
+    result = subprocess.run(["git", "-C", str(KIT), *args], capture_output=True, text=True, timeout=timeout,
+                            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def check_for_update() -> str | None:
+    """A one-line notice if this install is behind origin/main, or None.
+
+    Cached for `UPDATE_CHECK_INTERVAL` so the menu doesn't hit the network on every launch; any
+    failure (offline, no git, not this kit's own repo) is silent, never blocks startup.
+    """
+    state_path = update_check_file()
+    now = datetime.now(timezone.utc)
+    try:
+        state = json.loads(state_path.read_text()) if state_path.is_file() else {}
+    except (OSError, ValueError):
+        state = {}
+    checked_at = state.get("checked_at")
+    if checked_at:
+        try:
+            if now - datetime.fromisoformat(checked_at) < UPDATE_CHECK_INTERVAL:
+                return state.get("message")
+        except ValueError:
+            pass
+    message = None
+    try:
+        git_output("fetch", "--quiet", "origin", "main", timeout=5)
+        local = git_output("rev-parse", "HEAD")
+        remote = git_output("rev-parse", "origin/main")
+        if local and remote and local != remote:
+            ahead = git_output("rev-list", "--count", f"{local}..{remote}")
+            if ahead.isdigit() and int(ahead) > 0:
+                message = (f"A new matt-vapt-kit version is available ({ahead} commit"
+                          f"{'s' if ahead != '1' else ''} behind main) - run `git pull` then `./install`.")
+    except (OSError, subprocess.TimeoutExpired):
+        message = None
+    try:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(json.dumps({"checked_at": now.isoformat(), "message": message}))
+    except OSError:
+        pass
+    return message
+
+
 def recent_file() -> Path:
     return Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state") / "matt-vapt-kit/recent-projects.json"
 
@@ -991,9 +1043,16 @@ def main() -> int:
             protect_pushes(console)
         except (KeyboardInterrupt, EOFError):
             console.print()
+    try:
+        update_notice = check_for_update()
+    except Exception:
+        update_notice = None
     while True:
         console.clear()
         print_header(console)
+        if update_notice:
+            console.print(Text(update_notice, style=ACCENT))
+            console.print()
         margin = print_menu(console)
         try:
             choice = ask(console, "\n" + " " * margin + "Choose › ").lower()

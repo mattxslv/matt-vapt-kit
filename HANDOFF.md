@@ -6,6 +6,25 @@
 
 Current version: **v0.9.2**. 403 Python tests pass.
 
+### Added an automatic "update available" notice on menu startup
+User asked whether the kit could check for updates itself and show a notice, rather than relying
+on someone remembering to `git pull`. New `check_for_update()` in `menu.py`: runs `git fetch
+--quiet origin main` (5s timeout) and compares local `HEAD` against `origin/main` via `git
+rev-list --count`; if behind, returns a one-line message ("N commits behind main - run `git pull`
+then `./install`"), printed right under the logo on every menu screen for that session. Cached for
+24 hours in `~/.local/state/matt-vapt-kit/update-check.json` so it doesn't hit the network on every
+menu redraw or every launch - matches the existing `recent-projects.json` state-file convention.
+Any failure (offline, no git, not actually a git checkout) is silent and never blocks startup.
+
+Tested for real, not just with mocks, per the explicit ask: cloned the real repo into a scratch
+directory, reset it 5 commits behind, and ran the actual function (only `KIT`/`update_check_file`
+patched to point at the scratch clone and a scratch state file) - confirmed it correctly fetched
+and reported "5 commits behind main". Then ran `git pull` in that same scratch clone and re-ran it,
+confirming it correctly returns `None` once caught up. Also rendered the notice through the real
+`print_header()` to confirm it displays correctly in context. 5 new unit tests in `test_menu.py`
+(behind returns a message, up to date returns None, cached result isn't rechecked within the
+interval, offline/git-failure is silent, singular "1 commit" wording).
+
 ### Reverted the gitleaks "commit count mismatch" check - it was a false-positive generator, not a real bug fix
 User asked directly why the secret-history scan kept coming back incomplete and said they want it
 to always be a full scan. That question prompted re-investigating the "fix" from earlier this

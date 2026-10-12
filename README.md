@@ -24,13 +24,16 @@ VAPT.
 Needs Python 3.11+ on PATH and Docker running. Clone, then run one command:
 
 ```bash
-git clone --branch v0.7.5 https://github.com/mattxslv/matt-vapt-kit.git
+git clone https://github.com/mattxslv/matt-vapt-kit.git
 cd matt-vapt-kit
 ./install
 ```
 
-`--branch v0.7.5` pins the current [release](https://github.com/mattxslv/matt-vapt-kit/releases);
-drop it to follow `main`.
+Pin a specific [release](https://github.com/mattxslv/matt-vapt-kit/releases) with
+`git clone --branch vX.Y.Z ...` if you want a fixed version instead of following `main`.
+`./install` (and `install.ps1`) check the installed version against `pyproject.toml` on every
+run and reinstall automatically when they differ, so pulling an update is enough — no separate
+reinstall step needed.
 
 ![Linux install](docs/screenshots/01-install-linux.svg)
 
@@ -49,6 +52,22 @@ menu. Afterwards, `./install` or `vaptkit` just opens the menu.
 > tested on Linux. Option 5 reaches your app as `host.docker.internal`, which some
 > dev servers reject (Vite needs `server.allowedHosts: ['host.docker.internal']`).
 
+### Getting updates
+
+Already installed and a newer version landed on `main`? Just pull and run it again — no separate
+install step:
+
+```bash
+git pull
+./install          # or: vaptkit
+```
+
+`./install`/`install.ps1` compare the version in `pyproject.toml` against what's actually installed
+on every run and reinstall automatically on any mismatch, so this is the only command anyone needs
+after a `git pull`, whether the update changed one line or added a new dependency. The menu also
+checks once a day whether `origin/main` has moved ahead and prints a notice if so, so you don't
+have to remember to check.
+
 ## The menu
 
 ![vaptkit menu](docs/screenshots/03-menu.svg)
@@ -58,11 +77,16 @@ menu. Afterwards, `./install` or `vaptkit` just opens the menu.
    if the project has a standing approval, makes all the PDFs and ends with one
    summary table across branches.
 1. **Scan a project:** secrets in Git history, vulnerable dependencies (Node, PHP,
-   .NET, Python and more), code rules (JavaScript/TypeScript, C#/ASP.NET
-   and web.config) and API routes without a login check (Next.js and ASP.NET). You can
+   .NET, Python and more — each flagged advisory includes its own published fixed
+   version and a note when its severity source disagrees with the computed CVSS band),
+   code rules (JavaScript/TypeScript, C#/ASP.NET and web.config, including leftover
+   `console.log`/debug statements and ones that log a raw request body or credentials),
+   and API routes without a login check (Next.js and ASP.NET). You can
    scan your checkout, `main`, `staging` or all of them; other branches are read
    straight from git, so your working folder is never switched. Projects with a standing approval (DTAP)
-   also get read-only checks of their staging site. Ends with an optional PDF report.
+   also get read-only checks of their staging site — TLS/cipher hygiene, CORS misconfiguration,
+   open redirects, SPF/DMARC/DKIM, subdomains, a bounded same-origin crawl of linked pages, and the
+   existing header/cookie/exposed-file checks. Ends with an optional PDF report.
 2. **Latest results:** the last scan's table; `p` makes a PDF, `t` exports findings as a
    remediation-ticket table (Markdown) — a best-effort mapping to a typical ticket layout, not a
    verified CERT-PH template.
@@ -71,9 +95,10 @@ menu. Afterwards, `./install` or `vaptkit` just opens the menu.
 3. **Compare last two scans:** what's new and what got fixed.
 
    ![Compare scans](docs/screenshots/06-compare.svg)
-4. **Quick staging check:** paste any staging URL for read-only header, cookie and
-   exposed-file checks. Asks for permission first; login-protected sites aren't
-   supported.
+4. **Quick staging check:** paste any staging URL for read-only header, cookie, TLS/cipher,
+   CORS, open-redirect, DNS (SPF/DMARC/DKIM) and exposed-file checks, plus a bounded
+   same-origin crawl of linked pages. Asks for permission first; login-protected sites
+   aren't supported.
 
    ![Quick staging check](docs/screenshots/07-staging-check.svg)
 5. **Local attack testing:** Nuclei and ZAP against an app on your own machine,
@@ -85,9 +110,12 @@ menu. Afterwards, `./install` or `vaptkit` just opens the menu.
 
    ![Readiness check](docs/screenshots/05-ready.svg)
 7. **Protect git pushes:** finds your projects and checks only the new commits
-   before each `git push`. New leaked secrets or high/critical vulnerable packages
-   block the push; if the check can't run, it warns and lets it through.
-   `git push --no-verify` skips it in an emergency.
+   before each `git push`. New leaked secrets, high/critical vulnerable packages, or
+   code-rule hits (`eval`, disabled TLS verification, shell injection, leftover
+   `console.log`/debug statements) block the push; if the check can't run, it warns
+   and lets it through. A committed `osv-scanner.toml` with `[[IgnoredVulns]]` entries
+   waives a specific accepted dependency advisory, the same way `.gitleaksignore` waives
+   a reviewed secret match. `git push --no-verify` skips it in an emergency.
 
    ![Protect your git pushes](docs/screenshots/09-protect.svg)
 8. **Report a problem:** collects diagnostics (versions, setup, the last error; no

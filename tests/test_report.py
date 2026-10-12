@@ -38,6 +38,14 @@ class ReportTests(unittest.TestCase):
         self.assertIn("Cross-origin resource sharing", document)
         self.assertIn("Exposed (signature matched)", document)
 
+    def test_open_redirect_exposure_record_renders_without_error(self):
+        self.result["exposure"] = [
+            {"path": "/?next=https%3A%2F%2Fevil.invalid%2F", "kind": "open_redirect",
+             "status": 302, "exposed": True, "signature": True}]
+        document = render(self.result)
+        self.assertIn("Unvalidated redirect target", document)
+        self.assertIn("Exposed (signature matched)", document)
+
     def test_conclusions(self):
         category = "data_exposure"
         self.assertEqual(conclusion(self.result, category), "Not tested")

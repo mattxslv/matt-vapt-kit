@@ -386,7 +386,8 @@
               "backup_file",
               "config_file",
               "admin_panel",
-              "cors"
+              "cors",
+              "open_redirect"
             ]
           },
           "status": {

@@ -135,6 +135,43 @@ class ExposureTests(unittest.TestCase):
         _, findings = self.scan(request)
         self.assertEqual(findings, [])
 
+    def test_open_redirect_with_marker_in_location_is_flagged(self):
+        from urllib.parse import parse_qs, urlsplit
+
+        def request(host, method, path, **kwargs):
+            query = parse_qs(urlsplit(path).query)
+            if "next" in query:
+                return 302, {"location": [query["next"][0]]}, b""
+            return response(200, "text/html", b"<html>Welcome</html>")
+        records, findings = self.scan(request)
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0]["severity"], "medium")
+        self.assertTrue(any(item["kind"] == "open_redirect" and item["exposed"] for item in records))
+
+    def test_redirect_to_unrelated_location_is_not_flagged(self):
+        def request(host, method, path, **kwargs):
+            if "?" in path:
+                return 302, {"location": ["/login"]}, b""
+            return response(200, "text/html", b"<html>Welcome</html>")
+        _, findings = self.scan(request)
+        self.assertEqual(findings, [])
+
+    def test_non_redirect_status_on_probe_is_not_flagged(self):
+        def request(host, method, path, **kwargs):
+            if "?" in path:
+                return 404, {}, b""
+            return response(200, "text/html", b"<html>Welcome</html>")
+        _, findings = self.scan(request)
+        self.assertEqual(findings, [])
+
+    def test_redirect_probe_network_failure_is_not_flagged_or_raised(self):
+        def request(host, method, path, **kwargs):
+            if "?" in path:
+                raise OSError("connection reset")
+            return response(200, "text/html", b"<html>Welcome</html>")
+        _, findings = self.scan(request)
+        self.assertEqual(findings, [])
+
     def test_discovery_is_bounded_same_origin_and_deduplicated(self):
         body = b"".join(f'<script src="/_next/static/chunk-{i}.js"></script>'.encode() for i in range(6))
         body += b'<script src="https://outside.invalid/map.js"></script>'

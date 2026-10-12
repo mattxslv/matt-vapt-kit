@@ -44,6 +44,7 @@ CHECKS = (
     ("/phpmyadmin/", "admin_panel", rb"(?i)phpmyadmin", "low", "Administrative interface publicly reachable"),
     ("/administrator/", "admin_panel", rb"(?i)administrator", "low", "Administrative interface publicly reachable"),
 )
+REDIRECT_PARAMS = ("next", "redirect", "redirect_uri", "return", "returnUrl", "url", "continue", "dest")
 SOURCE_MAP_SIGNATURE = rb'^\s*\{(?=[\s\S]*"version"\s*:\s*3\s*[,}])(?=[\s\S]*"(?:sources|mappings)"\s*:)'
 SENSITIVE_KEYS = re.compile(
     rb"\"(env|environment|database|db|dbHost|host|hostname|version|commit|uptime|memory|heap|nodeVersion|"
@@ -63,6 +64,7 @@ IMPACT = {
     "config_file": "Deployment configuration files can disclose internal hostnames, ports and sometimes embedded secrets.",
     "admin_panel": "An administrative interface reachable by anyone is a direct target for credential attacks.",
     "cors": "Any website can read authenticated API responses on behalf of a logged-in visitor.",
+    "open_redirect": "A crafted link to this trusted domain can silently send visitors to an attacker's site, commonly used to make phishing links look legitimate.",
 }
 REMEDIATION = {
     "secret_file": "Remove the file from the deployed image, rotate every secret it contained, and block dotfiles.",
@@ -75,6 +77,7 @@ REMEDIATION = {
     "config_file": "Remove the file from the deployed image and keep deployment config out of the web root.",
     "admin_panel": "Confirm the interface requires strong authentication, or restrict it to a trusted network or VPN.",
     "cors": "Stop reflecting arbitrary Origin values; return a fixed, trusted origin (or none) whenever credentials are allowed.",
+    "open_redirect": "Validate redirect targets against an allowlist of paths or domains before issuing a redirect.",
 }
 
 
@@ -200,6 +203,31 @@ def run(config: dict, approval: dict, host: str, headers: dict, request, expires
                 "The Access-Control-Allow-Origin header reflected a random, never-before-seen origin while "
                 "Access-Control-Allow-Credentials was true; no request body or cookie value was stored.",
             ))
+        marker = f"mvk-redirect-{secrets.token_hex(8)}.invalid"
+        for param in REDIRECT_PARAMS:
+            probe_path = f"/?{param}=https%3A%2F%2F{marker}%2F"
+            try:
+                pause()
+                redirect_status, redirect_headers, _ = request(
+                    host, "GET", probe_path, headers=headers, expires_at=expires_at, timeout_seconds=timeout,
+                )
+            except (OSError, TimeoutError):
+                continue
+            # Deliberately does not go through call()/stop_on_http: a 3xx here is the signal being
+            # looked for, not a reason to stop, and any other status (401/403/429/5xx included) from
+            # a guessed query parameter the app may not even read is "nothing found", same as every
+            # other best-effort probe in recon.py - not an assessment failure.
+            location = (redirect_headers.get("location") or [""])[0]
+            if 300 <= redirect_status < 400 and marker in location:
+                records.append({"path": probe_path, "kind": "open_redirect", "status": redirect_status,
+                                "exposed": True, "signature": True})
+                findings.append(finding(
+                    probe_path, "open_redirect", "medium",
+                    "Unvalidated redirect target lets a crafted link send visitors off-site", True,
+                    f"Requesting {probe_path} returned HTTP {redirect_status} with a Location header "
+                    "pointing at a random, never-before-seen external domain; no real external site was contacted.",
+                ))
+                break
         scripts = []
         if 200 <= status < 300 and content_class(received) == "html":
             scripts = list(dict.fromkeys(match.decode() for match in SCRIPT.findall(body)))[:3]

@@ -368,7 +368,7 @@ def render(result: dict, screenshots=(), *, tlp="AMBER+STRICT", prepared_by="", 
         "debug": "Debug endpoint", "health": "Health endpoint", "api_docs": "API documentation",
         "source_map": "JavaScript source map", "backup_file": "Backup archive or database dump",
         "config_file": "Deployment configuration file", "admin_panel": "Administrative interface",
-        "cors": "Cross-origin resource sharing",
+        "cors": "Cross-origin resource sharing", "open_redirect": "Unvalidated redirect target",
     }
     exposure_rows = "".join(
         f"<tr><td><code>{esc(item['path'])}</code></td><td>{esc(exposure_labels[item['kind']])}</td>"

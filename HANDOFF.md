@@ -6,6 +6,27 @@
 
 Current version: **v0.9.2**. 403 Python tests pass.
 
+### Replaced the dependency table with per-finding visual cards
+User asked whether "screenshots" could be added without needing live staging setup. Checked the
+existing mechanism first: `report.py`'s "screenshot" feature isn't actually a screenshot of a live
+website at all - it's Playwright screenshotting the kit's *own* synthesized evidence-summary HTML
+block (status/header booleans) into a PNG for the evidence record. So technically it needs no live
+request, just Playwright rendering the kit's own data as an image. But for dependency/code-rule
+findings specifically, a screenshot of a table row would show nothing a table row doesn't already
+show, and reproducing actual source code (to make something more "visual") would conflict with the
+kit's existing deliberate choice not to reproduce source lines in reports (a regex match could be
+the secret itself). Explained this trade-off and asked what would actually help; user chose a
+styled per-finding "card" with no source code, not a literal screenshot image.
+
+Replaced the `<table>` dependency listing with one `.finding-card` div per vulnerability (`scan_
+report.py`): package/version header with a severity chip, then a label/value grid for Advisory
+(linked), Suggested fix, Used in, and a Disputed Severity row that only appears when
+`severity_disagreement` is set. New CSS in `scan-report.css` (`.finding-card`, `.finding-card-head`,
+`.finding-card-grid`). Removed the now-unused `.dep-table`/`.dep-package`/etc. column-width rules
+added earlier this session once the table was no longer in use. Verified with a real rendered
+Playwright screenshot showing all three variants (no fix yet, normal fix, fix + disputed severity)
+rendering cleanly with no overflow.
+
 ### Fixed vulnerable-dependencies table layout (overflow/wrapping) and clarified the advisory link
 User screenshot: "Suggested fix" and "Used in" columns were cramped against the right edge and
 wrapping ("Dev\nonly"), because the table reused generic `.check`/`.state` CSS classes (32% + 18%

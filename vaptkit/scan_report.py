@@ -195,22 +195,31 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
             fix = entry.get("fixed_version")
             return f"Upgrade to <strong>{esc(fix)}</strong> or later" if fix else "No fix published yet"
 
-        rows = "".join(
-            f'<tr><td class="dep-package">{esc(entry["package"])} <span class="muted">{esc(entry["version"])}</span></td>'
-            f'<td class="dep-severity"><span class="chip {band_chip[entry["severity"]]}">{esc(entry["severity"])}</span></td>'
-            f'<td class="dep-advisory"><a href="https://osv.dev/vulnerability/{esc(entry["id"])}"><code>{esc(entry["id"])}</code></a></td>'
-            f'<td class="dep-fix">{fix_cell(entry)}</td>'
-            f'<td class="dep-used">{esc(SCOPE_LABEL.get(entry.get("scope"), "Runtime"))}</td></tr>'
-            for entry in dependencies["top"][:ROUTE_LIMIT])
+        def card(entry):
+            severity_disagreement = (
+                f'<dd>{esc(entry["severity_disagreement"])} <span class="muted">(per the advisory source)</span></dd>'
+                if entry.get("severity_disagreement") else ""
+            )
+            return f"""<div class="finding-card">
+  <div class="finding-card-head">
+    <span class="finding-card-name">{esc(entry["package"])} <span class="muted">{esc(entry["version"])}</span></span>
+    <span class="chip {band_chip[entry["severity"]]}">{esc(entry["severity"])}</span>
+  </div>
+  <dl class="finding-card-grid">
+    <div><dt>Advisory</dt><dd><a href="https://osv.dev/vulnerability/{esc(entry["id"])}"><code>{esc(entry["id"])}</code></a></dd></div>
+    <div><dt>Suggested fix</dt><dd>{fix_cell(entry)}</dd></div>
+    <div><dt>Used in</dt><dd>{esc(SCOPE_LABEL.get(entry.get("scope"), "Runtime"))}</dd></div>
+    {f'<div><dt>Disputed severity</dt>{severity_disagreement}</div>' if severity_disagreement else ""}
+  </dl>
+</div>"""
+
+        cards = "".join(card(entry) for entry in dependencies["top"][:ROUTE_LIMIT])
         listed = ", ".join(f"<code>{esc(path)}</code>" for path in dependencies["lockfiles"])
         removable = [item for item in dependencies.get("unused_dependencies", []) if item["clears"]]
         removal = ("<p><strong>Quick win:</strong> nothing imports " + ", ".join(
             f'<code>{esc(item["name"])}</code> (clears {item["clears"]})' for item in removable)
                    + ". Removing them from package.json clears those high/critical findings.</p>") if removable else ""
-        body = (f'<table class="dep-table"><thead><tr><th>Package</th><th>Severity</th><th>Advisory</th>'
-                f'<th>Suggested fix</th><th>Used in</th></tr></thead>'
-                f"<tbody>{rows}</tbody></table>" if rows else
-                '<p class="lede">No known vulnerabilities in these lockfiles.</p>')
+        body = cards if cards else '<p class="lede">No known vulnerabilities in these lockfiles.</p>'
         dependency_html = f"""<section class="chapter">
   <header class="chapter-head"><p class="eyebrow">§§</p><h2>Vulnerable dependencies</h2></header>
   <p class="lede">Known advisories for the exact package versions pinned in {listed}, from the public OSV
@@ -219,8 +228,8 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
   package's own published fixed version, not a guess.</p>
   {removal}
   {body}
-  <p class="muted">Click an advisory ID above to open its official public database page (osv.dev) for the full
-  technical write-up of that vulnerability.</p>
+  {'<p class="muted">Click an advisory ID above to open its official public database page (osv.dev) for the full '
+    'technical write-up of that vulnerability.</p>' if cards else ""}
 </section>
 """
     staging = read(folder / "staging", "assessment.json")

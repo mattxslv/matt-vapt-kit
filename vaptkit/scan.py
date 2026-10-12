@@ -6,7 +6,6 @@ import random
 import shutil
 import subprocess
 import time
-import uuid
 from importlib.metadata import version
 from datetime import datetime, timezone
 from pathlib import Path
@@ -186,13 +185,19 @@ def project_slug(name: str) -> str:
 
 def dated_folder(parent: Path, *parts: str) -> Path:
     """A private evidence folder named from descriptive parts plus a timestamp - human-findable in
-    a file picker or `ls`, not just an opaque run of random digits like the old `scan-20261012-
-    053127-469498` naming. The short random suffix only guards against two scans landing in the
-    same second; it is deliberately not the main way anyone is meant to find a folder.
+    a file picker or `ls`, not an opaque run of random digits like the old `scan-20261012-053127-
+    469498` naming. No random suffix: on the rare case two scans land in the same minute, a plain
+    counter (-2, -3, ...) is appended instead, so the name itself never carries meaningless noise.
     """
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
     slug = "-".join(project_slug(part) for part in parts if part)
-    return parent / f"{slug}-{stamp}-{uuid.uuid4().hex[:4]}"
+    base = f"{slug}-{stamp}"
+    candidate = parent / base
+    counter = 2
+    while candidate.exists():
+        candidate = parent / f"{base}-{counter}"
+        counter += 1
+    return candidate
 
 
 NON_RUNTIME_DIRS = {"scripts", "script", "migrations", "migration", "seed", "seeds", "tests", "test", "__tests__",

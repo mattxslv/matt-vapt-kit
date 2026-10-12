@@ -141,7 +141,7 @@ td.state { width: 18%; white-space: nowrap; }
 
 .count { font: 700 10.5pt/1 var(--serif); color: var(--amber); }
 
-.scope { display: grid; grid-template-columns: 1fr 1fr; gap: 10mm; margin: 2mm 0 8mm; }
+.scope { margin: 2mm 0 8mm; }
 .scope h3 { margin-top: 0; }
 .scope ul { margin: 0; padding-left: 4.5mm; }
 .scope li { margin: 0 0 1.5mm; }

@@ -18,7 +18,6 @@ class ScanReportTests(unittest.TestCase):
             "project": "demo-app", "facts": {"leaks": 3},
             "recap": "demo-app has 3 possible secrets in its Git history.",
             "checks": [{"check": "1 / 4  Secret history", "status": "REVIEW", "detail": "3 leaks <b>found</b>"}],
-            "not_tested": ["live staging"],
         }))
         (self.folder / "static-findings.json").write_text(json.dumps({"findings": [
             {"rule": "rules.eval-usage", "path": "scripts/seed.js", "line": 8}]}))
@@ -29,7 +28,7 @@ class ScanReportTests(unittest.TestCase):
     def test_report_lists_recap_leak_count_static_matches_and_unauthenticated_handlers(self):
         document = render_scan(self.folder)
         for expected in ("demo-app", "3 possible secrets", "rules.eval-usage", "scripts/seed.js",
-                         "/api/users", "MVK-SCAN-20261008-010203-abcdef", "Live staging"):
+                         "/api/users", "MVK-SCAN-20261008-010203-abcdef", "Secret history"):
             self.assertIn(expected, document)
         self.assertEqual(document.count("<code>/api/users</code>"), 1)
 

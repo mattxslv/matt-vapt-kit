@@ -339,4 +339,4 @@ class LiveStageTests(unittest.TestCase):
         live = summary["checks"][-1]
         self.assertEqual(live["status"], "NOT RUN")
         self.assertIn("DNS resolution failed", live["detail"])
-        self.assertIn("live staging", summary["not_tested"])
+        self.assertFalse(summary["facts"].get("staging_covered"))

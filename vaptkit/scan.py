@@ -570,9 +570,6 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
     result = {"schema_version": 1, "kind": "repository-scan", "revision": sha,
               "finished_at": datetime.now(timezone.utc).isoformat(), "checks": rows,
               "status": "needs_review" if needs_review else "completed",
-              "not_tested": ([] if facts.get("staging_covered") else ["live staging"]) + [
-                  "logged-in pages and role access", "record ownership", "approval workflows", "live XSS",
-                  "Cloud Armor enforcement", "historical breach investigation"],
               "target": config.get("target", {}).get("url") if facts.get("staging_covered") else None,
               "project": repo.name, "branch": branch, "facts": facts, "recap": recap(repo.name, rows, facts)}
     write_private(output / "summary.json", json.dumps(result, indent=2))

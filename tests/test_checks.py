@@ -7,7 +7,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from vaptkit.checks import (audit_commit, check, checked_revision, database_severity, dependency_scopes,
-                            history_findings, lockfiles, pnpm_runtime, pushed_updates, severity_band, summarize_osv)
+                            history_findings, lockfiles, pnpm_runtime, pushed_updates, severity_band,
+                            suggested_fix, summarize_osv, version_key)
 from vaptkit.hooks import Findings, install, protect, uninstall
 from vaptkit.process import ToolError, git
 
@@ -304,6 +305,39 @@ class DependencyReportTests(unittest.TestCase):
         ]}]})
         self.assertEqual(summary["top"][0]["severity"], "high")
         self.assertEqual(summary["top"][0]["severity_disagreement"], "medium")
+
+    def test_version_key_orders_numeric_segments_as_integers(self):
+        self.assertLess(version_key("9.2.0"), version_key("11.1.1"))
+        self.assertLess(version_key("1.2.3"), version_key("1.2.10"))
+
+    def test_suggested_fix_picks_lowest_fix_above_installed(self):
+        vulns = [{"id": "GHSA-x", "affected": [{"ranges": [{"events": [
+            {"introduced": "0"}, {"fixed": "11.1.1"}]}]}, {"ranges": [{"events": [
+            {"introduced": "12.0.0"}, {"fixed": "12.0.1"}]}]}, {"ranges": [{"events": [
+            {"introduced": "13.0.0"}, {"fixed": "13.0.1"}]}]}]}]
+        self.assertEqual(suggested_fix(vulns, ["GHSA-x"], "3.3.2"), "11.1.1")
+        self.assertEqual(suggested_fix(vulns, ["GHSA-x"], "12.0.0"), "12.0.1")
+
+    def test_suggested_fix_none_when_no_fix_published(self):
+        vulns = [{"id": "GHSA-x", "affected": [{"ranges": [{"events": [{"introduced": "0"}]}]}]}]
+        self.assertIsNone(suggested_fix(vulns, ["GHSA-x"], "1.0.0"))
+
+    def test_suggested_fix_falls_back_to_lowest_when_installed_above_all_fixes(self):
+        vulns = [{"id": "GHSA-x", "affected": [{"ranges": [{"events": [{"fixed": "2.0.0"}]}]}]}]
+        self.assertEqual(suggested_fix(vulns, ["GHSA-x"], "99.0.0"), "2.0.0")
+
+    def test_suggested_fix_ignores_unrelated_ids(self):
+        vulns = [{"id": "GHSA-other", "affected": [{"ranges": [{"events": [{"fixed": "2.0.0"}]}]}]}]
+        self.assertIsNone(suggested_fix(vulns, ["GHSA-x"], "1.0.0"))
+
+    def test_summary_includes_fixed_version(self):
+        summary = summarize_osv({"results": [{"packages": [
+            {"package": {"name": "uuid", "version": "3.3.2"},
+             "groups": [{"ids": ["GHSA-w5hq-g745-h8pq"], "max_severity": "7.5"}],
+             "vulnerabilities": [{"id": "GHSA-w5hq-g745-h8pq", "affected": [{"ranges": [{"events": [
+                 {"introduced": "0"}, {"fixed": "11.1.1"}]}]}]}]},
+        ]}]})
+        self.assertEqual(summary["top"][0]["fixed_version"], "11.1.1")
 
     def test_summary_has_no_disagreement_key_when_sources_agree(self):
         summary = summarize_osv({"results": [{"packages": [

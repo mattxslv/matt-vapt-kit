@@ -181,6 +181,30 @@ def database_severity(vulnerabilities: list[dict], ids: list[str]) -> str | None
     return None
 
 
+def version_key(value: str) -> tuple:
+    return tuple(int(part) if part.isdigit() else part for part in re.split(r"[.\-+]", value))
+
+
+def suggested_fix(vulnerabilities: list[dict], ids: list[str], installed_version: str) -> str | None:
+    """The lowest "fixed" version above the installed one - no AI, fully offline: this comes
+    straight from the "affected" ranges already present in the OSV record the scan fetched, the
+    same data the "N known vulnerabilities" count is built from. None if no fix has shipped yet.
+    """
+    candidates = [
+        event["fixed"] for vuln in vulnerabilities if vuln.get("id") in ids
+        for affected in vuln.get("affected", []) for rng in affected.get("ranges", [])
+        for event in rng.get("events", []) if isinstance(event.get("fixed"), str) and event["fixed"]
+    ]
+    if not candidates:
+        return None
+    try:
+        installed = version_key(installed_version)
+        above = sorted((c for c in candidates if version_key(c) > installed), key=version_key)
+        return above[0] if above else sorted(candidates, key=version_key)[0]
+    except TypeError:
+        return sorted(set(candidates))[0]
+
+
 def summarize_osv(report: dict, scopes: dict | None = None) -> dict:
     counts = dict.fromkeys(SEVERITIES, 0)
     runtime_counts = dict.fromkeys(SEVERITIES, 0)
@@ -205,6 +229,9 @@ def summarize_osv(report: dict, scopes: dict | None = None) -> dict:
                 source_band = database_severity(item.get("vulnerabilities", []), group["ids"])
                 if source_band and source_band != band:
                     entry["severity_disagreement"] = source_band
+                fix = suggested_fix(item.get("vulnerabilities", []), group["ids"], package.get("version", ""))
+                if fix:
+                    entry["fixed_version"] = fix
                 top.append(entry)
     # Runtime (and unclassified) first: dev-only packages never ship in the running app.
     top.sort(key=lambda entry: (entry["scope"] in ("dev", "unused"), SEVERITIES.index(entry["severity"]), entry["package"]))

@@ -4,7 +4,50 @@
 
 ## What this session added (2026-10-12, latest)
 
-Current version: **v0.9.0**. 397 Python tests pass.
+Current version: **v0.9.1**. 403 Python tests pass.
+
+### Repo-scan PDF: removed the misleading blanket "Not covered" list, rebranded to MVK, clearer footer, and a real suggested-fix column
+User feedback on a real report, four changes in one pass:
+
+1. **Removed "Not covered" entirely.** `scan.py`'s `summary.json` always listed "logged-in pages
+   and role access", "record ownership", "approval workflows", "live XSS", "Cloud Armor
+   enforcement" and "historical breach investigation" as not covered on every single scan,
+   regardless of whether the project actually had any of that configured - user's words: "it makes
+   vapt not reliable." Removed the hardcoded `not_tested` field and its rendering in
+   `scan_report.py`; kept "Covered by this scan" (which is accurate, computed from what actually
+   ran) and dropped the now-single-column `.scope` CSS grid down to one column.
+2. **Rebranded "Matt VAPT Kit" to "MVK"** across the user-facing report text in `scan_report.py`
+   and `report.py` (cover, ribbon, watermark, footers, disclaimer, executive summary) - left
+   internal-only text (module docstrings, the project schema's JSON title) alone since those are
+   never shown to a report reader. Also deduplicated a cover-page spot that now had "MVK" printed
+   twice side by side (a badge + a text label) after the straight find-replace.
+3. **Rewrote the printed-page footer** from `MVK-SAR v0.8.8 · MVK-SCAN-dtap-staging-20261012-0603 ·
+   Matt VAPT Kit repository scan` (user: "looks like random text") to
+   `dtap · Repository scan · October 12, 2026 · 2:03 PM PHT · Matt VAPT Kit v0.9.1`-style plain
+   language. Added a small `css_string()` helper since this value now contains a project name that
+   could theoretically contain a quote/backslash and needs CSS-string escaping, not HTML escaping
+   (confirmed the original code never escaped this value at all, relying on it being
+   internally-generated; `project` can come from a user's folder name, so it needed its own
+   escaping, not `esc()`, which would print literal `&amp;`-style entities in a PDF footer).
+4. **Added a real "Suggested fix" column to the vulnerable-dependencies table**, triggered by the
+   user asking "I don't know what I'm looking at... can we do that without using AI, and still
+   offline?" Answer: yes, trivially - OSV's own scan output already includes each advisory's
+   "affected" ranges with the exact version it was fixed in; the kit was already fetching this data
+   and just wasn't reading that field. New `checks.py::suggested_fix()` (pure, offline, no AI) finds
+   the lowest published fixed version above the installed one from data the scan already has; new
+   `version_key()` does basic dotted-numeric version comparison. Also made each advisory ID a
+   clickable link to `osv.dev/vulnerability/{id}` instead of inert text. Verified against the real
+   uuid@3.3.2/GHSA-w5hq-g745-h8pq case end to end (`fixed_version: "11.1.1"`, matching OSV's actual
+   affected-ranges data) and rendered an actual Playwright screenshot of the new table to confirm
+   the visual result, not just the HTML string.
+
+6 new tests in `test_checks.py` (`version_key`, `suggested_fix`: picks lowest fix above installed,
+none when unfixed, falls back to lowest fix when installed is above all of them, ignores unrelated
+advisory ids; `summarize_osv` now includes `fixed_version`); updated `test_scan.py`/
+`test_scan_report.py`/`test_report.py` fixtures and assertions for the removed `not_tested` field
+and the MVK rebrand.
+
+
 
 ### Reformatted the open-report prompt into a short option list
 Was one long run-on sentence ("Press r to open the reports, f to open the folders, b for both, or

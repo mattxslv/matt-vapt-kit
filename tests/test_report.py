@@ -112,7 +112,7 @@ class ReportTests(unittest.TestCase):
                         "APPENDIX A", "APPENDIX B", "APPENDIX C", "APPENDIX D"):
             self.assertIn(heading, document)
         self.assertIn("MVK-DEMONSTRATION-20261001-000000", document)
-        self.assertIn('<div class="watermark" aria-hidden="true">MATT VAPT KIT</div>', document)
+        self.assertIn('<div class="watermark" aria-hidden="true">MVK</div>', document)
         self.assertIn("NOT ISSUED BY CERT-PH", document)
         self.assertIn("TLP:AMBER+STRICT", document)
         self.assertIn("Low (not scored)", document)

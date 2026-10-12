@@ -80,9 +80,14 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
     when = finished.strftime("%B %d, %Y · %I:%M %p PHT").replace(" 0", " ") if finished else "Unknown"
     rid = f"MVK-SCAN-{folder.name.removeprefix('scan-')}"
     kit_version = esc(version("matt-vapt-kit"))
+    def css_string(text: str) -> str:
+        # This lands inside a CSS content: "..." value, not HTML - only quotes/backslashes/
+        # newlines need escaping here, HTML entities would print literally in the PDF footer.
+        return text.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
+
     css = (files("vaptkit").joinpath("assets/scan-report.css").read_text()
            .replace("__TLP__", f"TLP:{tlp}")
-           .replace("__FOOTER__", f"{FORMAT_ID} v{version('matt-vapt-kit')} · {rid} · Matt VAPT Kit repository scan"))
+           .replace("__FOOTER__", css_string(f"{project} · Repository scan · {when} · MVK v{kit_version}")))
 
     # Same rule as the route review: public routes and empty stub handlers are not findings.
     unauthenticated = [(route, handler) for route in routes.get("routes", []) for handler in route["handlers"]
@@ -185,24 +190,32 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
     dependency_html = ""
     if dependencies is not None:
         band_chip = {"critical": "review", "high": "review", "medium": "gap", "low": "gap", "unknown": "gap"}
+
+        def fix_cell(entry):
+            fix = entry.get("fixed_version")
+            return f"Upgrade to <strong>{esc(fix)}</strong> or later" if fix else "No fix published yet"
+
         rows = "".join(
             f'<tr><td class="check">{esc(entry["package"])} <span class="muted">{esc(entry["version"])}</span></td>'
             f'<td class="state"><span class="chip {band_chip[entry["severity"]]}">{esc(entry["severity"])}</span></td>'
-            f'<td><code>{esc(entry["id"])}</code></td><td>{esc(SCOPE_LABEL.get(entry.get("scope"), "Runtime"))}</td></tr>'
+            f'<td><a href="https://osv.dev/vulnerability/{esc(entry["id"])}"><code>{esc(entry["id"])}</code></a></td>'
+            f'<td>{fix_cell(entry)}</td><td>{esc(SCOPE_LABEL.get(entry.get("scope"), "Runtime"))}</td></tr>'
             for entry in dependencies["top"][:ROUTE_LIMIT])
         listed = ", ".join(f"<code>{esc(path)}</code>" for path in dependencies["lockfiles"])
         removable = [item for item in dependencies.get("unused_dependencies", []) if item["clears"]]
         removal = ("<p><strong>Quick win:</strong> nothing imports " + ", ".join(
             f'<code>{esc(item["name"])}</code> (clears {item["clears"]})' for item in removable)
                    + ". Removing them from package.json clears those high/critical findings.</p>") if removable else ""
-        body = (f'<table><thead><tr><th>Package</th><th>Severity</th><th>Advisory</th><th>Used in</th></tr></thead>'
+        body = (f'<table><thead><tr><th>Package</th><th>Severity</th><th>Advisory</th>'
+                f'<th>Suggested fix</th><th>Used in</th></tr></thead>'
                 f"<tbody>{rows}</tbody></table>" if rows else
                 '<p class="lede">No known vulnerabilities in these lockfiles.</p>')
         dependency_html = f"""<section class="chapter">
   <header class="chapter-head"><p class="eyebrow">§§</p><h2>Vulnerable dependencies</h2></header>
   <p class="lede">Known advisories for the exact package versions pinned in {listed}, from the public OSV
   database. "Dev only" packages (tests, build tools) don't ship, and "Unused dependency" ones come only through
-  a dependency nothing in the code imports; fix runtime high and critical ones first.</p>
+  a dependency nothing in the code imports; fix runtime high and critical ones first. Click an advisory ID for
+  full details. The suggested fix is the package's own published fixed version, not a guess.</p>
   {removal}
   {body}
 </section>
@@ -228,19 +241,17 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
   {table_html}{errors}
 </section>
 """
-    not_tested = "".join(f"<li>{esc(item[:1].upper() + item[1:])}</li>" for item in summary.get("not_tested", []))
-    live_gap = "live staging" in summary.get("not_tested", [])
     covered = "".join(f"<li>{esc(stage(row))}</li>" for row in summary["checks"]
                       if row["status"] in ("DONE", "REVIEW")
-                      and not (live_gap and stage(row).startswith("Live staging")))
+                      and not (not facts.get("staging_covered") and stage(row).startswith("Live staging")))
 
     document = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
 <title>{esc(rid)} | {esc(project)} Repository Scan</title><style>{css}</style></head><body>
-<div class="watermark" aria-hidden="true">MATT VAPT KIT</div>
+<div class="watermark" aria-hidden="true">MVK</div>
 
 <section class="cover">
-  <div class="ribbon">MATT VAPT KIT · INTERNAL REPOSITORY SCAN · NOT ISSUED BY CERT-PH</div>
+  <div class="ribbon">MVK · INTERNAL REPOSITORY SCAN · NOT ISSUED BY CERT-PH</div>
   <div class="cover-night">
     <div class="cover-logo">{lockup_svg()}</div>
     <p class="kicker">Committed-code security scan</p>
@@ -253,7 +264,7 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
       <div><dt>Report ID</dt><dd>{esc(rid)}</dd></div>
       <div><dt>Classification</dt><dd class="tlp">TLP:{esc(tlp)}</dd></div>
     </dl>
-    <p class="cover-note">An internal self-assessment of committed code, produced by Matt VAPT Kit {kit_version}.
+    <p class="cover-note">An internal self-assessment of committed code, produced by MVK {kit_version}.
     It is not a CERT-PH report, a penetration test or an all-clear. Findings are suspected until a person confirms them.</p>
   </div>
 </section>
@@ -291,9 +302,8 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
   <header class="chapter-head"><p class="eyebrow">§§</p><h2>Scope and limits</h2></header>
   <div class="scope">
     <div><h3>Covered by this scan</h3><ul>{covered or "<li>Nothing completed</li>"}</ul></div>
-    <div><h3>Not covered</h3><ul>{not_tested}</ul></div>
   </div>
-  <p class="closing">{esc(rid)} · Matt VAPT Kit {kit_version}. Committed code at
+  <p class="closing">{esc(rid)} · MVK {kit_version}. Committed code at
   {esc(summary["revision"][:12])}{" and read-only staging checks" if staging_html else ""}; working-tree changes,
   logged-in behaviour and business logic were not tested.
   Share this report only with people approved to see its findings.</p>

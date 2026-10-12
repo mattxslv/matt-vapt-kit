@@ -84,7 +84,6 @@ class LoadingMessage:
                 track.append("━" * STEP_WIDTH, style=SHIMMER if int(elapsed * 2) % 2 else ACCENT)
             else:
                 track.append("─" * STEP_WIDTH, style="grey37")
-        track.append(f"  step {self.step} of {self.steps}", style="dim")
         yield Group(message, track)
 
 

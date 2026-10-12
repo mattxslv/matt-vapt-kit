@@ -67,7 +67,6 @@ class ScanTests(unittest.TestCase):
         lines = stream.getvalue().splitlines()
         self.assertIn("Digging…", lines[0])
         self.assertIn("(0s · Static rules)", lines[0])
-        self.assertIn("step 3 of 4", lines[1])
         self.assertEqual(lines[1].count("━"), 15)
         self.assertEqual(len(lines), 2)
 

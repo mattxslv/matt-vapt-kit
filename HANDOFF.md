@@ -6,6 +6,13 @@
 
 Current version: **v0.9.2**. 403 Python tests pass.
 
+### Removed redundant "step X of Y" text under the loading progress bar
+User screenshot: the stage header already says "3 / 4  Static rules" and the loading indicator's
+progress track (`━━━ ━━━ ─── ───`) already visually encodes the same position, so the extra
+"step 3 of 4" text under the bar was pure duplication. Removed it from `LoadingMessage.
+__rich_console__()` in `scan.py`, keeping just the visual bar. Updated the one test asserting that
+text.
+
 ### Replaced the dependency table with per-finding visual cards
 User asked whether "screenshots" could be added without needing live staging setup. Checked the
 existing mechanism first: `report.py`'s "screenshot" feature isn't actually a screenshot of a live

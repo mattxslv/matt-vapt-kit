@@ -106,9 +106,15 @@ def project_list() -> list[tuple[Path, bool]]:
 def choose_project(console: Console) -> Path | None:
     projects = project_list()
     console.print(Text("Which project?", style="bold"))
+    last_recent = None
     for number, (path, recent) in enumerate(projects, start=1):
+        if recent != last_recent:
+            console.print(Text("  Recent" if recent else "  Other projects found on this computer", style="dim"))
+            last_recent = recent
         label = str(path).replace(str(Path.home()), "~", 1)
-        option(console, str(number), label + ("  (recent)" if recent else ""))
+        option(console, str(number), label)
+    if projects:
+        console.print()
     option(console, "n", "Type a different folder path")
     option(console, "b", "Back")
     choice = ask(console, "\nChoose: ").lower()

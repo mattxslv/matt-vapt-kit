@@ -4,7 +4,30 @@
 
 ## What this session added (2026-10-12, latest)
 
-Current version: **v0.8.8**. 397 Python tests pass (383 + 14 new).
+Current version: **v0.8.9**. 397 Python tests pass.
+
+### Grouped the project picker into "Recent" / "Other projects" sections
+User screenshot showed a flat 28-entry numbered list (`choose_project` in `menu.py`) with no
+visual grouping - recent projects only distinguished by a trailing "(recent)" label, easy to miss
+once the list runs long. Added a dim section header ("Recent" / "Other projects found on this
+computer") printed whenever the recent/non-recent boundary is crossed, numbering stays continuous
+so existing input handling is unchanged. Dropped the "(recent)" suffix text since the header now
+carries that information. Verified the rendering with a mocked console rather than just reading
+the diff.
+
+### Fixed a real pre-existing bug found by resyncing the installed version
+Running `./install`-fixed repos still needs the actual `pip install -e .` rerun whenever
+`pyproject.toml` is edited directly (not through `./install`) - confirmed the version banner goes
+stale again after each manual edit-tool version bump this session, resynced with
+`.venv/bin/pip install -e .` before testing. Not a new bug, just a reminder that the self-healing
+fix only triggers through the install scripts, not direct edits.
+
+### User-facing clarification: "Secret history ... REVIEW ... incomplete"
+User saw this on a real DTAP scan and asked if it was a bug. It is not - it is the gitleaks
+undercounting fix from earlier this session working exactly as intended: DTAP's real history is
+large enough that gitleaks still can't finish walking it (confirmed again live: 1233 of 1484
+commits on this run), and the kit correctly refuses to call that "clean" instead of hiding the
+gap. No code change from this; documented here in case it comes up again before anyone forgets why.
 
 ### Five items from a peer session's real-world friction backlog
 A separate Claude session (tonky-55) working the DTAP incident sent over 5 ideas, explicitly

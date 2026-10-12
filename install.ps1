@@ -26,6 +26,22 @@ if ($LASTEXITCODE -ne 0) {
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Adding the PDF report tools (downloads Python packages)."
         & $venvPython -m pip install --quiet -e "$kitDir[report]"
+    } else {
+        # An editable install keeps running the latest code automatically, but its recorded
+        # version/dependency metadata freezes at whatever it was on the last `pip install -e .` -
+        # without this, a version bump that adds a new dependency would silently never install.
+        $pyprojectVersion = (Select-String -Path (Join-Path $kitDir "pyproject.toml") -Pattern '^version = "(.*)"' | Select-Object -First 1).Matches.Groups[1].Value
+        $installedVersion = & $venvPython -c "
+from importlib.metadata import PackageNotFoundError, version
+try:
+    print(version('matt-vapt-kit'))
+except PackageNotFoundError:
+    print('')
+" 2>$null
+        if ($pyprojectVersion -ne $installedVersion) {
+            Write-Host "Updating the toolkit to v$pyprojectVersion..."
+            & $venvPython -m pip install --quiet -e "$kitDir[report]"
+        }
     }
 }
 

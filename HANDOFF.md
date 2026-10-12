@@ -4,8 +4,44 @@
 
 ## What this session added (2026-10-12, latest)
 
-Current version: **v0.8.4**. 377 Python tests pass
+Current version: **v0.8.5**. 377 Python tests pass
 (`.venv/bin/python -m unittest discover -s tests`).
+
+### Fixed stale version display after repeated updates (real bug, user-caught)
+User noticed the terminal banner on a real scan (in ~/repos/dtap) still said
+v0.7.4 despite ~10 version bumps earlier this session. Root cause: `./install`
+only runs `pip install -e .[report]` when `import rich, vaptkit.menu` fails -
+true only on a genuinely fresh venv. Once that import succeeds, the script
+never reinstalls again on later runs. An editable install keeps running live
+code from disk (so behavior updates every `git pull`, no bug there), but its
+recorded version/dependency metadata is a snapshot frozen at whatever it was
+on the LAST actual `pip install -e .` - confirmed the actual installed dist
+said 0.7.4 while pyproject.toml said 0.8.4. Worse than cosmetic: if a future
+version bump ever adds a genuinely new dependency, this same gap means an
+existing install would silently never get it, and whatever feature needs it
+would crash with `ModuleNotFoundError` until someone manually reinstalled.
+
+Fixed in both `install` and `install.ps1`: once the toolkit is already
+installed, compare `pyproject.toml`'s version against
+`importlib.metadata.version("matt-vapt-kit")` and only reinstall when they
+differ - cheap (two quick reads, no pip call) on the common "already
+current" path, and self-heals automatically on every future version bump
+without adding pip overhead to every single launch.
+
+Verified against a real reproduction, not just code review: manually rolled
+back the project's own `matt_vapt_kit.egg-info/PKG-INFO` version to 0.7.4
+(confirmed this, not the venv's `.dist-info`, is what
+`importlib.metadata.version()` actually reads for an editable install -
+learned this the first attempt, when editing the venv-side dist-info instead
+did nothing), then ran the real `./install` end to end: it printed
+"Updating the toolkit to v0.8.4...", reinstalled, and
+`importlib.metadata.version()` came back correct immediately after. Ran it a
+second time afterward to confirm the no-op path doesn't trigger a redundant
+reinstall once versions match.
+
+`install.ps1` got the same fix mechanically translated (not run on a real
+Windows machine - same pre-existing, already-documented verification gap as
+the rest of the Windows path).
 
 ### Bounded same-origin crawler (closes the last NCERT-toolset gap: Burp's spider)
 Asked the user directly what else from the real NCERT/CERT-PH toolset

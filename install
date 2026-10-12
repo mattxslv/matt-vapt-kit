@@ -17,6 +17,22 @@ if ! "$kit_dir/.venv/bin/python" -c 'import rich, vaptkit.menu' >/dev/null 2>&1;
 elif ! "$kit_dir/.venv/bin/python" -c 'import playwright' >/dev/null 2>&1; then
     printf '%s\n' "Adding the PDF report tools (downloads Python packages)."
     "$kit_dir/.venv/bin/python" -m pip install --quiet -e "$kit_dir[report]"
+else
+    # An editable install keeps running the latest code automatically, but its recorded
+    # version/dependency metadata freezes at whatever it was on the last `pip install -e .` -
+    # without this, a version bump that adds a new dependency would silently never get installed.
+    pyproject_version=$(grep -m1 '^version = ' "$kit_dir/pyproject.toml" | sed -E 's/version = "(.*)"/\1/')
+    installed_version=$("$kit_dir/.venv/bin/python" -c '
+from importlib.metadata import PackageNotFoundError, version
+try:
+    print(version("matt-vapt-kit"))
+except PackageNotFoundError:
+    print("")
+' 2>/dev/null || printf '')
+    if [ "$pyproject_version" != "$installed_version" ]; then
+        printf '%s\n' "Updating the toolkit to v$pyproject_version..."
+        "$kit_dir/.venv/bin/python" -m pip install --quiet -e "$kit_dir[report]"
+    fi
 fi
 if ! "$kit_dir/.venv/bin/python" -c 'from playwright.sync_api import sync_playwright as s; p = s().start(); b = p.chromium.launch(); b.close(); p.stop()' >/dev/null 2>&1; then
     printf '%s\n' "Downloading the browser used to print PDF reports (about 150 MB, one time)."

@@ -29,6 +29,40 @@ def checked_revision(repo: Path, revision: str) -> str:
     return sha
 
 
+DEFAULT_BRANCHES = ("main", "master")
+
+
+def remote_branch_divergence(repo: Path, branches: tuple = DEFAULT_BRANCHES) -> list[dict]:
+    """Configured remotes whose default branch tip has genuinely diverged - neither commit is an
+    ancestor of the other - checked via `git merge-base` rather than a helper that raises on any
+    nonzero exit, since "not an ancestor" is an expected, non-error outcome here, not a failure.
+
+    Found from a real incident: a repo with both a GitHub mirror and the actual GitLab deploy
+    source had diverged on `main` without anyone noticing, because nothing ever compared them.
+    """
+    remotes = sorted(line for line in git(repo, "remote").splitlines() if line.strip())
+    pairs = []
+    for branch in branches:
+        tips = {}
+        for remote in remotes:
+            try:
+                tips[remote] = git(repo, "rev-parse", f"{remote}/{branch}")
+            except ToolError:
+                continue
+        names = sorted(tips)
+        for i, a in enumerate(names):
+            for b in names[i + 1:]:
+                if tips[a] == tips[b]:
+                    continue
+                try:
+                    merge_base = git(repo, "merge-base", tips[a], tips[b])
+                except ToolError:
+                    merge_base = None  # no shared history at all - also a divergence, not an error
+                if merge_base not in (tips[a], tips[b]):
+                    pairs.append({"branch": branch, "remotes": [a, b], "commits": [tips[a][:12], tips[b][:12]]})
+    return pairs
+
+
 def docker_repo(repo: Path) -> list[str]:
     common = Path(git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir"))
     command = [
@@ -129,6 +163,24 @@ def dependency_scopes(root: Path, lockfile: str, unused: frozenset = frozenset()
     return lambda package, version: "unknown"
 
 
+DATABASE_SEVERITY_BAND = {"critical": "critical", "high": "high", "moderate": "medium", "low": "low"}
+
+
+def database_severity(vulnerabilities: list[dict], ids: list[str]) -> str | None:
+    """The advisory source's own severity label (e.g. GHSA's LOW/MODERATE/HIGH/CRITICAL), lowercased
+    to this kit's band vocabulary - independent of the CVSS-score-derived band, since the two can
+    and do disagree. Confirmed against a real case: npm's uuid 3.3.2 (GHSA-w5hq-g745-h8pq) is rated
+    MODERATE by GitHub but its 7.5 CVSS score computes to this kit's "high" band.
+    """
+    wanted = set(ids)
+    for vuln in vulnerabilities:
+        if vuln.get("id") in wanted:
+            raw = (vuln.get("database_specific") or {}).get("severity")
+            if isinstance(raw, str) and raw.strip().lower() in DATABASE_SEVERITY_BAND:
+                return DATABASE_SEVERITY_BAND[raw.strip().lower()]
+    return None
+
+
 def summarize_osv(report: dict, scopes: dict | None = None) -> dict:
     counts = dict.fromkeys(SEVERITIES, 0)
     runtime_counts = dict.fromkeys(SEVERITIES, 0)
@@ -147,9 +199,13 @@ def summarize_osv(report: dict, scopes: dict | None = None) -> dict:
                 counts[band] += 1
                 if scope not in ("dev", "unused"):
                     runtime_counts[band] += 1
-                top.append({"package": package["name"], "version": package.get("version", ""),
-                            "ecosystem": package.get("ecosystem", ""), "id": group["ids"][0], "severity": band,
-                            "score": group.get("max_severity") or "", "scope": scope})
+                entry = {"package": package["name"], "version": package.get("version", ""),
+                        "ecosystem": package.get("ecosystem", ""), "id": group["ids"][0], "severity": band,
+                        "score": group.get("max_severity") or "", "scope": scope}
+                source_band = database_severity(item.get("vulnerabilities", []), group["ids"])
+                if source_band and source_band != band:
+                    entry["severity_disagreement"] = source_band
+                top.append(entry)
     # Runtime (and unclassified) first: dev-only packages never ship in the running app.
     top.sort(key=lambda entry: (entry["scope"] in ("dev", "unused"), SEVERITIES.index(entry["severity"]), entry["package"]))
     return {"vulnerabilities": sum(counts.values()), "packages": packages, "severity": counts,
@@ -239,6 +295,9 @@ def check(repo: Path, revision: str, *, static: bool = False, routes: bool = Fal
     repo = Path(git(repo, "rev-parse", "--show-toplevel")).resolve()
     sha = checked_revision(repo, revision)
     print(f"Checking committed tree {sha[:12]}; dirty working files are not included.", flush=True)
+    for item in remote_branch_divergence(repo):
+        print(f"Remote drift: {item['remotes'][0]} and {item['remotes'][1]} disagree on {item['branch']} "
+              f"({item['commits'][0]} vs {item['commits'][1]}) - confirm which one actually deploys.")
     found = history_findings(repo, sha)
     real = [item for item in found if not item["placeholder"]]
     placeholders = len(found) - len(real)
@@ -256,12 +315,20 @@ def check(repo: Path, revision: str, *, static: bool = False, routes: bool = Fal
         total = report["severity"]["critical"] + report["severity"]["high"]
         # Lead with what's actually reachable: a raw "2 critical | 62 high" overstates risk when most of it
         # is dev-only or comes only through a dependency nothing imports.
+        removable = [item for item in report.get("unused_dependencies", []) if item["clears"]]
+        removable_note = (" Removing unused dependencies would clear some: " + ", ".join(
+            f"{item['name']} ({item['clears']})" for item in removable[:4]) + "." if removable else "")
+        disagreements = [item for item in report["top"] if item.get("severity_disagreement")]
+        disagreement_note = (f" {len(disagreements)} finding(s) where the advisory source disagrees: " + ", ".join(
+            f"{item['package']} (computed {item['severity']}, advisory says {item['severity_disagreement']})"
+            for item in disagreements[:3]) + "." if disagreements else "")
         print(f"Dependency audit: {serious} high/critical in runtime dependencies"
               + (f" (of {total} total across {report['packages']} packages)" if total != serious else "")
               + f". {report['vulnerabilities']} known vulnerabilities in {len(report['lockfiles'])} lockfile(s) "
-              f"({severity_text(report['severity']) or 'none'}).")
+              f"({severity_text(report['severity']) or 'none'}).{removable_note}{disagreement_note}")
         if serious:
-            raise ToolError(f"{serious} high/critical vulnerabilities in runtime dependencies; update those packages.")
+            raise ToolError(f"{serious} high/critical vulnerabilities in runtime dependencies; "
+                            f"update those packages.{removable_note}{disagreement_note}")
     if static:
         scan_static(repo, sha)
     if routes:

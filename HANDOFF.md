@@ -4,8 +4,66 @@
 
 ## What this session added (2026-10-12, latest)
 
-Current version: **v0.8.7**. 383 Python tests pass
-(`.venv/bin/python -m unittest discover -s tests`).
+Current version: **v0.8.8**. 397 Python tests pass (383 + 14 new).
+
+### Five items from a peer session's real-world friction backlog
+A separate Claude session (tonky-55) working the DTAP incident sent over 5 ideas, explicitly
+"no urgency attached, just flagging... in case it's useful backlog" - user said build all 5 now,
+not one at a time. All verified against the real repos/vulnerabilities that prompted them, not
+just invented test cases.
+
+1. **Severity-source disagreement, silently hidden.** `checks.py::database_severity()` reads
+   `database_specific.severity` from the raw OSV vulnerability record (GHSA's own MODERATE/HIGH/
+   etc. label) and compares it against the CVSS-score-derived band `severity_band()` already
+   computes; `summarize_osv()`'s `top` entries get a `severity_disagreement` key when they differ.
+   Verified against the exact real case: npm `uuid@3.3.2` / GHSA-w5hq-g745-h8pq computes to "high"
+   from a 7.5 CVSS score but GitHub rates it MODERATE. Surfaced in both `scan.py`'s per-package
+   listing and `checks.py::check()`'s aggregate print/error text (confirmed end to end: `vapt check`
+   against a real uuid@3.3.2 lockfile now prints "1 finding(s) where the advisory source disagrees:
+   uuid (computed high, advisory says medium)").
+
+2. **"Removing unused deps clears vulnerabilities" was buried.** This insight already existed in
+   `scan.py`'s interactive recap (`removable`/`clears` from `unused_dependencies`) but was
+   completely absent from `checks.py::check()` - the actual CLI/push-hook path, which is what
+   tonky-55 was using. Added the identical note there, including in the raised `ToolError` so it's
+   visible even when the push is blocked (the moment a free fix matters most).
+
+3. **console.log findings had no risk tiering** - 533 matches all looked identical, whether a
+   benign string trace or a raw request body. New `console-log-identifier` semgrep rule (separate
+   from `console-log-statement`) flags `console.log/debug/info/warn/error` calls whose argument is
+   a bare identifier matching body/req/request/response/payload/credentials/password/token/secret/
+   session/auth/account/headers - deliberately overrides the error/warn exemption, same reasoning
+   as the emoji rule, since identifier choice is a stronger signal than which console method
+   carries it. Verified against the real finding (`app/api/user/profile/route.ts:100`, logging raw
+   `body` before field-filtering) and against safe patterns (`console.log(JSON.stringify(x))`,
+   `console.log(count)`) with the real pinned semgrep image - correctly silent on both. 16/16
+   semgrep tests pass.
+
+4. **Regression checks had no tolerance for "stricter than expected".** `/api/debug` moving from
+   404 to 401 is middleware getting *more* protective, not a regression, but the old check only
+   knew PASS/FAIL against one hardcoded status. New `live.py::stricter_than_expected()` ranks
+   status codes by how much they restrict visibility (open < hidden/404 < explicit-auth-required/
+   401-403) and `run_regressions()` tags a non-matching result `"stricter"` when the observed
+   status outranks every expected one. `scan.py` no longer counts those as failures (prints `OK+`
+   instead of `FAIL`) and the final recap calls out the count with a pointer to update
+   `expect_status` - so it stops crying wolf on every future scan instead of needing a human to
+   notice every time.
+
+5. **No cross-remote drift detection** - the exact gitlab/main vs mattxslv/main divergence that
+   caused real back-and-forth with tonky-55 tonight wouldn't have been caught by anything in the
+   kit. New `checks.py::remote_branch_divergence()`: for each configured remote pair, compares
+   `main`/`master` tips via `git merge-base` (not a helper that raises on "not an ancestor", since
+   that's an expected outcome here, not an error) and flags a genuine divergence - neither tip is
+   an ancestor of the other. Non-blocking, informational only (printed in `check()`, no
+   `ToolError`), since remote disagreement is a hygiene problem worth a human's attention, not a
+   push-blocking vulnerability. Verified against the real DTAP repo:
+   `remote_branch_divergence(Path("/home/tonky/DTAP"))` correctly flags gitlab vs mattxslv (and
+   mattxslv vs origin) disagreeing on `main` with the exact commits from tonight's investigation.
+
+14 new tests total across `test_checks.py` (database_severity: 3; summarize_osv disagreement: 2;
+check() integration for both the removable-deps and disagreement notes: 2; RemoteBranchDivergenceTests:
+6 using real scratch-repo forks, not mocks) and `test_live.py` (stricter_than_expected: 1, plus an
+existing test extended with a stricter-field assertion).
 
 ### Human-readable evidence folder names (user-caught UX issue) + "open both" option
 User saw a real scan's output path (`scan-20261012-053127-469498`) and pointed out, fairly,

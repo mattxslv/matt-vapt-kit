@@ -84,6 +84,19 @@ class RegressionTests(unittest.TestCase):
             results = run_regressions({}, {"active": True}, checks, Path("/tmp/unused"))
         self.assertEqual([(item["path"], item["status"], item["ok"]) for item in results],
                          [("/api/debug", 401, False), ("/.env", 404, True)])
+        # /api/debug going from 404 to 401 is middleware getting stricter, not a regression.
+        self.assertEqual([item["stricter"] for item in results], [True, False])
+
+    def test_stricter_than_expected(self):
+        from vaptkit.live import stricter_than_expected
+        self.assertTrue(stricter_than_expected(401, [404]))
+        self.assertTrue(stricter_than_expected(403, [200]))
+        self.assertFalse(stricter_than_expected(404, [401]))
+        self.assertFalse(stricter_than_expected(200, [404]))
+        self.assertFalse(stricter_than_expected(401, [401]))
+        self.assertFalse(stricter_than_expected(500, [404]))
+        self.assertFalse(stricter_than_expected(None, [404]))
+        self.assertFalse(stricter_than_expected(401, []))
 
     def test_regression_file_needs_paths_and_expected_status(self):
         from vaptkit.live import regression_checks

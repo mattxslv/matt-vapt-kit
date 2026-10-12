@@ -6,8 +6,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from vaptkit.checks import (audit_commit, check, checked_revision, dependency_scopes, history_findings, lockfiles, pnpm_runtime,
-                            pushed_updates, severity_band, summarize_osv)
+from vaptkit.checks import (audit_commit, check, checked_revision, database_severity, dependency_scopes,
+                            history_findings, lockfiles, pnpm_runtime, pushed_updates, severity_band, summarize_osv)
 from vaptkit.hooks import Findings, install, protect, uninstall
 from vaptkit.process import ToolError, git
 
@@ -203,6 +203,51 @@ class PushTests(unittest.TestCase):
             audit_commit(self.repo, git(self.repo, "rev-parse", "HEAD"))
         self.assertNotIn("--config", seen["command"])
 
+    def test_removable_unused_dependencies_are_surfaced_in_output_and_error(self):
+        import contextlib
+        import io
+
+        git(self.repo, "commit", "--allow-empty", "-qm", "empty")
+        report = {
+            "severity": {"critical": 0, "high": 1, "medium": 0, "low": 0, "unknown": 0},
+            "runtime_severity": {"critical": 0, "high": 1, "medium": 0, "low": 0, "unknown": 0},
+            "vulnerabilities": 1, "packages": 1, "lockfiles": ["package-lock.json"], "top": [],
+            "unused_dependencies": [{"name": "@google-cloud/aiplatform", "clears": 9},
+                                    {"name": "autoprefixer", "clears": 2}, {"name": "kept-dep", "clears": 0}],
+        }
+        with patch("vaptkit.checks.history_findings", return_value=[]), \
+                patch("vaptkit.checks.audit_commit", return_value=report):
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                with self.assertRaises(ToolError) as caught:
+                    check(self.repo, "HEAD")
+        for text in (str(caught.exception), stdout.getvalue()):
+            self.assertIn("Removing unused dependencies would clear some", text)
+            self.assertIn("@google-cloud/aiplatform (9)", text)
+            self.assertIn("autoprefixer (2)", text)
+            self.assertNotIn("kept-dep", text)
+
+    def test_severity_disagreement_is_surfaced_in_output_and_error(self):
+        import contextlib
+        import io
+
+        git(self.repo, "commit", "--allow-empty", "-qm", "empty")
+        report = {
+            "severity": {"critical": 0, "high": 1, "medium": 0, "low": 0, "unknown": 0},
+            "runtime_severity": {"critical": 0, "high": 1, "medium": 0, "low": 0, "unknown": 0},
+            "vulnerabilities": 1, "packages": 1, "lockfiles": ["package-lock.json"], "unused_dependencies": [],
+            "top": [{"package": "uuid", "version": "3.3.2", "severity": "high", "severity_disagreement": "medium"}],
+        }
+        with patch("vaptkit.checks.history_findings", return_value=[]), \
+                patch("vaptkit.checks.audit_commit", return_value=report):
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                with self.assertRaises(ToolError) as caught:
+                    check(self.repo, "HEAD")
+        for text in (str(caught.exception), stdout.getvalue()):
+            self.assertIn("advisory source disagrees", text)
+            self.assertIn("uuid (computed high, advisory says medium)", text)
+
     def test_scanner_finding_no_packages_counts_as_no_audit(self):
         (self.repo / "package-lock.json").write_text("{}")
         git(self.repo, "add", "package-lock.json")
@@ -235,6 +280,156 @@ class DependencyReportTests(unittest.TestCase):
         self.assertEqual(summary["vulnerabilities"], 2)
         self.assertEqual(summary["packages"], 2)
         self.assertEqual(summary["top"][0]["package"], "b")
+
+    def test_database_severity_reads_github_reviewed_label(self):
+        vulns = [{"id": "GHSA-x", "database_specific": {"severity": "MODERATE"}}]
+        self.assertEqual(database_severity(vulns, ["GHSA-x"]), "medium")
+
+    def test_database_severity_none_when_id_not_in_group(self):
+        vulns = [{"id": "GHSA-other", "database_specific": {"severity": "HIGH"}}]
+        self.assertIsNone(database_severity(vulns, ["GHSA-x"]))
+
+    def test_database_severity_none_when_label_unrecognized_or_missing(self):
+        self.assertIsNone(database_severity([{"id": "GHSA-x", "database_specific": {}}], ["GHSA-x"]))
+        self.assertIsNone(database_severity([{"id": "GHSA-x", "database_specific": {"severity": "weird"}}], ["GHSA-x"]))
+        self.assertIsNone(database_severity([{"id": "GHSA-x"}], ["GHSA-x"]))
+
+    def test_summary_flags_disagreement_between_computed_and_advisory_severity(self):
+        # Real case: npm uuid 3.3.2 / GHSA-w5hq-g745-h8pq computes to "high" from a 7.5 CVSS score
+        # but GitHub's own database_specific.severity rates it MODERATE.
+        summary = summarize_osv({"results": [{"packages": [
+            {"package": {"name": "uuid", "version": "3.3.2"},
+             "groups": [{"ids": ["GHSA-w5hq-g745-h8pq"], "max_severity": "7.5"}],
+             "vulnerabilities": [{"id": "GHSA-w5hq-g745-h8pq", "database_specific": {"severity": "MODERATE"}}]},
+        ]}]})
+        self.assertEqual(summary["top"][0]["severity"], "high")
+        self.assertEqual(summary["top"][0]["severity_disagreement"], "medium")
+
+    def test_summary_has_no_disagreement_key_when_sources_agree(self):
+        summary = summarize_osv({"results": [{"packages": [
+            {"package": {"name": "a", "version": "1"}, "groups": [{"ids": ["GHSA-a"], "max_severity": "9.8"}],
+             "vulnerabilities": [{"id": "GHSA-a", "database_specific": {"severity": "CRITICAL"}}]},
+        ]}]})
+        self.assertNotIn("severity_disagreement", summary["top"][0])
+
+
+class RemoteBranchDivergenceTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+
+    def repo(self, name):
+        path = self.root / name
+        path.mkdir()
+        git(path, "init", "-q")
+        git(path, "config", "user.email", "t@example.invalid")
+        git(path, "config", "user.name", "T")
+        return path
+
+    def commit(self, repo, message):
+        (repo / "f.txt").write_text(message)
+        git(repo, "add", ".")
+        git(repo, "commit", "-qm", message)
+
+    def test_no_divergence_when_remotes_share_the_same_tip(self):
+        from vaptkit.checks import remote_branch_divergence
+        source = self.repo("source")
+        self.commit(source, "one")
+        git(source, "branch", "-M", "main")
+        local = self.repo("local")
+        git(local, "remote", "add", "a", str(source))
+        git(local, "remote", "add", "b", str(source))
+        git(local, "fetch", "a", "--quiet")
+        git(local, "fetch", "b", "--quiet")
+        self.assertEqual(remote_branch_divergence(local), [])
+
+    def test_fast_forward_is_not_divergence(self):
+        from vaptkit.checks import remote_branch_divergence
+        source = self.repo("source")
+        self.commit(source, "one")
+        git(source, "branch", "-M", "main")
+        local = self.repo("local")
+        git(local, "remote", "add", "a", str(source))
+        git(local, "fetch", "a", "--quiet")
+        self.commit(source, "two")
+        local2 = self.repo("local2")
+        git(local2, "remote", "add", "a", str(source))
+        git(local2, "remote", "add", "b", str(local))
+        git(local2, "fetch", "a", "--quiet")
+        git(local2, "fetch", "b", "--quiet")
+        self.assertEqual(remote_branch_divergence(local2), [])
+
+    def test_real_divergence_is_flagged(self):
+        from vaptkit.checks import remote_branch_divergence
+        base = self.repo("base")
+        self.commit(base, "one")
+        git(base, "branch", "-M", "main")
+        fork_a = self.repo("fork_a")
+        git(fork_a, "remote", "add", "origin", str(base))
+        git(fork_a, "fetch", "origin", "--quiet")
+        git(fork_a, "checkout", "-q", "-b", "main", "origin/main")
+        self.commit(fork_a, "a-only")
+        fork_b = self.repo("fork_b")
+        git(fork_b, "remote", "add", "origin", str(base))
+        git(fork_b, "fetch", "origin", "--quiet")
+        git(fork_b, "checkout", "-q", "-b", "main", "origin/main")
+        self.commit(fork_b, "b-only")
+        local = self.repo("local")
+        git(local, "remote", "add", "a", str(fork_a))
+        git(local, "remote", "add", "b", str(fork_b))
+        git(local, "fetch", "a", "--quiet")
+        git(local, "fetch", "b", "--quiet")
+        result = remote_branch_divergence(local)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["branch"], "main")
+        self.assertEqual(sorted(result[0]["remotes"]), ["a", "b"])
+
+    def test_single_remote_has_nothing_to_compare(self):
+        from vaptkit.checks import remote_branch_divergence
+        source = self.repo("source")
+        self.commit(source, "one")
+        git(source, "branch", "-M", "main")
+        local = self.repo("local")
+        git(local, "remote", "add", "origin", str(source))
+        git(local, "fetch", "origin", "--quiet")
+        self.assertEqual(remote_branch_divergence(local), [])
+
+    def test_no_remotes_returns_empty(self):
+        from vaptkit.checks import remote_branch_divergence
+        local = self.repo("local")
+        self.commit(local, "one")
+        self.assertEqual(remote_branch_divergence(local), [])
+
+    def test_check_prints_divergence_without_blocking_on_it(self):
+        import contextlib
+        import io
+
+        base = self.repo("base")
+        self.commit(base, "one")
+        git(base, "branch", "-M", "main")
+        fork_a = self.repo("fork_a")
+        git(fork_a, "remote", "add", "origin", str(base))
+        git(fork_a, "fetch", "origin", "--quiet")
+        git(fork_a, "checkout", "-q", "-b", "main", "origin/main")
+        self.commit(fork_a, "a-only")
+        fork_b = self.repo("fork_b")
+        git(fork_b, "remote", "add", "origin", str(base))
+        git(fork_b, "fetch", "origin", "--quiet")
+        git(fork_b, "checkout", "-q", "-b", "main", "origin/main")
+        self.commit(fork_b, "b-only")
+        local = self.repo("local")
+        git(local, "remote", "add", "a", str(fork_a))
+        git(local, "remote", "add", "b", str(fork_b))
+        git(local, "fetch", "a", "--quiet")
+        git(local, "fetch", "b", "--quiet")
+        self.commit(local, "local-head")
+        stdout = io.StringIO()
+        with patch("vaptkit.checks.history_findings", return_value=[]), \
+                patch("vaptkit.checks.audit_commit", return_value=None):
+            with contextlib.redirect_stdout(stdout):
+                check(local, "HEAD")
+        self.assertIn("Remote drift: a and b disagree on main", stdout.getvalue())
 
 
 class HookProtectTests(unittest.TestCase):

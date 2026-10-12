@@ -33,3 +33,16 @@ console.log("🚀 starting server", port);
 console.error("✅ done processing");
 // ok: console-emoji-debug
 console.error("payment failed for order", orderId);
+
+// ruleid: console-log-identifier,console-log-statement
+console.log(body);
+// ruleid: console-log-identifier,console-log-statement
+console.log("Request body:", req);
+// ruleid: console-log-identifier
+console.error(credentials);
+// ruleid: console-log-identifier
+console.warn(token);
+// ruleid: console-log-statement
+console.log(JSON.stringify(allowedFields));
+// ruleid: console-log-statement
+console.log(count);

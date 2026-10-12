@@ -397,7 +397,9 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
                     runtime_serious=serious, high=bool(serious))
         for entry in report["top"][:8]:
             dev = {"dev": "  (dev only)", "unused": "  (via an unused dependency)"}.get(entry["scope"], "")
-            console.print(Text(f"  {entry['severity']:<8} {entry['package']} {entry['version']}  {entry['id']}{dev}",
+            disagreement = entry.get("severity_disagreement")
+            note = f"  (the advisory source rates this {disagreement})" if disagreement else ""
+            console.print(Text(f"  {entry['severity']:<8} {entry['package']} {entry['version']}  {entry['id']}{dev}{note}",
                                style=ACCENT if entry["severity"] in ("critical", "high") and not dev else "dim"))
         if len(report["top"]) > 8:
             console.print(Text(f"  + {len(report['top']) - 8} more", style="dim"))
@@ -516,14 +518,17 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
         checks = regression_checks(config_path)
         regressions = run_regressions(config, standing, checks, output / "staging-regressions") if checks else []
         write_private(output / "regressions.json", json.dumps(regressions, indent=2))
-        failed = [item for item in regressions if not item["ok"]]
+        failed = [item for item in regressions if not item["ok"] and not item["stricter"]]
+        stricter = [item for item in regressions if item["stricter"]]
         facts["regressions_failed"] = len(failed)
+        facts["regressions_stricter"] = len(stricter)
         requests = len(result.get("observations", [])) + len(regressions)
         for item in regressions:
+            label = "ok  " if item["ok"] else "OK+ " if item["stricter"] else "FAIL"
             got = item["status"] if item["status"] is not None else "no response"
-            console.print(Text(f"  {'ok  ' if item['ok'] else 'FAIL'}  {item['path']}  got {got}, expected "
+            console.print(Text(f"  {label}  {item['path']}  got {got}, expected "
                                f"{'/'.join(map(str, item['expect']))}  · {item['name']}",
-                               style="dim" if item["ok"] else ACCENT))
+                               style="dim" if item["ok"] or item["stricter"] else ACCENT))
         problems = []
         if failed:
             problems.append(f"{len(failed)} of {len(regressions)} past-finding regression checks failed: " + "; ".join(
@@ -536,7 +541,11 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
         if not regressions:
             raise Partial(f"Only {requests} request{'s' if requests != 1 else ''} checked ({staging_recap(result)}) "
                           f"Add past findings to projects/{regressions_path(config_path).name} so each scan re-checks them.")
-        return f"{staging_recap(result)} All {len(regressions)} past-finding regression checks passed ({requests} requests)."
+        stricter_note = (f" ({len(stricter)} came back stricter than the configured expectation - a tightened "
+                         f"access control, not a regression; update expect_status in "
+                         f"{regressions_path(config_path).name} to clear this note)" if stricter else "")
+        return (f"{staging_recap(result)} All {len(regressions)} past-finding regression checks passed "
+               f"({requests} requests){stricter_note}.")
     if standing:
         expired = (None if standing["active"] else
                    f"The standing approval expired on {standing['expires_on']:%Y-%m-%d}; renew it in "

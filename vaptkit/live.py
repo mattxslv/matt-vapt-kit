@@ -93,6 +93,19 @@ def run_read_only(config: dict, standing: dict, output: Path, paths: list[str] |
     return json.loads(path.read_text())
 
 
+# How much each status code restricts visibility, lowest to highest. An observed status that
+# outranks every expected status means the endpoint got MORE protected, not less - that is a
+# welcome change, not a regression, and a check pinned to the old status would otherwise cry wolf
+# on every future scan forever (the exact DTAP case: /api/debug used to 404, now correctly 401s
+# once middleware blanket-authenticates /api/*, with an identical generic error body either way).
+VISIBILITY_RANK = {200: 0, 201: 0, 204: 0, 404: 1, 410: 1, 401: 2, 403: 2}
+
+
+def stricter_than_expected(status: int | None, expected: list[int]) -> bool:
+    ranks = [VISIBILITY_RANK[code] for code in expected if code in VISIBILITY_RANK]
+    return status in VISIBILITY_RANK and bool(ranks) and VISIBILITY_RANK[status] > max(ranks)
+
+
 def run_regressions(config: dict, standing: dict, checks: list[dict], output: Path) -> list[dict]:
     """Request each regression path (HEAD, read-only) and compare its status with the expected one."""
     results = []
@@ -107,8 +120,9 @@ def run_regressions(config: dict, standing: dict, checks: list[dict], output: Pa
             stopped = HTTP_STATUS.search(errors.get(check["path"]) or "")
             if status is None and stopped:
                 status = int(stopped[1])
-            results.append({**check, "status": status, "error": errors.get(check["path"]),
-                            "ok": status in check["expect"]})
+            ok = status in check["expect"]
+            results.append({**check, "status": status, "error": errors.get(check["path"]), "ok": ok,
+                            "stricter": (not ok) and stricter_than_expected(status, check["expect"])})
     return results
 
 

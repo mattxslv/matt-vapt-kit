@@ -67,6 +67,30 @@ rules:
         - "**/Scripts/bootstrap*.js"
         - "**/Scripts/modernizr*.js"
 
+  - id: console-log-identifier
+    message: console.log/debug/info/warn/error logs a raw variable that looks like a request body, credentials or a user record, not a string literal - this is categorically more likely to leak PII or secrets than a plain string trace. Log only the specific fields actually needed, after filtering.
+    severity: ERROR
+    languages: [javascript, typescript]
+    patterns:
+      - pattern-either:
+          - pattern: console.log(..., $VAR, ...)
+          - pattern: console.debug(..., $VAR, ...)
+          - pattern: console.info(..., $VAR, ...)
+          - pattern: console.warn(..., $VAR, ...)
+          - pattern: console.error(..., $VAR, ...)
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: (?i)^(body|req|request|res|response|payload|formdata|profiledata|credentials?|password|pass|token|secret|session|auth|account|headers?)$
+    paths:
+      exclude:
+        - "*.min.js"
+        - "*.umd.js"
+        - "**/wwwroot/lib/**"
+        - "**/wwwroot/lib_npm/**"
+        - "**/Scripts/jquery*.js"
+        - "**/Scripts/bootstrap*.js"
+        - "**/Scripts/modernizr*.js"
+
   - id: console-emoji-debug
     message: Console output contains an emoji, a strong sign of leftover ad-hoc debug logging (e.g. "🚀 starting"); remove it before shipping to production.
     severity: ERROR

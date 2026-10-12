@@ -23,6 +23,7 @@ from .assessment import (
 )
 from .browser_login import login as browser_login
 from .exposure import content_class
+from .jwt_check import WEAKNESS_IMPACT, WEAKNESS_REMEDIATION, WEAKNESS_SEVERITY, WEAKNESS_TITLES, jwt_weaknesses
 from .process import ToolError
 from .service_login import ServiceAccountAccess
 
@@ -343,6 +344,28 @@ def run(config: dict, approval: dict, output: Path, *, prompt_passwords=False) -
         errors.append({"path": error.path if isinstance(error, HTTPStop) else active_path,
                        "kind": kind, "message": message[:256]})
 
+    jwt_findings = []
+    reported_jwt_weaknesses = set()
+
+    def check_jwt(session):
+        # Decoded once per account right after sign-in, before session.clear() below removes the
+        # token; deduplicated across accounts so a systemic weakness is reported once, not once
+        # per test account sharing the same issuer configuration.
+        if session.get("type") != "bearer" or not session.get("token"):
+            return
+        for code in jwt_weaknesses(session["token"]):
+            if code in reported_jwt_weaknesses:
+                continue
+            reported_jwt_weaknesses.add(code)
+            jwt_findings.append({
+                "title": WEAKNESS_TITLES[code], "severity": WEAKNESS_SEVERITY[code],
+                "verification": "confirmed", "category": "configuration", "owasp": "A07",
+                "path": login["login_path"], "impact": WEAKNESS_IMPACT[code],
+                "remediation": WEAKNESS_REMEDIATION[code],
+                "evidence": "Decoded from the issued token's header/payload claims; the signature "
+                           "was not verified and the token value was not stored.",
+            })
+
     try:
         if config.get("access", {}).get("type") == "iap-service-account":
             gateway_session = ServiceAccountAccess(config, approval, validate_scope=validate)
@@ -354,6 +377,7 @@ def run(config: dict, approval: dict, output: Path, *, prompt_passwords=False) -
             session = {}
             try:
                 sign_in(call, secrets, account_id, account, host, login, session)
+                check_jwt(session)
                 inspect(account_id, account["role"], session)
             finally:
                 sign_out(call, account_id, session, cleanup, error_record, stop_cleanup, login["logout_path"])
@@ -369,7 +393,7 @@ def run(config: dict, approval: dict, output: Path, *, prompt_passwords=False) -
         secrets.clear()
 
     controls = {item["path"] for item in records if role_outcome(item, set()) == "allowed"}
-    findings = []
+    findings = list(jwt_findings)
     for item in records:
         outcome = role_outcome(item, controls)
         if outcome in ("inconclusive", "blocked"):

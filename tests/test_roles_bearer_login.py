@@ -2,6 +2,7 @@
 different login path, a bearer token instead of cookies, and a different role field name (`role`, not
 `user_type`). Shapes here are taken directly from PEMEDES's app/api/auth/cloudsql/signin/route.ts and
 lib/cloudsql/auth.ts (POST {email,password} -> {user: {..., role}, session: {access_token}})."""
+import base64
 import json
 import unittest
 from pathlib import Path
@@ -9,6 +10,10 @@ from unittest.mock import patch
 
 from vaptkit.process import ToolError
 from vaptkit.roles import run, template, validate
+
+
+def b64url(value: dict) -> str:
+    return base64.urlsafe_b64encode(json.dumps(value).encode()).rstrip(b"=").decode()
 
 LOGIN_PATH = "/api/auth/cloudsql/signin"
 LOGOUT_PATH = "/api/auth/signout"
@@ -97,6 +102,30 @@ class BearerLoginTests(unittest.TestCase):
         agent_record = next(item for item in result["role_observations"] if item["account"] == "agent")
         self.assertTrue(all(attempt["status"] in (401, 403) for attempt in agent_record["attempts"]))
         self.assertEqual({item["status"] for item in result["role_cleanup"]}, {"acknowledged"})
+
+    def test_weak_issued_jwt_is_flagged_once_not_per_account(self):
+        class WeakJwtApplication(BearerTokenApplication):
+            def __call__(self, host, method, path, **kwargs):
+                self.calls.append((method, path, kwargs))
+                self.assertNoCookieHeader(kwargs["headers"])
+                if path == LOGIN_PATH:
+                    data = json.loads(kwargs["body"])
+                    admin = data["email"] == ENV["PEMEDES_ADMIN_EMAIL"]
+                    role = "admin" if admin else "agent"
+                    token = f"{b64url({'alg': 'none'})}.{b64url({'sub': role})}.SYNTHETIC_JWT_SIGNATURE_SENTINEL"
+                    return reply(200, {"user": {"email": data["email"], "role": role},
+                                       "session": {"access_token": token}})
+                if path == LOGOUT_PATH:
+                    return reply(200, {"success": True})
+                return reply(403 if kwargs["headers"].get("Authorization") else 401, {"error": "denied"})
+
+        result, code = self.execute(WeakJwtApplication())
+        jwt_findings = [item for item in result["findings"] if "JWT" in item["title"]]
+        self.assertEqual(len(jwt_findings), 2)
+        self.assertEqual({item["title"] for item in jwt_findings},
+                         {"Issued JWT uses the 'none' algorithm", "Issued JWT has no expiry claim"})
+        self.assertTrue(all(item["severity"] in ("critical", "high") for item in jwt_findings))
+        self.assertNotIn("SYNTHETIC_JWT_SIGNATURE_SENTINEL", json.dumps(result))
 
     def test_rejects_the_dtap_adapter_name(self):
         config = configuration()

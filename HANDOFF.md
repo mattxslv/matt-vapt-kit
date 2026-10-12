@@ -4,7 +4,46 @@
 
 ## What this session added (2026-10-12, latest)
 
-Current version: **v0.8.2**. 349 Python tests pass
+Current version: **v0.8.3**. 366 Python tests pass
+(`.venv/bin/python -m unittest discover -s tests`).
+
+### JWT weakness check (last item from the original "what else can we add" list)
+Only relevant for projects using `role_testing.login.session.type: bearer`
+(PEMEDES-shaped; DTAP uses cookies). New `vaptkit/jwt_check.py`: pure,
+no-network, no-signature-verification decode of a bearer token's header and
+payload (base64url + JSON), flagging three things regardless of what the
+signature says: `alg: none` (or missing `alg`) - critical, the token isn't
+cryptographically signed; missing `exp` claim - high, never expires; and an
+`exp - iat` over 30 days - medium, unusually long-lived. An opaque
+(non-3-segment) token or one that doesn't decode to JSON objects returns no
+weaknesses - the check only applies when the token is actually a JWT, no
+false positives on opaque session tokens.
+
+Explicitly out of scope, documented in the module docstring: this does NOT
+forge a token (e.g. flip a real token's `alg` to `none` and strip the
+signature) and resend it to see whether the server's verifier would accept
+the bypass - that's a separate, active authentication-bypass test against a
+real protected route, with its own approval/risk profile, not attempted
+here. This check only reports what the issuer actually put in a token it
+already issued during normal role testing.
+
+Wired into `roles.py::run()`: checked once per account right after
+`sign_in()` establishes a bearer session (before `session.clear()` removes
+the token), deduplicated by weakness code across accounts so a systemic
+issuer misconfiguration is reported once, not once per test account.
+Findings use `category: configuration`, `owasp: A07` (Authentication
+Failures - already a valid schema value, no schema change needed).
+
+17 new tests: `test_jwt_check.py` (16, pure unit tests covering decode
+failures, non-JWT tokens, each weakness individually, and the "well-formed
+short-lived token has no weaknesses" negative case) plus one real
+integration test in `test_roles_bearer_login.py` building an actual
+`alg: none`/no-`exp` JWT through the full bearer-login flow, confirming
+both weaknesses are flagged exactly once (not duplicated across the two
+test accounts) and the token's signature value never appears in the
+written result file. Also manually confirmed the PDF path renders a JWT
+finding correctly (apostrophe in the title HTML-escapes as expected, not a
+bug) and that `certph.py`'s OWASP label dict already covers A07.
 (`.venv/bin/python -m unittest discover -s tests`); 15/15 semgrep rule tests
 pass (`docker run ... semgrep --test --config=/rules /src/tests/semgrep`).
 

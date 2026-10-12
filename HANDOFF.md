@@ -6,6 +6,21 @@
 
 Current version: **v0.9.2**. 403 Python tests pass.
 
+### Fixed vulnerable-dependencies table layout (overflow/wrapping) and clarified the advisory link
+User screenshot: "Suggested fix" and "Used in" columns were cramped against the right edge and
+wrapping ("Dev\nonly"), because the table reused generic `.check`/`.state` CSS classes (32% + 18%
+width, meant for a different table) leaving only 50% split across the other 3 columns. New
+dedicated `.dep-table` classes with explicit, tuned widths (package 20%, severity 10%, advisory
+20%, suggested fix 32%, used in 18% - no `nowrap` on "used in" since "Unused dependency" is long
+enough to need to wrap gracefully, confirmed by rendering a real Playwright screenshot with all
+three scope labels before and after).
+
+Also: the OSV advisory ID is a clickable link to `osv.dev` - the user asked what that page even was
+(it's the official public vulnerability database entry, for full technical detail beyond what fits
+the table). Decided to keep it but make the PDF say so explicitly: moved the explanatory line from
+being buried mid-paragraph before the table to its own caption line directly under the table
+("Click an advisory ID above to open its official public database page (osv.dev)...").
+
 ### Added a "Scan complete" divider after long scroll-back output
 User screenshot: after a full scan's branch table + drift comparison (which can run to dozens of
 lines), the output ran straight into the "r/f/b" open-report prompt with nothing marking where the

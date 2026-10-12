@@ -115,6 +115,12 @@ tbody tr:nth-child(even) td { background: oklch(97.6% 0.006 70); }
 td.check { font-weight: 600; color: var(--ink); width: 32%; }
 td.state { width: 18%; white-space: nowrap; }
 
+.dep-table .dep-package { font-weight: 600; color: var(--ink); width: 20%; }
+.dep-table .dep-severity { width: 10%; white-space: nowrap; }
+.dep-table .dep-advisory { width: 20%; }
+.dep-table .dep-fix { width: 32%; }
+.dep-table .dep-used { width: 18%; }
+
 .chip {
   display: inline-block; padding: .7mm 2.4mm; border-radius: 1mm;
   font: 700 7pt/1.4 var(--sans); letter-spacing: .08em; text-transform: uppercase; white-space: nowrap;

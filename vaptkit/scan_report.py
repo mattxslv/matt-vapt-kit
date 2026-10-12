@@ -196,17 +196,18 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
             return f"Upgrade to <strong>{esc(fix)}</strong> or later" if fix else "No fix published yet"
 
         rows = "".join(
-            f'<tr><td class="check">{esc(entry["package"])} <span class="muted">{esc(entry["version"])}</span></td>'
-            f'<td class="state"><span class="chip {band_chip[entry["severity"]]}">{esc(entry["severity"])}</span></td>'
-            f'<td><a href="https://osv.dev/vulnerability/{esc(entry["id"])}"><code>{esc(entry["id"])}</code></a></td>'
-            f'<td>{fix_cell(entry)}</td><td>{esc(SCOPE_LABEL.get(entry.get("scope"), "Runtime"))}</td></tr>'
+            f'<tr><td class="dep-package">{esc(entry["package"])} <span class="muted">{esc(entry["version"])}</span></td>'
+            f'<td class="dep-severity"><span class="chip {band_chip[entry["severity"]]}">{esc(entry["severity"])}</span></td>'
+            f'<td class="dep-advisory"><a href="https://osv.dev/vulnerability/{esc(entry["id"])}"><code>{esc(entry["id"])}</code></a></td>'
+            f'<td class="dep-fix">{fix_cell(entry)}</td>'
+            f'<td class="dep-used">{esc(SCOPE_LABEL.get(entry.get("scope"), "Runtime"))}</td></tr>'
             for entry in dependencies["top"][:ROUTE_LIMIT])
         listed = ", ".join(f"<code>{esc(path)}</code>" for path in dependencies["lockfiles"])
         removable = [item for item in dependencies.get("unused_dependencies", []) if item["clears"]]
         removal = ("<p><strong>Quick win:</strong> nothing imports " + ", ".join(
             f'<code>{esc(item["name"])}</code> (clears {item["clears"]})' for item in removable)
                    + ". Removing them from package.json clears those high/critical findings.</p>") if removable else ""
-        body = (f'<table><thead><tr><th>Package</th><th>Severity</th><th>Advisory</th>'
+        body = (f'<table class="dep-table"><thead><tr><th>Package</th><th>Severity</th><th>Advisory</th>'
                 f'<th>Suggested fix</th><th>Used in</th></tr></thead>'
                 f"<tbody>{rows}</tbody></table>" if rows else
                 '<p class="lede">No known vulnerabilities in these lockfiles.</p>')
@@ -214,10 +215,12 @@ def render_scan(folder: Path, *, tlp: str = "AMBER+STRICT") -> str:
   <header class="chapter-head"><p class="eyebrow">§§</p><h2>Vulnerable dependencies</h2></header>
   <p class="lede">Known advisories for the exact package versions pinned in {listed}, from the public OSV
   database. "Dev only" packages (tests, build tools) don't ship, and "Unused dependency" ones come only through
-  a dependency nothing in the code imports; fix runtime high and critical ones first. Click an advisory ID for
-  full details. The suggested fix is the package's own published fixed version, not a guess.</p>
+  a dependency nothing in the code imports; fix runtime high and critical ones first. The suggested fix is the
+  package's own published fixed version, not a guess.</p>
   {removal}
   {body}
+  <p class="muted">Click an advisory ID above to open its official public database page (osv.dev) for the full
+  technical write-up of that vulnerability.</p>
 </section>
 """
     staging = read(folder / "staging", "assessment.json")

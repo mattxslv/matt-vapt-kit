@@ -4,7 +4,41 @@
 
 ## What this session added (2026-10-12, latest)
 
-Current version: **v0.7.7**. 329 tests pass (`.venv/bin/python -m unittest discover -s tests`).
+Current version: **v0.7.8**. 339 tests pass (`.venv/bin/python -m unittest discover -s tests`).
+
+### CORS misconfiguration check
+Next pick from the "what else can we add" list: the classic exploitable CORS
+combination, `Access-Control-Allow-Origin` reflecting an arbitrary attacker
+origin while `Access-Control-Allow-Credentials: true` is also set (lets any
+website read authenticated responses on behalf of a logged-in visitor). A
+bare wildcard with no credentials is deliberately NOT flagged -- common and
+intentional for public APIs, keeping this as accurate as the rest of the
+kit's header grading.
+
+`headers.py::cors_misconfigured(probe_origin, headers)` is the pure decision
+function (new tests in `test_headers.py`). `exposure.py::run()` sends one
+extra GET to `/` with a random, never-before-seen `Origin` header
+(`https://mvk-cors-<16 hex>.invalid`) right alongside the existing homepage
+fetch, reusing the same `call()`/scope-exclusion/stop-on-error plumbing as
+everything else that touches the target -- no new approval flag needed,
+`exposure_checks` already gates it. New `cors` exposure kind added to
+`CHECKS`'s IMPACT/REMEDIATION dicts and the report schema's kind enum.
+
+Caught and fixed a real pre-existing bug while wiring this in:
+`report.py`'s PDF exposure table builds an `exposure_labels` dict keyed by
+kind and does a bare `exposure_labels[item['kind']]` lookup with no
+`.get()` -- any new exposure kind not yet known to that dict would
+`KeyError` and crash PDF generation. Added `"cors"` there and a dedicated
+regression test (`test_cors_exposure_record_renders_without_error` in
+`test_report.py`) so a future new exposure kind added to `exposure.py`
+without a matching `report.py` label gets caught by tests instead of
+discovered at PDF-generation time in the field.
+
+10 new tests total (`test_headers.py`: 5 unit tests for
+`cors_misconfigured`; `test_exposure.py`: 4 integration tests through
+`run()` -- reflected+credentials flagged, wildcard not flagged, fixed
+allowlisted origin with credentials not flagged, non-2xx probe response not
+flagged; `test_report.py`: 1 PDF-rendering regression test).
 
 ### robots.txt / sitemap.xml path discovery
 Checked what else was worth adding beyond the NCERT toolset parity work: HTTP

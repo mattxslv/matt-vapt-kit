@@ -1,7 +1,7 @@
 import unittest
 
 from vaptkit.assessment import findings_for
-from vaptkit.headers import csp_script_weaknesses, grade
+from vaptkit.headers import cors_misconfigured, csp_script_weaknesses, grade
 
 
 def headers(**values):
@@ -68,6 +68,33 @@ class GradeTests(unittest.TestCase):
         legacy = {"html_response": True, "hsts_present": True, "csp_present": True, "nosniff": True,
                   "frame_policy_present": True}
         self.assertEqual(findings_for({"path": "/", "method": "HEAD", "status": 200, "checks": legacy}), [])
+
+
+class CorsMisconfiguredTests(unittest.TestCase):
+    def test_reflected_origin_with_credentials_is_misconfigured(self):
+        self.assertTrue(cors_misconfigured("https://attacker.invalid", {
+            "access-control-allow-origin": ["https://attacker.invalid"],
+            "access-control-allow-credentials": ["true"],
+        }))
+
+    def test_wildcard_without_credentials_is_not_misconfigured(self):
+        self.assertFalse(cors_misconfigured("https://attacker.invalid", {
+            "access-control-allow-origin": ["*"],
+        }))
+
+    def test_reflected_origin_without_credentials_is_not_misconfigured(self):
+        self.assertFalse(cors_misconfigured("https://attacker.invalid", {
+            "access-control-allow-origin": ["https://attacker.invalid"],
+        }))
+
+    def test_fixed_origin_with_credentials_is_not_misconfigured(self):
+        self.assertFalse(cors_misconfigured("https://attacker.invalid", {
+            "access-control-allow-origin": ["https://trusted-partner.invalid"],
+            "access-control-allow-credentials": ["true"],
+        }))
+
+    def test_absent_headers_is_not_misconfigured(self):
+        self.assertFalse(cors_misconfigured("https://attacker.invalid", {}))
 
 
 if __name__ == "__main__":

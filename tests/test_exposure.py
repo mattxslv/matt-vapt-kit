@@ -94,6 +94,47 @@ class ExposureTests(unittest.TestCase):
             self.scan(fake, ("/",))
         fake.assert_not_called()
 
+    def test_cors_reflects_arbitrary_origin_with_credentials_is_flagged(self):
+        def request(host, method, path, **kwargs):
+            origin = (kwargs.get("headers") or {}).get("Origin")
+            if path == "/" and origin:
+                return 200, {"content-type": ["text/html"], "content-length": ["2"],
+                             "access-control-allow-origin": [origin],
+                             "access-control-allow-credentials": ["true"]}, b"ok"
+            return response(200, "text/html", b"<html>Welcome</html>")
+        records, findings = self.scan(request)
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0]["severity"], "high")
+        self.assertEqual(findings[0]["verification"], "confirmed")
+        self.assertTrue(any(item["kind"] == "cors" and item["exposed"] for item in records))
+
+    def test_cors_wildcard_without_credentials_is_not_flagged(self):
+        def request(host, method, path, **kwargs):
+            if path == "/" and (kwargs.get("headers") or {}).get("Origin"):
+                return 200, {"content-type": ["text/html"], "content-length": ["2"],
+                             "access-control-allow-origin": ["*"]}, b"ok"
+            return response(200, "text/html", b"<html>Welcome</html>")
+        _, findings = self.scan(request)
+        self.assertEqual(findings, [])
+
+    def test_cors_fixed_allowlisted_origin_with_credentials_is_not_flagged(self):
+        def request(host, method, path, **kwargs):
+            if path == "/" and (kwargs.get("headers") or {}).get("Origin"):
+                return 200, {"content-type": ["text/html"], "content-length": ["2"],
+                             "access-control-allow-origin": ["https://trusted-partner.invalid"],
+                             "access-control-allow-credentials": ["true"]}, b"ok"
+            return response(200, "text/html", b"<html>Welcome</html>")
+        _, findings = self.scan(request)
+        self.assertEqual(findings, [])
+
+    def test_cors_non_2xx_probe_response_is_not_flagged(self):
+        def request(host, method, path, **kwargs):
+            if path == "/" and (kwargs.get("headers") or {}).get("Origin"):
+                return 404, {"content-type": ["text/html"]}, b""
+            return response(200, "text/html", b"<html>Welcome</html>")
+        _, findings = self.scan(request)
+        self.assertEqual(findings, [])
+
     def test_discovery_is_bounded_same_origin_and_deduplicated(self):
         body = b"".join(f'<script src="/_next/static/chunk-{i}.js"></script>'.encode() for i in range(6))
         body += b'<script src="https://outside.invalid/map.js"></script>'

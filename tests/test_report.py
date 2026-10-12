@@ -31,6 +31,13 @@ class ReportTests(unittest.TestCase):
         self.assertIn("&lt;script&gt;", document)
         self.assertIn("default-src 'none'", document)
 
+    def test_cors_exposure_record_renders_without_error(self):
+        self.result["exposure"] = [
+            {"path": "/", "kind": "cors", "status": 200, "exposed": True, "signature": True}]
+        document = render(self.result)
+        self.assertIn("Cross-origin resource sharing", document)
+        self.assertIn("Exposed (signature matched)", document)
+
     def test_conclusions(self):
         category = "data_exposure"
         self.assertEqual(conclusion(self.result, category), "Not tested")

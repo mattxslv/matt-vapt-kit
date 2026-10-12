@@ -62,6 +62,7 @@ IMPACT = {
     "backup_file": "Backup archives and database dumps usually contain the same secrets and customer data as production.",
     "config_file": "Deployment configuration files can disclose internal hostnames, ports and sometimes embedded secrets.",
     "admin_panel": "An administrative interface reachable by anyone is a direct target for credential attacks.",
+    "cors": "Any website can read authenticated API responses on behalf of a logged-in visitor.",
 }
 REMEDIATION = {
     "secret_file": "Remove the file from the deployed image, rotate every secret it contained, and block dotfiles.",
@@ -73,6 +74,7 @@ REMEDIATION = {
     "backup_file": "Remove the backup from the public web root; store backups outside it, encrypted and access-controlled.",
     "config_file": "Remove the file from the deployed image and keep deployment config out of the web root.",
     "admin_panel": "Confirm the interface requires strong authentication, or restrict it to a trusted network or VPN.",
+    "cors": "Stop reflecting arbitrary Origin values; return a fixed, trusted origin (or none) whenever credentials are allowed.",
 }
 
 
@@ -187,6 +189,17 @@ def run(config: dict, approval: dict, host: str, headers: dict, request, expires
         status, received, body = call("GET", "/", limit=262144)
         if on_homepage is not None and 200 <= status < 300:
             on_homepage(received, body)
+        from .headers import cors_misconfigured
+
+        probe_origin = f"https://mvk-cors-{secrets.token_hex(8)}.invalid"
+        cors_status, cors_headers, _ = call("GET", "/", {"Origin": probe_origin})
+        if 200 <= cors_status < 300 and cors_misconfigured(probe_origin, cors_headers):
+            records.append({"path": "/", "kind": "cors", "status": cors_status, "exposed": True, "signature": True})
+            findings.append(finding(
+                "/", "cors", "high", "Cross-origin requests with credentials are allowed from any origin", True,
+                "The Access-Control-Allow-Origin header reflected a random, never-before-seen origin while "
+                "Access-Control-Allow-Credentials was true; no request body or cookie value was stored.",
+            ))
         scripts = []
         if 200 <= status < 300 and content_class(received) == "html":
             scripts = list(dict.fromkeys(match.decode() for match in SCRIPT.findall(body)))[:3]

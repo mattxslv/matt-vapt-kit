@@ -88,6 +88,18 @@ def cookie_flags(set_cookies: list[str]) -> tuple[bool, bool]:
     return secure, httponly
 
 
+def cors_misconfigured(probe_origin: str, headers: dict[str, list[str]]) -> bool:
+    """True only for the classic exploitable combination: Access-Control-Allow-Origin reflects an
+    arbitrary, attacker-chosen origin while Access-Control-Allow-Credentials is true - that lets
+    any website read authenticated responses on behalf of a logged-in visitor. A bare wildcard
+    with no credentials is common and intentional for public APIs, so it is deliberately not
+    flagged, keeping this check as accurate as the rest of headers.py.
+    """
+    allow_origin = (headers.get("access-control-allow-origin") or [""])[0].strip()
+    allow_credentials = (headers.get("access-control-allow-credentials") or [""])[0].strip().lower() == "true"
+    return allow_origin == probe_origin and allow_credentials
+
+
 def grade(headers: dict[str, list[str]]) -> dict[str, bool]:
     """Grade lower-cased header names mapped to all of their values."""
     def first(name):

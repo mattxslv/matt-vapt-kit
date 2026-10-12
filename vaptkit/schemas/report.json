@@ -385,7 +385,8 @@
               "source_map",
               "backup_file",
               "config_file",
-              "admin_panel"
+              "admin_panel",
+              "cors"
             ]
           },
           "status": {

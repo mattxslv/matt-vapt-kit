@@ -11,7 +11,6 @@ import re
 import shutil
 import subprocess
 import sys
-import uuid
 from datetime import datetime, timedelta, timezone
 from importlib.metadata import version
 from pathlib import Path
@@ -33,7 +32,7 @@ from .live import staging_recap
 from .support import diagnostics, issue_url, record_error, repo_slug, sanitize
 from .process import ToolError, git, stream
 from .report import generate as generate_report
-from .scan import ACCENT, path_link, print_header, scan
+from .scan import ACCENT, dated_folder, path_link, print_header, project_slug, scan
 from .scan_report import pdf_available, write_scan_report
 
 KIT = Path(__file__).resolve().parent.parent
@@ -182,8 +181,8 @@ def scan_branches(console: Console, repo: Path, selected: list[tuple[str, str]])
     console.clear()
     finished = []
     for index, (label, revision) in enumerate(selected):
-        output = PRIVATE / ("scan-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6])
         branch = label.removesuffix(" (your checkout)")
+        output = dated_folder(PRIVATE, "scan", repo.name, branch)
         if index:
             console.rule(Text(f"Next: {branch}", style="bold"), style="grey37")
         try:
@@ -211,7 +210,7 @@ def show_drift(console: Console, repo: Path, finished: list[tuple[str, Path]]) -
         record_error("branch drift", str(error))
         console.print(Text(f"\nCouldn't compare the branches: {error}", style=ACCENT))
         return
-    folder = PRIVATE / ("drift-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6])
+    folder = dated_folder(PRIVATE, "drift", repo.name)
     folder.mkdir(mode=0o700)
     (folder / "drift.json").write_text(json.dumps(drift, indent=2))
     (folder / "drift.md").write_text(render_markdown(drift, repo.name))
@@ -326,10 +325,12 @@ def offer_open(console: Console, reports: list[Path], folders: list[Path]) -> bo
     report_word = "report" + ("s" if len(reports) > 1 else "")
     folder_word = "folder" + ("s" if len(folders) > 1 else "")
     choice = ask(console, f"\nPress r to open the {report_word}, f to open the {folder_word}, "
-                          "or Enter to go back: ").lower()
-    paths = reports if choice == "r" else folders if choice == "f" else []
+                          "b for both, or Enter to go back: ").lower()
+    paths = (reports + folders if choice == "b" else
+             reports if choice == "r" else folders if choice == "f" else [])
     if paths:
-        console.print(Text(f"Opening {len(paths)} {report_word if choice == 'r' else folder_word}...", style="dim"))
+        word = f"{report_word} and {folder_word}" if choice == "b" else report_word if choice == "r" else folder_word
+        console.print(Text(f"Opening {len(paths)} {word}...", style="dim"))
     for path in paths:
         open_path(console, path)
     return bool(paths)
@@ -523,8 +524,8 @@ def run_staging_check(console: Console) -> None:
     except ValueError:
         minutes = 60
     PRIVATE.mkdir(mode=0o700, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6]
-    config_path = PRIVATE / f"quick-staging-{stamp}.vapt.yml"
+    base = dated_folder(PRIVATE, config["project"])
+    config_path = base.with_suffix(".vapt.yml")
     config_path.write_text(yaml.safe_dump(config, sort_keys=False))
     config_path.chmod(0o600)
     try:
@@ -542,7 +543,7 @@ def run_staging_check(console: Console) -> None:
         "exposure_checks": True,
         "paths": ["/"],
     })
-    output = PRIVATE / f"quick-staging-{stamp}"
+    output = base
     console.print(Text(f"\nChecking {config['target']['url']} for up to {minutes} minute(s)..."))
     try:
         path, code = assess(config, approval, output)
@@ -663,8 +664,7 @@ def run_local_attack(console: Console) -> None:
             pause(console)
             return
     PRIVATE.mkdir(mode=0o700, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6]
-    output = PRIVATE / f"attack-{stamp}"
+    output = dated_folder(PRIVATE, "attack", url)
     output.mkdir(mode=0o700)
     console.clear()
     print_header(console)

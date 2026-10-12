@@ -4,8 +4,35 @@
 
 ## What this session added (2026-10-12, latest)
 
-Current version: **v0.8.6**. 379 Python tests pass
+Current version: **v0.8.7**. 383 Python tests pass
 (`.venv/bin/python -m unittest discover -s tests`).
+
+### Human-readable evidence folder names (user-caught UX issue) + "open both" option
+User saw a real scan's output path (`scan-20261012-053127-469498`) and pointed out, fairly,
+that nobody's going to remember or recognize a folder named after random digits when they go
+looking for it later. All five places that generated an evidence folder name
+(`scan_branches`/`show_drift`/`run_staging_check`/`run_local_attack` in `menu.py`, and `scan()`'s
+own default-output path in `scan.py`) built names as `{prefix}-{timestamp}-{6 hex}`, with nothing
+project-identifying in them at all.
+
+Added two small shared helpers in `scan.py`: `project_slug(name)` (lowercase, hyphenated,
+collapsed-repeat-dashes, bounded to 64 chars - extracted from logic that already existed inline
+for the no-config fallback project name) and `dated_folder(parent, *parts)` (joins slugified
+parts with a timestamp and a short 4-hex collision-guard suffix). Every call site now names
+folders like `scan-dtap-staging-20261012-053751-f301`,
+`quick-dtap-test-20261012-...` (reuses the project name `staging_config()` already derives from
+the host, instead of the generic literal "quick-staging-..." it was using before), and
+`attack-localhost-3000-20261012-...` instead of opaque digit-only names. Verified end to end
+(not just unit tests): ran a real `vapt scan` against the DTAP repo with and without `--output`
+and confirmed the default path produces `scan-dtap-20261012-053911-521f`.
+
+Also added, from the same screenshot conversation: the "press r to open the report(s), f to open
+the folder(s)" prompt (`offer_open` in `menu.py`) only let you pick one or the other - added `b`
+for both. 4 new tests in `test_menu.py` (`OfferOpenTests`: r-only, f-only, b-opens-both with the
+right call count, Enter opens nothing).
+
+Removed the now-dead `import uuid` from `menu.py` (every direct `uuid.uuid4()` call site was
+replaced by `dated_folder`, which handles its own short suffix internally).
 
 ### Fixed a real gitleaks silent-undercounting bug (found by a peer session, verified independently)
 A separate Claude session working the DTAP incident reported that the vaptkit secret-history

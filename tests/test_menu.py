@@ -5,9 +5,11 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from vaptkit.process import ToolError, stream
+from unittest.mock import patch
+
 from vaptkit.menu import (
     MENU, ago, branch_choices, compare_scans, project_list, container_target, find_repos, zap_alert_count, parse_selection, is_local_target, is_noisy_zap_line, local_url, missing_local_attack_images,
-    retry_input, scan_findings, staging_config, staging_recap, available_memory_mb,
+    offer_open, retry_input, scan_findings, staging_config, staging_recap, available_memory_mb,
 )
 
 
@@ -74,6 +76,41 @@ class RetryInputTests(unittest.TestCase):
         parse = MagicMock()
         self.assertIsNone(retry_input(console, "prompt", parse))
         parse.assert_not_called()
+
+
+class OfferOpenTests(unittest.TestCase):
+    def console(self, *inputs):
+        stub = MagicMock()
+        stub.input.side_effect = inputs
+        return stub
+
+    def test_r_opens_only_reports(self):
+        console = self.console("r")
+        with patch("vaptkit.menu.open_path") as open_path:
+            opened = offer_open(console, [Path("report.pdf")], [Path("folder")])
+        self.assertTrue(opened)
+        open_path.assert_called_once_with(console, Path("report.pdf"))
+
+    def test_f_opens_only_folders(self):
+        console = self.console("f")
+        with patch("vaptkit.menu.open_path") as open_path:
+            opened = offer_open(console, [Path("report.pdf")], [Path("folder")])
+        self.assertTrue(opened)
+        open_path.assert_called_once_with(console, Path("folder"))
+
+    def test_b_opens_both_reports_and_folders(self):
+        console = self.console("b")
+        with patch("vaptkit.menu.open_path") as open_path:
+            opened = offer_open(console, [Path("report1.pdf"), Path("report2.pdf")], [Path("folder1"), Path("folder2")])
+        self.assertTrue(opened)
+        self.assertEqual(open_path.call_count, 4)
+
+    def test_enter_opens_nothing(self):
+        console = self.console("")
+        with patch("vaptkit.menu.open_path") as open_path:
+            opened = offer_open(console, [Path("report.pdf")], [Path("folder")])
+        self.assertFalse(opened)
+        open_path.assert_not_called()
 
 
 class StagingRecapTests(unittest.TestCase):

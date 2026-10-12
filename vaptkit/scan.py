@@ -178,6 +178,23 @@ def path_link(path: Path, label: str | None = None, *, enabled=True) -> Text:
     return text
 
 
+def project_slug(name: str) -> str:
+    """A filesystem/project-name-safe slug - lowercase, hyphenated, bounded length."""
+    collapsed = re.sub(r"-+", "-", re.sub(r"[^a-z0-9-]", "-", name.lower())).strip("-")
+    return collapsed[:64] or "repository"
+
+
+def dated_folder(parent: Path, *parts: str) -> Path:
+    """A private evidence folder named from descriptive parts plus a timestamp - human-findable in
+    a file picker or `ls`, not just an opaque run of random digits like the old `scan-20261012-
+    053127-469498` naming. The short random suffix only guards against two scans landing in the
+    same second; it is deliberately not the main way anyone is meant to find a folder.
+    """
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    slug = "-".join(project_slug(part) for part in parts if part)
+    return parent / f"{slug}-{stamp}-{uuid.uuid4().hex[:4]}"
+
+
 NON_RUNTIME_DIRS = {"scripts", "script", "migrations", "migration", "seed", "seeds", "tests", "test", "__tests__",
                     "e2e", "cypress", "docs", "doc", "examples", "example", "fixtures", "tools"}
 NON_RUNTIME_FILE = re.compile(r"\.(test|spec)\.[cm]?[jt]sx?$|(^|/)(jest|vitest|playwright)\.config\.")
@@ -239,7 +256,7 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
     standing = standing_approval(config_path) if live else None
     total = 5 if standing else 4
     config = load_config(config_path) if config_path else {
-        "project": re.sub(r"[^a-z0-9-]", "-", repo.name.lower()).strip("-")[:64] or "repository",
+        "project": project_slug(repo.name),
         "review": {},
     }
     if output is None:
@@ -248,7 +265,7 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
             raise ToolError("Use an explicit --output rather than a symlinked .private directory.")
         parent.mkdir(mode=0o700, exist_ok=True)
         parent.chmod(0o700)
-        output = parent / ("scan-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6])
+        output = dated_folder(parent, "scan", config["project"], branch)
     create_output(output)
     if header:
         print_header(console)

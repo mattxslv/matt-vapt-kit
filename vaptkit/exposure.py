@@ -145,7 +145,7 @@ def finding(path: str, kind: str, severity: str, title: str, confirmed: bool, no
 
 
 def run(config: dict, approval: dict, host: str, headers: dict, request, expires_at, pause,
-        *, records=None, findings=None, on_homepage=None) -> tuple[list, list]:
+        *, records=None, findings=None, on_homepage=None, on_links=None) -> tuple[list, list]:
     """Return (records, findings). `request` is assessment.request; `pause` sleeps between calls."""
     excluded = config["scope"]["excluded_prefixes"]
     timeout = approval.get("request_timeout_seconds", 10)
@@ -234,4 +234,25 @@ def run(config: dict, approval: dict, host: str, headers: dict, request, expires
         for script in scripts:
             if ".." not in script and len(script) < 200:
                 check(script + ".map", "source_map", SOURCE_MAP_SIGNATURE, "low", "JavaScript source map publicly downloadable")
+
+        if on_links is not None and 200 <= status < 300 and content_class(received) == "html":
+            from . import recon
+
+            confirmed = []
+            for link in recon.extract_same_origin_links(host, body)[:10]:
+                if any(link.startswith(prefix) for prefix in excluded):
+                    continue
+                try:
+                    pause()
+                    link_status, _, _ = request(
+                        host, "HEAD", link, headers=headers, expires_at=expires_at, timeout_seconds=timeout,
+                    )
+                except (OSError, TimeoutError):
+                    continue
+                # Same convention as the redirect probe above: a broken or blocked linked page is
+                # "nothing found," not a reason to stop the rest of the exposure scan - this is
+                # confirming crawl candidates are real pages, not testing them for vulnerabilities.
+                if 200 <= link_status < 300:
+                    confirmed.append(link)
+            on_links(confirmed)
     return records, findings

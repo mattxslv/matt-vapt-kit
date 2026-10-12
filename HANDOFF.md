@@ -4,8 +4,47 @@
 
 ## What this session added (2026-10-12, latest)
 
-Current version: **v0.8.3**. 366 Python tests pass
+Current version: **v0.8.4**. 377 Python tests pass
 (`.venv/bin/python -m unittest discover -s tests`).
+
+### Bounded same-origin crawler (closes the last NCERT-toolset gap: Burp's spider)
+Asked the user directly what else from the real NCERT/CERT-PH toolset
+(Dirsearch, Feroxbuster, Burp Suite, Subfinder, Nslookup, Nmap, Wappalyzer)
+wasn't covered yet. Everything was, except one piece of Burp's role:
+crawling/spidering to discover pages beyond the homepage. The kit only ever
+fetched `/` once and looked at `<script>` tags on it - it had no way to find
+`/dashboard` or `/api/docs` linked from the homepage but absent from
+robots.txt, sitemap.xml, and the fixed exposure path list.
+
+`recon.py::extract_same_origin_links(host, body)` (pure, no network):
+parses `<a href>` from an HTML body already in hand, keeps only relative
+paths and absolute URLs matching `host` exactly, explicitly excludes
+protocol-relative `//evil.invalid/x` links (same-looking but a different
+host), `mailto:`/`tel:`/`javascript:`/`data:` schemes, fragment-only and
+homepage-only links; strips query/fragment, dedupes, caps at 25 candidates.
+Deliberately shallow - homepage links only, not a multi-page crawl, matching
+the kit's existing "no extra requests beyond what's already being fetched"
+bias for passive checks.
+
+`exposure.py::run()` gained an `on_links` callback (same shape as the
+existing `on_homepage` one): takes the candidate list, confirms reachability
+with a lenient HEAD per candidate (same bypass-`call()`/no-`stop_on_http`
+convention as the open-redirect probe - a 404 or blocked link is "nothing
+found," not a reason to abort the whole exposure scan), respects
+`excluded_prefixes`, and only calls back with links that actually returned
+2xx. `assessment.py` wires this into `recon["discovered_paths"]` alongside
+the existing robots.txt/sitemap.xml entries - no schema change needed, same
+field, same cap.
+
+11 new tests: `test_recon.py` (7, pure `extract_same_origin_links` cases -
+same-host absolute vs relative, different-host and protocol-relative
+exclusion, non-http schemes, fragment/homepage exclusion, dedup, the 25-item
+cap) and `test_exposure.py` (3, through `run()` - only reachable links
+reach the callback, excluded prefixes are respected, no HTML homepage means
+no callback at all). Smoke-tested end to end against a stub combining every
+case at once (an internal 401 route, a dead link never actually linked
+successfully, an external phishing-style link, a mailto link): only the one
+genuinely reachable same-origin page came back.
 
 ### JWT weakness check (last item from the original "what else can we add" list)
 Only relevant for projects using `role_testing.login.session.type: bearer`

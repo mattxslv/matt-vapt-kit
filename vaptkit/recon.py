@@ -230,6 +230,38 @@ def parse_sitemap(body: bytes) -> list[str]:
     return sorted(paths)[:100]
 
 
+HREF = re.compile(rb'<a[^>]+href=["\']([^"\'#]+)["\']', re.IGNORECASE)
+SKIPPED_SCHEMES = ("mailto:", "tel:", "javascript:", "data:")
+
+
+def extract_same_origin_links(host: str, body: bytes) -> list[str]:
+    """Same-origin page paths linked from an HTML body via <a href> - the one piece of Burp's
+    crawling/spidering role this kit didn't already cover (directory lists, DNS/subdomains,
+    fingerprinting and ports already mirror the rest of the NCERT-style toolset). Only looks at
+    the homepage already fetched for fingerprinting/source-map discovery; this is not a multi-page
+    crawl - deliberately shallow, matching the kit's "no extra requests beyond what's already
+    being fetched" bias for anything passive, and the caller still confirms reachability before
+    trusting any of these as real.
+    """
+    paths = []
+    for match in HREF.finditer(body):
+        href = match.group(1).decode("utf-8", "replace").strip()
+        if not href or href.startswith("//") or href.lower().startswith(SKIPPED_SCHEMES):
+            continue
+        if href.startswith(("http://", "https://")):
+            parsed = urlsplit(href)
+            if parsed.hostname != host:
+                continue
+            path = parsed.path or "/"
+        elif href.startswith("/"):
+            path = urlsplit(href).path or "/"
+        else:
+            continue
+        if path not in ("/", "") and path not in paths:
+            paths.append(path[:256])
+    return paths[:25]
+
+
 def fingerprint(headers: dict[str, list[str]], body: bytes) -> list[str]:
     """Technology names detected from response headers/body - the same signal Wappalyzer uses."""
     found = set()

@@ -386,6 +386,7 @@ def assess(config: dict, approval: dict, output: Path, baseline: dict | None = N
     create_output(output)
     observations, findings, errors, exposure, verification_observations, requests = [], [], [], [], [], []
     technologies = []
+    crawled_links = []
     start = datetime.now(timezone.utc).isoformat()
     host = urlsplit(config["target"]["url"]).hostname
     expires_at = utc(approval["expires_at"])
@@ -443,7 +444,8 @@ def assess(config: dict, approval: dict, output: Path, baseline: dict | None = N
                     from . import recon
                     technologies.extend(recon.fingerprint(received_headers, body))
                 exposure_checks.run(config, approval, host, {}, recorded_request, expires_at, pause,
-                                    records=exposure, findings=findings, on_homepage=capture_homepage)
+                                    records=exposure, findings=findings, on_homepage=capture_homepage,
+                                    on_links=crawled_links.extend)
         except (ToolError, OSError, http.client.HTTPException) as error:
             kind, message = failure_detail(error)
             errors.append({"path": error.path if isinstance(error, HTTPStop) else "/",
@@ -476,6 +478,7 @@ def assess(config: dict, approval: dict, output: Path, baseline: dict | None = N
             discovered_paths = sorted(set(
                 recon.parse_robots(fetch_published_file("/robots.txt"))
                 + recon.parse_sitemap(fetch_published_file("/sitemap.xml"))
+                + crawled_links
             ))[:100]
         passive_recon = {"dns": recon.dns_hygiene(host), "subdomains": recon.subdomains(host),
                          "technologies": technologies, "open_ports": open_ports,

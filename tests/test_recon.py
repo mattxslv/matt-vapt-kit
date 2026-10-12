@@ -11,6 +11,7 @@ from vaptkit.recon import (
     dkim_selectors_found,
     dmarc_policy,
     dns_hygiene,
+    extract_same_origin_links,
     fingerprint,
     parse_robots,
     parse_sitemap,
@@ -251,6 +252,45 @@ class ParseSitemapTests(unittest.TestCase):
 
     def test_empty_body_returns_empty_list(self):
         self.assertEqual(parse_sitemap(b""), [])
+
+
+class ExtractSameOriginLinksTests(unittest.TestCase):
+    def test_relative_and_same_host_absolute_links_kept(self):
+        body = (b'<a href="/about">About</a>'
+               b'<a href="https://example.invalid/pricing">Pricing</a>')
+        self.assertEqual(extract_same_origin_links("example.invalid", body), ["/about", "/pricing"])
+
+    def test_different_host_absolute_link_excluded(self):
+        body = b'<a href="https://evil.invalid/phish">x</a>'
+        self.assertEqual(extract_same_origin_links("example.invalid", body), [])
+
+    def test_protocol_relative_link_excluded(self):
+        body = b'<a href="//evil.invalid/phish">x</a>'
+        self.assertEqual(extract_same_origin_links("example.invalid", body), [])
+
+    def test_non_http_schemes_excluded(self):
+        body = (b'<a href="mailto:a@example.invalid">mail</a>'
+               b'<a href="tel:+10000000000">call</a>'
+               b'<a href="javascript:void(0)">js</a>'
+               b'<a href="data:text/plain,hi">data</a>')
+        self.assertEqual(extract_same_origin_links("example.invalid", body), [])
+
+    def test_fragment_only_and_homepage_links_excluded(self):
+        body = b'<a href="#section">x</a><a href="/">home</a>'
+        self.assertEqual(extract_same_origin_links("example.invalid", body), [])
+
+    def test_dedupes_and_strips_query_and_fragment(self):
+        body = (b'<a href="/pricing?ref=nav">a</a>'
+               b'<a href="/pricing#top">b</a>'
+               b'<a href="/pricing">c</a>')
+        self.assertEqual(extract_same_origin_links("example.invalid", body), ["/pricing"])
+
+    def test_capped_at_25_links(self):
+        body = b"".join(f'<a href="/page{i}">x</a>'.encode() for i in range(40))
+        self.assertEqual(len(extract_same_origin_links("example.invalid", body)), 25)
+
+    def test_empty_body_returns_empty_list(self):
+        self.assertEqual(extract_same_origin_links("example.invalid", b""), [])
 
 
 class FingerprintTests(unittest.TestCase):

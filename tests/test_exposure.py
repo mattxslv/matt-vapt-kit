@@ -32,9 +32,9 @@ class ExposureTests(unittest.TestCase):
         self.assertTrue(signature_matches("vcs", CHECKS[3][2], b"ref: refs/heads/main\n"))
         self.assertFalse(signature_matches("vcs", CHECKS[3][2], b"<html>Welcome</html>"))
 
-    def scan(self, request, excluded=()):
+    def scan(self, request, excluded=(), **kwargs):
         return run({"scope": {"excluded_prefixes": list(excluded)}}, {}, "fixture.invalid", {},
-                   request, None, lambda: None)
+                   request, None, lambda: None, **kwargs)
 
     def test_spa_catchall_has_no_findings(self):
         fake = Mock(return_value=response(200, "text/html", b"<html>Welcome</html>"))
@@ -171,6 +171,44 @@ class ExposureTests(unittest.TestCase):
             return response(200, "text/html", b"<html>Welcome</html>")
         _, findings = self.scan(request)
         self.assertEqual(findings, [])
+
+    def test_on_links_receives_only_reachable_same_origin_links(self):
+        home_body = b'<a href="/about">About</a><a href="/gone">Gone</a><a href="https://evil.invalid/x">x</a>'
+
+        def request(host, method, path, **kwargs):
+            if "?" in path:
+                return response(404)
+            if path == "/":
+                return response(200, "text/html", home_body)
+            if path == "/about":
+                return response(200, "text/html", b"")
+            return response(404)
+
+        confirmed = []
+        self.scan(request, on_links=confirmed.extend)
+        self.assertEqual(confirmed, ["/about"])
+
+    def test_on_links_respects_excluded_prefixes(self):
+        home_body = b'<a href="/admin/secret">x</a>'
+
+        def request(host, method, path, **kwargs):
+            if "?" in path:
+                return response(404)
+            if path == "/":
+                return response(200, "text/html", home_body)
+            return response(200)
+
+        confirmed = []
+        self.scan(request, excluded=("/admin",), on_links=confirmed.extend)
+        self.assertEqual(confirmed, [])
+
+    def test_on_links_not_called_without_html_homepage(self):
+        def request(host, method, path, **kwargs):
+            return response(200, "application/json", b"{}")
+
+        confirmed = []
+        self.scan(request, on_links=confirmed.extend)
+        self.assertEqual(confirmed, [])
 
     def test_discovery_is_bounded_same_origin_and_deduplicated(self):
         body = b"".join(f'<script src="/_next/static/chunk-{i}.js"></script>'.encode() for i in range(6))

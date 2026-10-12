@@ -431,6 +431,19 @@
         "open_ports": {
           "type": "array", "maxItems": 30,
           "items": {"type": "integer", "minimum": 1, "maximum": 65535}
+        },
+        "tls": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["legacy_protocols_supported", "negotiated_cipher", "cert_days_to_expiry"],
+          "properties": {
+            "legacy_protocols_supported": {
+              "type": "array", "maxItems": 3,
+              "items": {"type": "string", "maxLength": 16}
+            },
+            "negotiated_cipher": {"type": ["string", "null"], "maxLength": 64},
+            "cert_days_to_expiry": {"type": ["integer", "null"]}
+          }
         }
       }
     },

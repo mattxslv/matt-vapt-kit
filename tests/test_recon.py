@@ -1,9 +1,21 @@
+import datetime
 import socket
+import ssl
 import struct
 import unittest
 from unittest.mock import patch
 
-from vaptkit.recon import dmarc_policy, dns_hygiene, fingerprint, parse_txt_response, scan_ports, subdomains
+from vaptkit.recon import (
+    _accepts_protocol,
+    _days_to_expiry,
+    dmarc_policy,
+    dns_hygiene,
+    fingerprint,
+    parse_txt_response,
+    scan_ports,
+    subdomains,
+    tls_hygiene,
+)
 
 
 def build_txt_response(txt_values: list[str]) -> bytes:
@@ -99,6 +111,88 @@ class ScanPortsTests(unittest.TestCase):
 
         with patch("vaptkit.recon.socket.socket", return_value=FakeSocket()):
             self.assertEqual(scan_ports("203.0.113.5", ports=(22, 3306)), [])
+
+
+class AcceptsProtocolTests(unittest.TestCase):
+    def test_true_on_successful_handshake(self):
+        class FakeTlsSocket:
+            def __enter__(self): return self
+            def __exit__(self, *a): pass
+
+        class FakeContext:
+            def __init__(self, *a, **k): pass
+            check_hostname = True
+            verify_mode = None
+            minimum_version = None
+            maximum_version = None
+            def wrap_socket(self, sock, server_hostname=None): return FakeTlsSocket()
+
+        class FakeSocket:
+            def __enter__(self): return self
+            def __exit__(self, *a): pass
+
+        with patch("vaptkit.recon.socket.create_connection", return_value=FakeSocket()), \
+             patch("vaptkit.recon.ssl.SSLContext", return_value=FakeContext()):
+            self.assertTrue(_accepts_protocol("example.invalid", 443, ssl.TLSVersion.TLSv1, 1.0))
+
+    def test_false_when_handshake_rejected(self):
+        with patch("vaptkit.recon.socket.create_connection", side_effect=ssl.SSLError("no protocols available")):
+            self.assertFalse(_accepts_protocol("example.invalid", 443, ssl.TLSVersion.TLSv1, 1.0))
+
+    def test_false_when_connection_refused(self):
+        with patch("vaptkit.recon.socket.create_connection", side_effect=OSError("refused")):
+            self.assertFalse(_accepts_protocol("example.invalid", 443, ssl.TLSVersion.TLSv1, 1.0))
+
+
+class DaysToExpiryTests(unittest.TestCase):
+    def test_none_when_no_not_after(self):
+        self.assertIsNone(_days_to_expiry({}))
+
+    def test_computes_days_remaining(self):
+        future = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=15)
+        cert = {"notAfter": future.strftime("%b %d %H:%M:%S %Y GMT")}
+        self.assertEqual(_days_to_expiry(cert), 14)
+
+    def test_negative_when_already_expired(self):
+        past = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=5)
+        cert = {"notAfter": past.strftime("%b %d %H:%M:%S %Y GMT")}
+        self.assertLess(_days_to_expiry(cert), 0)
+
+
+class TlsHygieneTests(unittest.TestCase):
+    def test_connection_failure_returns_all_none_not_raise(self):
+        with patch("vaptkit.recon.socket.create_connection", side_effect=OSError("refused")), \
+             patch("vaptkit.recon._accepts_protocol", return_value=False):
+            self.assertEqual(tls_hygiene("example.invalid"),
+                             {"legacy_protocols_supported": [], "negotiated_cipher": None,
+                              "cert_days_to_expiry": None})
+
+    def test_reports_legacy_protocol_cipher_and_expiry(self):
+        future = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=10)
+
+        class FakeTlsSocket:
+            def __enter__(self): return self
+            def __exit__(self, *a): pass
+            def cipher(self): return ("TLS_AES_128_GCM_SHA256", "TLSv1.3", 128)
+            def getpeercert(self): return {"notAfter": future.strftime("%b %d %H:%M:%S %Y GMT")}
+
+        class FakeContext:
+            def wrap_socket(self, sock, server_hostname=None): return FakeTlsSocket()
+
+        class FakeSocket:
+            def __enter__(self): return self
+            def __exit__(self, *a): pass
+
+        def fake_accepts(host, port, version, timeout):
+            return version == ssl.TLSVersion.TLSv1
+
+        with patch("vaptkit.recon.socket.create_connection", return_value=FakeSocket()), \
+             patch("vaptkit.recon.ssl.create_default_context", return_value=FakeContext()), \
+             patch("vaptkit.recon._accepts_protocol", side_effect=fake_accepts):
+            result = tls_hygiene("example.invalid")
+        self.assertEqual(result["legacy_protocols_supported"], ["TLSv1.0"])
+        self.assertEqual(result["negotiated_cipher"], "TLS_AES_128_GCM_SHA256")
+        self.assertEqual(result["cert_days_to_expiry"], 9)
 
 
 class FingerprintTests(unittest.TestCase):

@@ -1,13 +1,14 @@
-"""Passive, non-target reconnaissance: subdomains, DMARC/SPF hygiene, tech fingerprinting and ports.
+"""Passive, non-target reconnaissance: subdomains, DMARC/SPF hygiene, tech fingerprinting, ports and TLS.
 
 Subdomains and DNS hygiene only talk to public third-party services (certificate transparency
 logs and public DNS resolvers), not the target, so unlike exposure.py they do not need an approval
 or scope check to run. Tech fingerprinting reuses the homepage response the staging check already
-fetched instead of making its own request. Port scanning does touch the target (a plain TCP
-connect, no payload, to a short list of common ports - the same thing `nmap -p- -A -sV -Pn` looks
-for) so it is gated by the caller behind the same approval and public-address check as everything
-else that talks to the target.
+fetched instead of making its own request. Port scanning and TLS hygiene do touch the target (a
+plain TCP connect, no payload, and a normal plus two deliberately-legacy TLS handshakes - the same
+things `nmap -p- -A -sV -Pn` and `--script ssl-enum-ciphers` look for) so both are gated by the
+caller behind the same approval and public-address check as everything else that talks to the target.
 """
+import datetime
 import http.client
 import json
 import re
@@ -32,6 +33,65 @@ def scan_ports(ip: str, ports: tuple[int, ...] = COMMON_PORTS, *, timeout: float
             if sock.connect_ex((ip, port)) == 0:
                 open_ports.append(port)
     return open_ports
+
+
+LEGACY_TLS_VERSIONS = (
+    ("SSLv3", getattr(ssl.TLSVersion, "SSLv3", None)),
+    ("TLSv1.0", ssl.TLSVersion.TLSv1),
+    ("TLSv1.1", ssl.TLSVersion.TLSv1_1),
+)
+
+
+def tls_hygiene(host: str, port: int = 443, *, timeout: float = 5.0) -> dict:
+    """TLS protocol and certificate hygiene - the stdlib equivalent of `nmap --script
+    ssl-enum-ciphers`, without shelling out to nmap. Reports which legacy protocol versions
+    (SSLv3/TLSv1.0/TLSv1.1) the server still accepts, the cipher negotiated on a normal
+    connection, and days until the certificate expires. Any connection failure (including a
+    plain HTTP target with nothing on 443) is reported as "nothing found", not an error, the
+    same convention as dns_hygiene/subdomains.
+    """
+    legacy_supported = [name for name, tls_version in LEGACY_TLS_VERSIONS
+                        if tls_version is not None and _accepts_protocol(host, port, tls_version, timeout)]
+    negotiated_cipher, cert_days_to_expiry = None, None
+    try:
+        context = ssl.create_default_context()
+        with socket.create_connection((host, port), timeout=timeout) as sock:
+            with context.wrap_socket(sock, server_hostname=host) as tls_sock:
+                cipher = tls_sock.cipher()
+                negotiated_cipher = cipher[0] if cipher else None
+                cert = tls_sock.getpeercert()
+        cert_days_to_expiry = _days_to_expiry(cert) if cert else None
+    except (OSError, ssl.SSLError):
+        pass
+    return {
+        "legacy_protocols_supported": legacy_supported,
+        "negotiated_cipher": negotiated_cipher,
+        "cert_days_to_expiry": cert_days_to_expiry,
+    }
+
+
+def _accepts_protocol(host: str, port: int, tls_version, timeout: float) -> bool:
+    """Whether the server completes a handshake pinned to exactly `tls_version`."""
+    try:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        context.minimum_version = tls_version
+        context.maximum_version = tls_version
+        with socket.create_connection((host, port), timeout=timeout) as sock:
+            with context.wrap_socket(sock, server_hostname=host):
+                return True
+    except (OSError, ssl.SSLError):
+        return False
+
+
+def _days_to_expiry(cert: dict) -> int | None:
+    not_after = cert.get("notAfter")
+    if not not_after:
+        return None
+    expires = datetime.datetime.strptime(not_after, "%b %d %H:%M:%S %Y %Z")
+    expires = expires.replace(tzinfo=datetime.timezone.utc)
+    return (expires - datetime.datetime.now(datetime.timezone.utc)).days
 
 
 def dns_txt(name: str, *, timeout: float = 5.0) -> list[str]:

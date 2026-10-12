@@ -456,8 +456,10 @@ def assess(config: dict, approval: dict, output: Path, baseline: dict | None = N
         # scan_ports does touch the target, so it only runs once the earlier stages are clean,
         # same as every other check in this function that talks to the target.
         open_ports = recon.scan_ports(public_addresses(host)[0]) if not errors else []
+        tls = recon.tls_hygiene(host) if not errors and urlsplit(config["target"]["url"]).scheme == "https" else None
         passive_recon = {"dns": recon.dns_hygiene(host), "subdomains": recon.subdomains(host),
-                         "technologies": technologies, "open_ports": open_ports}
+                         "technologies": technologies, "open_ports": open_ports,
+                         **({"tls": tls} if tls is not None else {})}
     if gateway_session:
         gateway_session.clear()
     result = {

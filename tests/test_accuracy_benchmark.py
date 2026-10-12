@@ -135,6 +135,8 @@ class AccuracyBenchmark(unittest.TestCase):
             patch("vaptkit.recon.dns_hygiene", return_value={"spf_present": False, "dmarc_present": False, "dmarc_policy": None}),
             patch("vaptkit.recon.subdomains", return_value=[]),
             patch("vaptkit.recon.scan_ports", return_value=[]),
+            patch("vaptkit.recon.tls_hygiene", return_value={
+                "legacy_protocols_supported": [], "negotiated_cipher": None, "cert_days_to_expiry": None}),
         ):
             self.stack.enter_context(mock)
 

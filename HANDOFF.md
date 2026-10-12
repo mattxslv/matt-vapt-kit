@@ -1,8 +1,47 @@
 # Matt VAPT Kit — Handoff
 
-**Date:** 2026-10-08 (session via Claude Code, latest session)
+**Date:** 2026-10-12 (session via Claude Code, latest session)
 
-## What this session added (2026-10-08, latest)
+## What this session added (2026-10-12, latest)
+
+Current version: **v0.7.6**. 322 tests pass (`.venv/bin/python -m unittest discover -s tests`).
+
+### TLS/cipher hygiene (closes the last gap in the NCERT/CERT-PH recon parity work)
+`vaptkit/recon.py::tls_hygiene()` is the stdlib equivalent of `nmap --script
+ssl-enum-ciphers`, without shelling out to nmap (same no-binary-dependency
+style as `dns_hygiene()`): pins a handshake to exactly SSLv3/TLSv1.0/TLSv1.1
+(`_accepts_protocol()`) to report which legacy protocol versions the server
+still accepts, plus the cipher negotiated on a normal connection and days
+until certificate expiry (`_days_to_expiry()`). Hostname/cert verification is
+deliberately disabled only inside the legacy-protocol probe (not the real
+connection) since the point is to isolate protocol negotiation from cert
+trust; flagged by the repo's own security-guidance hook and is intentional,
+documented inline.
+
+Wired into `assess()` in `vaptkit/assessment.py` as `result["recon"]["tls"]`,
+gated behind the same approval/public-address check as `scan_ports` (it
+touches the target) and only runs when `target.url` is `https`. Schema
+updated (`vaptkit/schemas/report.json`). `live.py`'s `staging_recap()` now
+calls out legacy TLS support and certs expiring within 30 days.
+
+`tests/test_recon.py` (8 new tests): `_accepts_protocol`/`_days_to_expiry`
+unit tests plus full `tls_hygiene()` tests with mocked sockets (connection
+failure -> all-None, not an exception; legacy protocol + cipher + expiry
+reported correctly). `tests/test_accuracy_benchmark.py` patches
+`vaptkit.recon.tls_hygiene` alongside the other recon mocks so the benchmark
+doesn't make a real TLS connection. Smoke-tested against a real host
+(www.google.com: no legacy protocols, TLS_AES_256_GCM_SHA384, correct cert
+expiry).
+
+### Deliberately not done (unchanged from the Oct 8 session)
+- `nmap --script vuln` equivalent — still skipped; broad signature-based CVE
+  scanning would mean either shelling out to nmap (breaking the no-binary
+  pattern) or reimplementing dozens of CVE checks, for low value given their
+  own report found nothing from it.
+- Full `-p- -A -sV` depth — still a short common-service port list with a
+  plain connect, not a full sweep.
+
+## What this session added (2026-10-08, archived)
 
 Current version: **v0.7.5**. 314 tests pass (`.venv/bin/python -m unittest discover -s tests`).
 

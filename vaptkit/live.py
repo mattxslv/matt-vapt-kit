@@ -152,6 +152,11 @@ def staging_recap(result: dict) -> str:
             notes.append("detected: " + ", ".join(recon["technologies"]))
         if recon["open_ports"]:
             notes.append(f"open ports: {', '.join(str(port) for port in recon['open_ports'])}")
+        tls = recon.get("tls")
+        if tls and tls["legacy_protocols_supported"]:
+            notes.append("legacy TLS still accepted: " + ", ".join(tls["legacy_protocols_supported"]))
+        if tls and tls["cert_days_to_expiry"] is not None and tls["cert_days_to_expiry"] < 30:
+            notes.append(f"certificate expires in {tls['cert_days_to_expiry']} day(s)")
         if notes:
             text += " Recon: " + "; ".join(notes) + "."
     return text

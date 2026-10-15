@@ -53,8 +53,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 if ($firstInstall) {
-    Write-Host "Installed. Next, choose which projects to protect on every git push..."
-    & $venvVaptkit --protect @args
+    Write-Host "Installed. Protecting every Git project found under your home folder on every git push..."
+    & $venvVaptkit --protect-all @args
 } else {
     & $venvVaptkit @args
 }

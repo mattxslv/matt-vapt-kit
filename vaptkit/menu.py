@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from importlib.metadata import version
 from pathlib import Path
@@ -894,6 +895,52 @@ def protect_pushes(console: Console) -> None:
     pause(console)
 
 
+def protect_all_pushes(console: Console) -> None:
+    """Non-interactive version of protect_pushes: protects every repo found under
+    the home folder with no per-repo picking, used for the first-install flow."""
+    console.print(Text("Push protection", style="bold"))
+    console.print(Text("Before each git push, checks the new commits for leaked secrets and, if dependencies "
+                       "changed, for high/critical vulnerable packages. Findings block the push; if the check "
+                       "can't run (for example Docker is off) it warns and lets the push through.", style="dim"))
+    console.print(Text("\nLooking for Git projects in your home folder...", style="dim"))
+    repos = find_repos(Path.home())
+    if not repos:
+        console.print(Text("No Git projects found. Clone a project first, then come back here.", style=ACCENT))
+        pause(console)
+        return
+    to_protect = [repo for repo in repos if not is_protected(repo)]
+    if not to_protect:
+        console.print(Text(f"All {len(repos)} Git project(s) found are already protected.", style="dim"))
+        pause(console)
+        return
+    console.print(Text(f"\nFound {len(repos)} Git project(s); {len(to_protect)} not yet protected:", style="dim"))
+    for repo in to_protect:
+        console.print(Text(f"  {str(repo).replace(str(Path.home()), '~', 1)}", style="dim"))
+    console.print(Text("\nProtecting all of them now. Press Ctrl-C in the next 5 seconds to pick manually instead.",
+                       style=ACCENT))
+    try:
+        time.sleep(5)
+    except KeyboardInterrupt:
+        console.print()
+        protect_pushes(console)
+        return
+    console.print()
+    for repo in to_protect:
+        label = str(repo).replace(str(Path.home()), "~", 1)
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                install_hook(repo)
+        except (ToolError, OSError) as error:
+            console.print(Text(f"  not protected      {label}: {error}", style=ACCENT))
+            continue
+        remember(repo)
+        console.print(Text("  protected          ", style="bold green") + Text(label))
+    console.print(Text("\nProjects cloned later are not covered; use option 7 from the menu to add them.",
+                       style="dim"))
+    console.print(Text("To remove it from a project later: vapt hook uninstall <project folder>", style="dim"))
+    pause(console)
+
+
 def readiness_rows() -> tuple[list[tuple[str, bool, str]], bool]:
     rows = [(check["name"], check["ready"], check["detail"]) for check in diagnose("push")["checks"]]
     docker_running = False
@@ -1036,11 +1083,14 @@ def main() -> int:
     actions = {"0": full_scan, "1": run_scan, "2": show_latest, "3": show_compare,
                "4": run_staging_check, "5": run_local_attack, "6": check_ready, "7": protect_pushes,
                "8": report_problem}
-    if "--protect" in sys.argv[1:]:
+    if "--protect" in sys.argv[1:] or "--protect-all" in sys.argv[1:]:
         console.clear()
         print_header(console)
         try:
-            protect_pushes(console)
+            if "--protect-all" in sys.argv[1:]:
+                protect_all_pushes(console)
+            else:
+                protect_pushes(console)
         except (KeyboardInterrupt, EOFError):
             console.print()
     try:

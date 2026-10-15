@@ -39,7 +39,7 @@ if ! "$kit_dir/.venv/bin/python" -c 'from playwright.sync_api import sync_playwr
     "$kit_dir/.venv/bin/python" -m playwright install chromium || printf '%s\n' "PDF browser download failed; reports will be saved as HTML until you re-run ./install."
 fi
 if [ "$first_install" = 1 ]; then
-    printf '%s\n' "Installed. Next, choose which projects to protect on every git push..."
-    exec "$kit_dir/.venv/bin/vaptkit" --protect "$@"
+    printf '%s\n' "Installed. Protecting every Git project found under your home folder on every git push..."
+    exec "$kit_dir/.venv/bin/vaptkit" --protect-all "$@"
 fi
 exec "$kit_dir/.venv/bin/vaptkit" "$@"

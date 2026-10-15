@@ -1,8 +1,38 @@
 # Matt VAPT Kit — Handoff
 
-**Date:** 2026-10-12 (session via Claude Code, latest session)
+**Date:** 2026-10-15 (session via Claude Code, latest session)
 
-## What this session added (2026-10-12, latest)
+## What this session added (2026-10-15, latest)
+
+Current version: **v0.9.8**. 406 Python tests pass.
+
+### Auto-protect every repo on first install, instead of the manual picker
+User asked for install to "add the checking commits then blocks function and put it in all the
+repo" automatically, rather than requiring someone to run push protection and pick projects
+one by one. Added `protect_all_pushes()` in `menu.py`: a non-interactive variant of the existing
+`protect_pushes()` menu option that scans for Git repos under the home folder (same `find_repos()`
+used by the manual picker), lists the ones not yet protected, then installs the push-protection
+pre-push hook (secret-history scan + dependency audit, same as before — nothing new in the hook
+itself) on all of them. Confirmed with the user first since this changes `core.hooksPath` on every
+repo under home without per-repo confirmation; the agreed-on middle ground: it prints the full list
+of repos about to be touched and gives a 5-second Ctrl-C window to bail into the old manual picker
+instead, before doing anything.
+
+Wired up via a new `vaptkit --protect-all` flag (`menu.py`), used by `install` and `install.ps1` on
+first install in place of the old `--protect` (manual picker) call. The manual picker (`--protect`,
+menu option 7) is untouched and still there for protecting repos cloned after first install.
+
+No changes to the hook itself (`vaptkit/hooks.py`) or to what it blocks on — same leaked-secret and
+high/critical dependency checks as before, just installed automatically on first run now instead of
+requiring a manual pick.
+
+Also confirmed to the user, on request, that the existing "update available" notice (added in the
+2026-10-12 session) is working as designed: checks `origin/main` on the kit's own repo via
+`git fetch` (5s timeout), caches the result 24h, shows a one-line notice under the menu header when
+behind, and fails silently offline. It does not auto-pull — update is still a manual `git pull` +
+`./install` by design.
+
+## What this session added (2026-10-12, archived)
 
 Current version: **v0.9.2**. 403 Python tests pass.
 

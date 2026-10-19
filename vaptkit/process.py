@@ -19,7 +19,7 @@ def stream(command: list[str], printer, *, cwd: Path | None = None,
     lines = []
     try:
         process = subprocess.Popen(command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                   text=True, errors="replace")
+                                   text=True, encoding="utf-8", errors="replace")
     except OSError:
         raise ToolError(f"Cannot start {command[0]}; install it before continuing.") from None
 
@@ -46,7 +46,8 @@ def stream(command: list[str], printer, *, cwd: Path | None = None,
 
 def git(repo: Path, *args: str) -> str:
     result = subprocess.run(
-        ["git", "-C", str(repo), *args], capture_output=True, text=True, check=False
+        ["git", "-C", str(repo), *args], capture_output=True, text=True,
+        encoding="utf-8", errors="replace", check=False
     )
     if result.returncode:
         raise ToolError("Git operation failed; check repository access and configuration.")

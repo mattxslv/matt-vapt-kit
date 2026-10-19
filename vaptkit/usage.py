@@ -36,7 +36,8 @@ def unused_dependencies(repo: Path, sha: str, manifest: str = "package.json") ->
     """Runtime dependencies whose name appears nowhere in the committed code, configs or package scripts."""
     try:
         package = json.loads(subprocess.run(["git", "-C", str(repo), "show", f"{sha}:{manifest}"],
-                                            capture_output=True, text=True, check=True).stdout)
+                                            capture_output=True, text=True, encoding="utf-8",
+                                            errors="replace", check=True).stdout)
     except (subprocess.CalledProcessError, ValueError):
         return set()
     names = sorted((package.get("dependencies") or {}).keys())
@@ -48,7 +49,7 @@ def unused_dependencies(repo: Path, sha: str, manifest: str = "package.json") ->
         ["git", "-C", str(repo), "grep", "-I", "-h", "-o", "-F", *patterns, sha, "--",
          ".", ":!package.json", ":!**/package.json", ":!*lock*", ":!**/*lock*",
          ":!*.md", ":!**/*.md", ":!*.txt", ":!**/*.txt", ":!docs/**", ":!**/docs/**"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     found = set(result.stdout.splitlines())
     return {name for name in names if name not in found and name.split("/")[-1] not in scripts}

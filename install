@@ -38,6 +38,35 @@ if ! "$kit_dir/.venv/bin/python" -c 'from playwright.sync_api import sync_playwr
     printf '%s\n' "Downloading the browser used to print PDF reports (about 150 MB, one time)."
     "$kit_dir/.venv/bin/python" -m playwright install chromium || printf '%s\n' "PDF browser download failed; reports will be saved as HTML until you re-run ./install."
 fi
+if [ "$first_install" = 1 ] && ! command -v docker >/dev/null 2>&1; then
+    printf '\n%s\n' "Docker was not found. It's needed for secret/dependency/static checks and local attack testing"
+    printf '%s\n' "(Nuclei/ZAP can also run natively without it - see 'vaptkit --help' for that path)."
+    if command -v brew >/dev/null 2>&1; then
+        printf '%s' "Install Docker Desktop now via brew? (y/N) "
+        read -r reply || reply=n
+        if [ "$reply" = "y" ] || [ "$reply" = "Y" ]; then
+            printf '%s\n' "Installing Docker Desktop (this may prompt for your password)..."
+            brew install --cask docker
+            printf '%s\n' "Launch Docker Desktop once from Applications before using checks that need it."
+        else
+            printf '%s\n' "Skipped. Install Docker from https://www.docker.com/products/docker-desktop/ if needed."
+        fi
+    elif command -v apt-get >/dev/null 2>&1; then
+        printf '%s' "Install Docker Engine now via apt (needs sudo)? (y/N) "
+        read -r reply || reply=n
+        if [ "$reply" = "y" ] || [ "$reply" = "Y" ]; then
+            printf '%s\n' "Installing Docker Engine (this may prompt for your password)..."
+            curl -fsSL https://get.docker.com | sudo sh
+            sudo usermod -aG docker "$USER" 2>/dev/null || true
+            printf '%s\n' "Installed. Log out and back in (or run 'newgrp docker') for group access to take effect."
+        else
+            printf '%s\n' "Skipped. Install Docker from https://docs.docker.com/engine/install/ if needed."
+        fi
+    else
+        printf '%s\n' "No known package manager (brew/apt) found to install it automatically. Get Docker from"
+        printf '%s\n' "https://docs.docker.com/engine/install/ if you need checks that require it."
+    fi
+fi
 if [ "$first_install" = 1 ]; then
     printf '%s\n' "Installed. Protecting every Git project found under your home folder on every git push..."
     exec "$kit_dir/.venv/bin/vaptkit" --protect-all "$@"

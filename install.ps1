@@ -52,6 +52,26 @@ if ($LASTEXITCODE -ne 0) {
     if ($LASTEXITCODE -ne 0) { Write-Host "PDF browser download failed; reports will be saved as HTML until you re-run install.ps1." }
 }
 
+if ($firstInstall -and -not (Get-Command docker -ErrorAction SilentlyContinue)) {
+    Write-Host ""
+    Write-Host "Docker was not found. It's needed for secret/dependency/static checks and local attack testing"
+    Write-Host "(Nuclei/ZAP can also run natively without it - see 'vaptkit --help' for that path)."
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        $reply = Read-Host "Install Docker Desktop now via winget? (y/N)"
+        if ($reply -eq "y" -or $reply -eq "Y") {
+            Write-Host "Installing Docker Desktop (this may prompt for admin rights)..."
+            & winget install -e --id Docker.DockerDesktop --accept-package-agreements --accept-source-agreements
+            Write-Host "Docker Desktop installed. It needs WSL2 enabled and a sign-out/reboot to finish setup,"
+            Write-Host "then launch Docker Desktop once before using checks that need it."
+        } else {
+            Write-Host "Skipped. Install Docker Desktop later from https://www.docker.com/products/docker-desktop/ if needed."
+        }
+    } else {
+        Write-Host "winget isn't available to install it automatically. Get Docker Desktop from"
+        Write-Host "https://www.docker.com/products/docker-desktop/ if you need checks that require it."
+    }
+}
+
 if ($firstInstall) {
     Write-Host "Installed. Protecting every Git project found under your home folder on every git push..."
     & $venvVaptkit --protect-all @args

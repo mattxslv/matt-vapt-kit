@@ -29,6 +29,7 @@ from .doctor import diagnose
 from .hooks import install as install_hook
 from .drift import build_drift, render_markdown
 from .live import staging_recap
+from .native_scan import nuclei_binary, run_nuclei_native, run_zap_native, zap_binary
 from .support import diagnostics, issue_url, record_error, repo_slug, sanitize
 from .process import ToolError, git, stream
 from .report import generate as generate_report
@@ -733,8 +734,12 @@ def run_local_attack(console: Console) -> None:
         console.print(Text("\nStopped; nothing was run.", style="dim"))
         pause(console)
         return
-    if not shutil.which("docker"):
-        console.print(Text("\nDocker is required for local attack testing.", style=ACCENT))
+    docker_available = bool(shutil.which("docker"))
+    nuclei_bin = None if docker_available else nuclei_binary()
+    zap_bin = None if docker_available else zap_binary()
+    if not docker_available and not nuclei_bin and not zap_bin:
+        console.print(Text("\nDocker is required for local attack testing (or install Nuclei and/or "
+                           "ZAP natively and make sure they're on PATH).", style=ACCENT))
         pause(console)
         return
     available = available_memory_mb()
@@ -750,10 +755,13 @@ def run_local_attack(console: Console) -> None:
     output.mkdir(mode=0o700)
     console.clear()
     print_header(console)
-    target, network = container_target(url)
+    target, network = container_target(url) if docker_available else (url, [])
     console.print(Text(f"Target   {url}", style="dim"))
     if target != url:
         console.print(Text(f"Scanners reach it as {target} (Docker Desktop's name for this computer).", style="dim"))
+    if not docker_available:
+        console.print(Text(f"Running natively (no Docker): "
+                           f"{'Nuclei' if nuclei_bin else '-'} / {'ZAP' if zap_bin else '-'}.", style="dim"))
     console.print(Text(f"Save to  {output}", style="dim"))
     console.print(Text("Each scanner is capped on memory and time so a slow machine doesn't need "
                        "to be force-stopped.", style="dim"))
@@ -772,39 +780,61 @@ def run_local_attack(console: Console) -> None:
         return callback
 
     summary = []
-    nuclei_name = f"mvk-nuclei-{stamp}"
     console.rule(Text("1 / 2  Nuclei known-issue scan", style="bold"), align="left", style="grey37")
-    nuclei_log, code, nuclei_timed_out = stream([
-        "docker", "run", "--rm", *network, "--name", nuclei_name,
-        "--memory=1g", "--memory-swap=1g",
-        "-v", f"{output}:/output", "--entrypoint", "sh",
-        next(image for image in LOCAL_ATTACK_IMAGES if "nuclei" in image),
-        "-c", NUCLEI_SCRIPT, "sh", target,
-    ], printer, timeout=NUCLEI_TIMEOUT_SECONDS, on_timeout=stop(nuclei_name))
-    hits = len((output / "nuclei.txt").read_text().splitlines()) if (output / "nuclei.txt").is_file() else 0
-    if nuclei_timed_out:
-        summary.append(f"Nuclei: stopped after {NUCLEI_TIMEOUT_SECONDS // 60} minute(s); {hits} matched issue(s) so far.")
+    if docker_available:
+        nuclei_name = f"mvk-nuclei-{stamp}"
+        nuclei_log, code, nuclei_timed_out = stream([
+            "docker", "run", "--rm", *network, "--name", nuclei_name,
+            "--memory=1g", "--memory-swap=1g",
+            "-v", f"{output}:/output", "--entrypoint", "sh",
+            next(image for image in LOCAL_ATTACK_IMAGES if "nuclei" in image),
+            "-c", NUCLEI_SCRIPT, "sh", target,
+        ], printer, timeout=NUCLEI_TIMEOUT_SECONDS, on_timeout=stop(nuclei_name))
+    elif nuclei_bin:
+        nuclei_log, code, nuclei_timed_out = run_nuclei_native(
+            nuclei_bin, target, output, printer, timeout=NUCLEI_TIMEOUT_SECONDS, on_timeout=None)
     else:
-        summary.append(f"Nuclei: {hits} matched issue(s)." if code == 0 else "Nuclei: scan did not complete; see nuclei.txt.")
-    console.print(Text(f"  {summary[-1]}", style="bold " + (ACCENT if hits or code else "green")))
+        nuclei_log, code, nuclei_timed_out = "", None, False
+    if code is None:
+        summary.append("Nuclei: skipped (not installed; install Nuclei natively or install Docker).")
+        nuclei_style = "dim"
+    else:
+        hits = len((output / "nuclei.txt").read_text().splitlines()) if (output / "nuclei.txt").is_file() else 0
+        if nuclei_timed_out:
+            summary.append(f"Nuclei: stopped after {NUCLEI_TIMEOUT_SECONDS // 60} minute(s); {hits} matched issue(s) so far.")
+        else:
+            summary.append(f"Nuclei: {hits} matched issue(s)." if code == 0 else "Nuclei: scan did not complete; see nuclei.txt.")
+        nuclei_style = "bold " + (ACCENT if hits or code else "green")
+    console.print(Text(f"  {summary[-1]}", style=nuclei_style))
     console.print()
 
-    zap_name = f"mvk-zap-{stamp}"
     console.rule(Text("2 / 2  ZAP active scan", style="bold"), align="left", style="grey37")
-    (output / "zap-rules.conf").write_text(ZAP_RULES)
-    zap_log, code, zap_timed_out = stream([
-        "docker", "run", "--rm", *network, "--name", zap_name,
-        "--memory=2g", "--memory-swap=2g", "-e", "JAVA_OPTS=-Xmx1536m",
-        "-v", f"{output}:/zap/wrk:rw",
-        next(image for image in LOCAL_ATTACK_IMAGES if "zap" in image),
-        "zap-full-scan.py", "-t", target, "-r", "zap-report.html", "-c", "zap-rules.conf", "-I", "-s",
-    ], zap_printer, timeout=ZAP_TIMEOUT_SECONDS, on_timeout=stop(zap_name))
-    alerts = zap_alert_count(zap_log)
-    if zap_timed_out:
-        summary.append(f"ZAP: stopped after {ZAP_TIMEOUT_SECONDS // 60} minute(s); partial results may be in zap-report.html.")
+    if docker_available:
+        zap_name = f"mvk-zap-{stamp}"
+        (output / "zap-rules.conf").write_text(ZAP_RULES)
+        zap_log, code, zap_timed_out = stream([
+            "docker", "run", "--rm", *network, "--name", zap_name,
+            "--memory=2g", "--memory-swap=2g", "-e", "JAVA_OPTS=-Xmx1536m",
+            "-v", f"{output}:/zap/wrk:rw",
+            next(image for image in LOCAL_ATTACK_IMAGES if "zap" in image),
+            "zap-full-scan.py", "-t", target, "-r", "zap-report.html", "-c", "zap-rules.conf", "-I", "-s",
+        ], zap_printer, timeout=ZAP_TIMEOUT_SECONDS, on_timeout=stop(zap_name))
+    elif zap_bin:
+        zap_log, code, zap_timed_out = run_zap_native(
+            zap_bin, target, output, zap_printer, timeout=ZAP_TIMEOUT_SECONDS, on_timeout=None)
     else:
-        summary.append(f"ZAP: {alerts} alert(s) raised." if (output / "zap-report.html").is_file() else "ZAP: scan did not complete.")
-    console.print(Text(f"  {summary[-1]}", style="bold " + (ACCENT if alerts or zap_timed_out else "green")))
+        zap_log, code, zap_timed_out = "", None, False
+    if code is None:
+        summary.append("ZAP: skipped (not installed; install ZAP natively or install Docker).")
+        zap_style = "dim"
+    else:
+        alerts = zap_alert_count(zap_log)
+        if zap_timed_out:
+            summary.append(f"ZAP: stopped after {ZAP_TIMEOUT_SECONDS // 60} minute(s); partial results may be in zap-report.html.")
+        else:
+            summary.append(f"ZAP: {alerts} alert(s) raised." if (output / "zap-report.html").is_file() else "ZAP: scan did not complete.")
+        zap_style = "bold " + (ACCENT if alerts or zap_timed_out else "green")
+    console.print(Text(f"  {summary[-1]}", style=zap_style))
 
     console.print()
     console.print(Text("Saved evidence", style="bold"))
@@ -963,6 +993,11 @@ def readiness_rows() -> tuple[list[tuple[str, bool, str]], bool]:
     if shutil.which("docker"):
         docker_running = subprocess.run(["docker", "info"], capture_output=True).returncode == 0
         rows.append(("docker running", docker_running, "Docker is running." if docker_running else "Start Docker first."))
+    else:
+        native = [name for name, found in (("Nuclei", nuclei_binary()), ("ZAP", zap_binary())) if found]
+        rows.append(("local attack testing", bool(native),
+                    f"Available natively: {', '.join(native)}." if native else
+                    "No Docker and no native Nuclei/ZAP found; install one to enable local attack testing."))
     return rows, docker_running
 
 

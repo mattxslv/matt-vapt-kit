@@ -308,13 +308,26 @@ def audit_commit(repo: Path, sha: str) -> dict | None:
 PROJECTS_DIR = Path(__file__).resolve().parent.parent / "projects"
 
 
-def project_config_for(repo: Path) -> Path | None:
-    """The projects/*.vapt.yml whose name best matches this repo's folder name, if any."""
-    if not PROJECTS_DIR.is_dir():
-        return None
+def local_projects_dir() -> Path:
+    """Real, project-specific configs (actual URLs, service accounts) live here, never in the
+    kit's own git repo - this is what lets the repo itself stay safe to make public, while each
+    engineer keeps their own real scan targets on their own machine, untracked."""
+    return Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "matt-vapt-kit" / "projects"
+
+
+def project_configs(repo: Path) -> list[Path]:
+    """Every *.vapt.yml whose name matches this repo's folder name, local override first."""
     name = repo.name.lower()
-    matches = [path for path in PROJECTS_DIR.glob("*.vapt.yml") if path.name.removesuffix(".vapt.yml") in name]
-    return max(matches, key=lambda path: len(path.name), default=None)
+    candidates = list(local_projects_dir().glob("*.vapt.yml")) if local_projects_dir().is_dir() else []
+    if PROJECTS_DIR.is_dir():
+        candidates += list(PROJECTS_DIR.glob("*.vapt.yml"))
+    return [path for path in candidates if path.name.removesuffix(".vapt.yml") in name]
+
+
+def project_config_for(repo: Path) -> Path | None:
+    """The best-matching config for this repo: a local override, else the committed example/fixture."""
+    matches = project_configs(repo)
+    return max(matches, key=lambda path: len(path.name), default=None) if matches else None
 
 
 def check(repo: Path, revision: str, *, static: bool = False, routes: bool = False) -> None:

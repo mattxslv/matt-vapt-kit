@@ -20,10 +20,13 @@ jobs:
         include:
           - repo: mattxslv/dtap
             config: projects/dtap.vapt.yml
+            secret_prefix: DTAP
           - repo: mattxslv/pemedes
             config: projects/pemedes.vapt.yml
+            secret_prefix: PEMEDES
           - repo: mattxslv/startup-ph
             config: ""
+            secret_prefix: ""
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -40,6 +43,20 @@ jobs:
           python-version: "3.12"
       - run: pip install --quiet -e ".[report]"
       - run: python -m playwright install --with-deps chromium
+      - name: Write real project config from secrets
+        if: matrix.secret_prefix != ''
+        env:
+          VAPT_CONFIG: ${{ secrets[format('{0}_VAPT_CONFIG', matrix.secret_prefix)] }}
+          REGRESSIONS: ${{ secrets[format('{0}_REGRESSIONS', matrix.secret_prefix)] }}
+          STANDING_APPROVAL: ${{ secrets[format('{0}_STANDING_APPROVAL', matrix.secret_prefix)] }}
+        run: |
+          # The committed projects/*.vapt.yml are sanitized public examples; the real target
+          # URLs/service accounts/standing approvals live only in repo secrets, written here at
+          # job runtime so they never touch the (public) repo or its history.
+          printf '%s' "$VAPT_CONFIG" > "${{ matrix.config }}"
+          base="${{ matrix.config }}"
+          printf '%s' "$REGRESSIONS" > "${base%.vapt.yml}.regressions.yml"
+          printf '%s' "$STANDING_APPROVAL" > "${base%.vapt.yml}.standing-approval.yml"
       - name: Scan
         env:
           CONFIG: ${{ matrix.config }}

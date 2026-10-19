@@ -24,6 +24,7 @@ from rich.table import Table
 from rich.text import Text
 
 from .assessment import approval_template, assess
+from .checks import project_config_for
 from .config import ConfigError, load_config
 from .doctor import diagnose
 from .hooks import install as install_hook
@@ -39,7 +40,6 @@ from .yamlutil import safe_dump
 
 KIT = Path(__file__).resolve().parent.parent
 PRIVATE = KIT / ".private"
-PROJECTS = KIT / "projects"
 RECENT_LIMIT = 8
 WINDOWS = os.name == "nt"
 SEARCH_DEPTH = 4
@@ -117,9 +117,7 @@ def remember(repo: Path) -> None:
 
 
 def matching_config(repo: Path) -> Path | None:
-    name = repo.name.lower()
-    matches = [config for config in PROJECTS.glob("*.vapt.yml") if config.name.removesuffix(".vapt.yml") in name]
-    return max(matches, key=lambda config: len(config.name), default=None)
+    return project_config_for(repo)
 
 
 def ask(console: Console, prompt: str) -> str:

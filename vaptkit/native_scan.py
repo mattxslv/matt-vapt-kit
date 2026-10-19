@@ -14,7 +14,7 @@ as logically-reviewed, not field-verified, until it's been run once for real.
 """
 import os
 import re
-import shutil
+import sys
 from pathlib import Path
 
 from .process import stream
@@ -29,12 +29,27 @@ FIXED_PORT_PATTERN = re.compile(r"\{\{(BaseURL|RootURL|Host|Hostname)\}\}:[0-9]{
 
 
 def _which_on_path(name: str) -> str | None:
-    """Like shutil.which(), but never matches the current directory (or any other relative/empty
-    PATH entry) - shutil.which() on Windows implicitly prepends '.', which would let a malicious
-    nuclei.exe/zap.bat planted in a scanned repo's working directory run instead of the real tool."""
-    search_dirs = [entry for entry in os.environ.get("PATH", "").split(os.pathsep) if os.path.isabs(entry)]
-    found = shutil.which(name, path=os.pathsep.join(search_dirs))
-    return os.path.abspath(found) if found else None
+    """A from-scratch PATH search, deliberately not shutil.which(): shutil.which() on Windows
+    inserts the current directory ahead of PATH unconditionally (even when passed a custom
+    `path=` argument - confirmed against its own source), which would let a malicious
+    nuclei.exe/zap.bat planted in a scanned repo's working directory run instead of the real
+    tool. Only absolute PATH entries are searched, and any match resolving into the current
+    directory is rejected even if PATH itself were somehow poisoned with '.'.
+    """
+    extensions = ([""] if sys.platform != "win32" else
+                 [ext if ext.startswith(".") else f".{ext}"
+                  for ext in (os.environ.get("PATHEXT") or ".COM;.EXE;.BAT;.CMD").split(os.pathsep) if ext] + [""])
+    cwd = os.path.realpath(os.getcwd())
+    for directory in os.environ.get("PATH", "").split(os.pathsep):
+        if not os.path.isabs(directory):
+            continue
+        for extension in extensions:
+            candidate = os.path.join(directory, name + extension)
+            if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                resolved = os.path.realpath(candidate)
+                if os.path.dirname(resolved) != cwd:
+                    return resolved
+    return None
 
 
 def nuclei_binary() -> str | None:

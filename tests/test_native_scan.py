@@ -35,6 +35,14 @@ class WhichOnPathTests(unittest.TestCase):
             with patch.dict(os.environ, {"PATH": ""}), patch("os.getcwd", return_value=directory):
                 self.assertIsNone(_which_on_path("totally-fake-tool"))
 
+    def test_ignores_cwd_even_if_path_itself_is_poisoned_with_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fake = Path(directory) / "totally-fake-tool"
+            fake.write_text("#!/bin/sh\necho fake\n")
+            fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+            with patch.dict(os.environ, {"PATH": directory}), patch("os.getcwd", return_value=directory):
+                self.assertIsNone(_which_on_path("totally-fake-tool"))
+
     def test_finds_a_real_path_entry(self):
         with tempfile.TemporaryDirectory() as directory:
             real = Path(directory) / "totally-real-tool"

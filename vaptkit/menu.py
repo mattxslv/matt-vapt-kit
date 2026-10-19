@@ -751,6 +751,7 @@ def run_local_attack(console: Console) -> None:
     PRIVATE.mkdir(mode=0o700, exist_ok=True)
     output = dated_folder(PRIVATE, "attack", url)
     output.mkdir(mode=0o700)
+    stamp = output.name
     console.clear()
     print_header(console)
     target, network = container_target(url) if docker_available else (url, [])

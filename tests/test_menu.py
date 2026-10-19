@@ -1,8 +1,11 @@
+import io
 import json
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock
+
+from rich.console import Console
 
 from vaptkit.process import ToolError, stream
 from unittest.mock import patch
@@ -10,7 +13,7 @@ from unittest.mock import patch
 from vaptkit.menu import (
     MENU, ago, all_branch_choices, branch_choices, check_for_update, compare_scans, project_list, container_target, find_repos,
     zap_alert_count, parse_selection, is_local_target, is_noisy_zap_line, local_url, missing_local_attack_images,
-    offer_open, retry_input, scan_findings, staging_config, staging_recap, available_memory_mb,
+    offer_open, retry_input, run_local_attack, scan_findings, staging_config, staging_recap, available_memory_mb,
 )
 
 
@@ -343,6 +346,30 @@ class MissingLocalAttackImagesTests(unittest.TestCase):
         with unittest.mock.patch("subprocess.run") as run:
             run.return_value = MagicMock(returncode=0)
             self.assertEqual(missing_local_attack_images(), [])
+
+
+class RunLocalAttackTests(unittest.TestCase):
+    """Regression test for a real crash: the Docker container-naming code referenced an
+    undefined `stamp` variable, raising NameError the moment Docker was actually available and
+    running - never caught before because no test exercised this path with stream() mocked."""
+
+    def console(self, *inputs):
+        console = Console(file=io.StringIO(), force_terminal=False, width=100)
+        console.input = MagicMock(side_effect=inputs)
+        console.clear = MagicMock()
+        return console
+
+    def test_docker_path_names_containers_without_crashing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("vaptkit.menu.PRIVATE", Path(directory)), \
+                    patch("shutil.which", return_value="/usr/bin/docker"), \
+                    patch("vaptkit.menu.available_memory_mb", return_value=None), \
+                    patch("vaptkit.menu.stream", return_value=("", 0, False)) as mock_stream:
+                console = self.console("3000", "y", "")
+                run_local_attack(console)
+        names = [call.args[0][call.args[0].index("--name") + 1] for call in mock_stream.call_args_list]
+        self.assertEqual(len(names), 2)
+        self.assertTrue(all(name.startswith("mvk-nuclei-") or name.startswith("mvk-zap-") for name in names))
 
 
 class ContainerTargetTests(unittest.TestCase):

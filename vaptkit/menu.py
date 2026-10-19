@@ -17,7 +17,6 @@ from importlib.metadata import version
 from pathlib import Path
 from urllib.parse import urlsplit
 
-import yaml
 from rich import box
 from rich.console import Console
 from rich.padding import Padding
@@ -35,6 +34,7 @@ from .process import ToolError, git, stream
 from .report import generate as generate_report
 from .scan import ACCENT, dated_folder, path_link, print_header, project_slug, scan
 from .scan_report import pdf_available, write_scan_report
+from .yamlutil import safe_dump
 
 KIT = Path(__file__).resolve().parent.parent
 PRIVATE = KIT / ".private"
@@ -592,7 +592,7 @@ def run_staging_check(console: Console) -> None:
     PRIVATE.mkdir(mode=0o700, exist_ok=True)
     base = dated_folder(PRIVATE, config["project"])
     config_path = base.with_suffix(".vapt.yml")
-    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    config_path.write_text(safe_dump(config, sort_keys=False))
     config_path.chmod(0o600)
     try:
         config = load_config(config_path)

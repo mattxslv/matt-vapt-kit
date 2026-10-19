@@ -6,10 +6,9 @@ import sys
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-import yaml
-
 from .assessment import approval_template, assess
 from .process import ToolError
+from .yamlutil import safe_load
 
 RUN_WINDOW = timedelta(hours=1)
 
@@ -36,7 +35,7 @@ def regression_checks(config_path: Path | None) -> list[dict]:
     """Past findings to re-check on every live scan: [{name, path, expect: [status, ...]}]."""
     if config_path is None or not regressions_path(config_path).is_file():
         return []
-    data = yaml.safe_load(regressions_path(config_path).read_text()) or {}
+    data = safe_load(regressions_path(config_path).read_text()) or {}
     checks = []
     for item in data.get("checks", []):
         path, expect = item.get("path"), item.get("expect_status")
@@ -68,7 +67,7 @@ def standing_approval(config_path: Path | None) -> dict | None:
     path = standing_approval_path(config_path)
     if not path.is_file():
         return None
-    record = yaml.safe_load(path.read_text())
+    record = safe_load(path.read_text())
     if (not isinstance(record, dict) or not isinstance(record.get("approved_by"), str)
             or not record["approved_by"].strip() or not isinstance(record.get("expires_on"), date)):
         raise ToolError(f"{path.name} needs approved_by and expires_on (YYYY-MM-DD).")

@@ -4,9 +4,11 @@ from importlib.resources import files
 from pathlib import Path
 from urllib.parse import urlsplit
 
-import yaml
 from jsonschema import Draft202012Validator
-from yaml.events import AliasEvent
+from ruamel.yaml import YAML, YAMLError
+from ruamel.yaml.composer import Composer
+from ruamel.yaml.constructor import SafeConstructor
+from ruamel.yaml.events import AliasEvent
 
 MAX_CONFIG_BYTES = 65536
 
@@ -15,12 +17,14 @@ class ConfigError(ValueError):
     pass
 
 
-class ConfigLoader(yaml.SafeLoader):
+class _NoAliasComposer(Composer):
     def compose_node(self, parent, index):
-        if self.check_event(AliasEvent):
+        if self.parser.check_event(AliasEvent):
             raise ConfigError("YAML aliases are not allowed.")
         return super().compose_node(parent, index)
 
+
+class _StrictConstructor(SafeConstructor):
     def construct_mapping(self, node, deep=False):
         result = {}
         for key_node, value_node in node.value:
@@ -33,6 +37,13 @@ class ConfigLoader(yaml.SafeLoader):
         return result
 
 
+def _yaml_loader() -> YAML:
+    loader = YAML(typ="safe")
+    loader.Composer = _NoAliasComposer
+    loader.Constructor = _StrictConstructor
+    return loader
+
+
 def load_config(path: Path) -> dict:
     try:
         with path.open("rb") as stream:
@@ -42,8 +53,8 @@ def load_config(path: Path) -> dict:
     if len(raw) > MAX_CONFIG_BYTES:
         raise ConfigError("Configuration exceeds the 64 KiB limit.")
     try:
-        config = yaml.load(raw.decode("utf-8"), Loader=ConfigLoader)
-    except (UnicodeError, yaml.YAMLError, RecursionError):
+        config = _yaml_loader().load(raw.decode("utf-8"))
+    except (UnicodeError, YAMLError, RecursionError):
         # Parser messages can echo credentials accidentally pasted into YAML.
         raise ConfigError("Invalid YAML configuration; values have been withheld.") from None
 

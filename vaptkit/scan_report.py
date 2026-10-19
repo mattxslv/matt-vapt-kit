@@ -5,12 +5,11 @@ from importlib.metadata import version
 from importlib.resources import files
 from pathlib import Path
 
-import yaml
-
 from .assessment import write_private
 from .brand import lockup_svg
 from .process import ToolError
 from .report import FORMAT_ID, PHT, TLP_COLOR, esc
+from .yamlutil import safe_load
 
 STATUS = {"DONE": ("done", "Done"), "REVIEW": ("review", "Needs review"),
           "NOT RUN": ("gap", "Not run"), "CANCELLED": ("gap", "Cancelled"), "PARTIAL": ("gap", "Partial")}
@@ -37,7 +36,7 @@ def rule_messages() -> dict[str, str]:
     messages = {}
     for path in files("vaptkit").joinpath("rules").iterdir():
         if path.name.endswith(".yml"):
-            for rule in yaml.safe_load(path.read_text()).get("rules", []):
+            for rule in safe_load(path.read_text()).get("rules", []):
                 messages[f"rules.{rule['id']}"] = rule["message"]
     return messages
 

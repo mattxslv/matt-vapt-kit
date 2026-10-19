@@ -5,10 +5,9 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-import yaml
-
 from .process import ToolError, git, run
 from .usage import unused_dependencies
+from .yamlutil import YAMLError, safe_load
 
 GITLEAKS = "ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f"
 SEMGREP = "semgrep/semgrep@sha256:acaac22ffc7b7cc5926de0751b223bce0b2491c33d18422fa72f632c78d81198"
@@ -141,7 +140,7 @@ def dependency_scopes(root: Path, lockfile: str, unused: frozenset = frozenset()
     path, name = root / lockfile, Path(lockfile).name
     try:
         if name == "pnpm-lock.yaml":
-            lock = yaml.safe_load(path.read_text()) or {}
+            lock = safe_load(path.read_text()) or {}
             runtime = pnpm_runtime(lock, exclude=unused)
             idle = pnpm_runtime(lock, only=unused) - runtime if unused else set()
 
@@ -158,7 +157,7 @@ def dependency_scopes(root: Path, lockfile: str, unused: frozenset = frozenset()
         if name == "composer.lock":
             dev = {item["name"] for item in json.loads(path.read_text()).get("packages-dev", [])}
             return lambda package, version: "dev" if package in dev else "runtime"
-    except (OSError, ValueError, yaml.YAMLError, AttributeError, TypeError):
+    except (OSError, ValueError, YAMLError, AttributeError, TypeError):
         pass
     return lambda package, version: "unknown"
 
@@ -286,7 +285,7 @@ def audit_commit(repo: Path, sha: str) -> dict | None:
                   for path in found}
         clears = {}
         if unused and "pnpm-lock.yaml" in found:
-            lock = yaml.safe_load((root / "pnpm-lock.yaml").read_text()) or {}
+            lock = safe_load((root / "pnpm-lock.yaml").read_text()) or {}
             kept = pnpm_runtime(lock, exclude=unused)
             clears = {name: pnpm_runtime(lock, only=frozenset({name})) - kept for name in unused}
     if result.returncode == 128:

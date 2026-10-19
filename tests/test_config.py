@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import yaml
+from vaptkit.yamlutil import safe_dump, safe_load
 
 from vaptkit.cli import CORE_TOOLS, main
 from vaptkit.config import ConfigError, MAX_CONFIG_BYTES, load_config
@@ -19,10 +19,10 @@ class ConfigTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.path = Path(self.directory.name) / "config.yml"
-        self.config = yaml.safe_load((ROOT / "projects/pemedes.vapt.yml").read_text())
+        self.config = safe_load((ROOT / "projects/pemedes.vapt.yml").read_text())
 
     def write(self, config=None):
-        self.path.write_text(yaml.safe_dump(self.config if config is None else config))
+        self.path.write_text(safe_dump(self.config if config is None else config))
         return self.path
 
     def test_project_configs(self):

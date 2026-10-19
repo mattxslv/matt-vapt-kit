@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "matt-vapt-kit"
-version = "0.9.8"
+version = "0.9.9"
 description = "Private, staging-first security checks and assessment reports"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["PyYAML==6.0.2", "jsonschema==4.23.0", "rich==14.2.0", "pyfiglet==1.0.4"]
+dependencies = ["ruamel.yaml==0.19.1", "jsonschema==4.23.0", "rich==14.2.0", "pyfiglet==1.0.4"]
 
 [project.urls]
 Repository = "https://github.com/mattxslv/matt-vapt-kit"

@@ -12,7 +12,7 @@ import warnings
 from pathlib import Path
 from unittest.mock import patch
 
-import yaml
+from vaptkit.yamlutil import safe_dump, safe_load
 
 from test_assessment import approved, observation
 from test_roles import Application, ENV, approval_for, configuration
@@ -211,7 +211,7 @@ class SummaryTests(unittest.TestCase):
         config = configuration()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / "config.yml").write_text(yaml.safe_dump(config))
+            (root / "config.yml").write_text(safe_dump(config))
             (root / "approval.json").write_text(json.dumps(approval_for(config)))
             emails = {key: value for key, value in ENV.items() if key != "DTAP_QA_PASSWORD"}
             with patch.dict(os.environ, emails, clear=True), patch(

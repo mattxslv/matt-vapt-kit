@@ -38,9 +38,9 @@ def static_tickets(folder: Path) -> list[dict]:
     messages = {}
     rules_dir = Path(__file__).parent / "rules"
     if rules_dir.is_dir():
-        import yaml
+        from .yamlutil import safe_load
         for path in rules_dir.glob("*.yml"):
-            for rule in yaml.safe_load(path.read_text()).get("rules", []):
+            for rule in safe_load(path.read_text()).get("rules", []):
                 messages[f"rules.{rule['id']}"] = rule["message"]
     grouped = {}
     for item in read(folder, "static-findings.json").get("findings", []):

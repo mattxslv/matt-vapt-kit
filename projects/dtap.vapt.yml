@@ -1,0 +1,53 @@
+schema_version: 1
+project: dtap
+target:
+  environment: staging
+  url: https://dtap-staging.example.invalid
+  allowed_hosts:
+    - dtap-staging.example.invalid
+  verification: reachable-not-authorized
+access:
+  type: iap-service-account
+  service_account: dtap-qa-bot@example-project.iam.gserviceaccount.com
+scope:
+  api_prefixes: [/api/]
+  excluded_prefixes: []
+  roles: [service-provider, evaluator, lead-evaluator, division-chief, director, administrator]
+credentials: {}
+role_testing:
+  adapter: session-login-v1
+  login:
+    login_path: /api/auth/signin
+    logout_path: /api/auth/signout
+    identity_path: [user]
+    email_field: email
+    role_field: user_type
+    session:
+      type: cookie
+      cookie_names: [auth-token, session-bind]
+  accounts:
+    - {id: service-provider, role: service-provider, email_env: DTAP_SP_EMAIL, password_env: DTAP_QA_PASSWORD}
+    - {id: evaluator, role: evaluator, email_env: DTAP_EVALUATOR_EMAIL, password_env: DTAP_QA_PASSWORD}
+    - {id: evaluator-2, role: evaluator, email_env: DTAP_EVALUATOR2_EMAIL, password_env: DTAP_QA_PASSWORD}
+    - {id: lead-evaluator, role: lead-evaluator, email_env: DTAP_LEAD_EMAIL, password_env: DTAP_QA_PASSWORD}
+    - {id: division-chief, role: division-chief, email_env: DTAP_CHIEF_EMAIL, password_env: DTAP_QA_PASSWORD}
+    - {id: director, role: director, email_env: DTAP_DIRECTOR_EMAIL, password_env: DTAP_QA_PASSWORD}
+  routes:
+    - path: /api/lead-evaluator/requirements
+      allowed_roles: [lead-evaluator, administrator]
+      response_shape: {data: array, stats: object}
+ownership_checks:
+  # Example ownership-boundary check: one account attempts to modify a field that should only be
+  # writable by its own owner, then confirms whether the write actually took effect.
+  - id: evaluator-profile-department
+    acting_account: evaluator
+    target_account: evaluator-2
+    write_path: /api/evaluator/profile
+    write_method: PUT
+    id_field: userId
+    read_path: /api/evaluator/profile
+    read_field: [profile, department]
+    probe_field: department
+review:
+  public_routes: [/api/auth/*, /api/health, /.well-known/*, /auth/*]
+  privileged_prefixes: [/api/admin*, /api/director*, /api/division-chief*, /api/lead-evaluator*, /api/role-users*]

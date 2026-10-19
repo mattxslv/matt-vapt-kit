@@ -4,10 +4,9 @@
 
 <p align="center">
   <a href="https://github.com/mattxslv/matt-vapt-kit/actions/workflows/test.yml"><img src="https://github.com/mattxslv/matt-vapt-kit/actions/workflows/test.yml/badge.svg" alt="Toolkit checks"></a>
-  <a href="https://github.com/mattxslv/matt-vapt-kit/actions/workflows/weekly-scan.yml"><img src="https://github.com/mattxslv/matt-vapt-kit/actions/workflows/weekly-scan.yml/badge.svg" alt="Weekly security scan"></a>
   <img src="https://img.shields.io/badge/python-3.11%2B-d68b68" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20(beta)-d68b68" alt="Platform: Linux, Windows beta">
-  <img src="https://img.shields.io/badge/status-private%20team%20pilot-1f1b19" alt="Status: private team pilot">
+  <img src="https://img.shields.io/badge/status-team%20pilot-1f1b19" alt="Status: team pilot">
 </p>
 
 **Security checks for the team's projects, with private evidence and PDF reports.**
@@ -138,16 +137,26 @@ Everything is saved privately under `.private/` and never overwritten. Findings 
 
 ## Automatic checks
 
-- **Weekly scan:** every Monday 08:00 PHT, GitHub Actions scans DTAP, PEMEDES and
-  Startup PH from this repo (nothing is committed to the app repos) and uploads a
-  PDF for each. Results: **Actions → Weekly security scan**. Needs the
-  `SCAN_REPOS_TOKEN` secret, a read-only token for those repos.
-- **Live staging:** `projects/<name>.standing-approval.yml` records the owner's
-  approval and an expiry date. While it's valid, scans of that project add the
-  read-only staging checks with no prompts; each run still gets its own one-hour
-  approval. DTAP and PEMEDES staging sit behind IAP and are reached through their
-  QA bot service accounts (`dtap-qa-bot`, `pemedes-qa-bot`) using your own gcloud
-  login, so this works only for accounts allowed to act as those bots.
+- **Weekly scan:** not run from this repo. This repo is public; a scan's own
+  output (real target URLs, findings) would be visible in the run's logs and
+  artifacts to anyone, not just the team, since GitHub Actions logs/artifacts on
+  a public repo are public regardless of who triggered them. Real production
+  scans run from the menu instead, using each engineer's own local project
+  config (see below) - or from a separate private repo if scheduled scanning is
+  set up again later.
+- **Project configs:** `projects/*.vapt.yml` in this repo are sanitized examples
+  (`*.example.invalid` targets) so the public repo never carries real staging
+  URLs, service accounts or environment-specific findings. Real configs for
+  your own projects go in `~/.config/matt-vapt-kit/projects/` (override with
+  `XDG_CONFIG_HOME`) - never committed, checked there first and falling back to
+  the example in this repo only if no local override exists.
+- **Live staging:** `<local-config-dir>/<name>.standing-approval.yml` records
+  the owner's approval and an expiry date, next to the real
+  `<name>.vapt.yml`. While it's valid, scans of that project add the read-only
+  staging checks with no prompts; each run still gets its own one-hour
+  approval. DTAP and PEMEDES staging sit behind IAP and are reached through
+  their QA bot service accounts using your own gcloud login, so this works
+  only for accounts allowed to act as those bots.
 
 ## Without the menu
 

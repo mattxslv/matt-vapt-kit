@@ -1,0 +1,21 @@
+schema_version: 1
+project: pemedes
+target:
+  environment: staging
+  url: https://pemedes-staging.example.invalid
+  allowed_hosts:
+    - pemedes-staging.example.invalid
+  verification: reachable-not-authorized
+access:
+  type: iap-service-account
+  service_account: pemedes-qa-bot@example-project.iam.gserviceaccount.com
+scope:
+  api_prefixes: [/api/]
+  excluded_prefixes:
+    - /api/admin/export
+  roles: [admin, agent, operator, rider]
+credentials: {}
+review:
+  public_routes: [/api/auth/*, /api/health]
+  auth_patterns: [getSessionByToken]
+  privileged_prefixes: [/api/admin*]

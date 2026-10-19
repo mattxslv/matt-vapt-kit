@@ -193,7 +193,11 @@ def refresh_branches(repo: Path) -> bool:
 
 
 def branch_choices(repo: Path) -> list[tuple[str, str]]:
-    """[(label, revision)]: your checkout first, then common branches from origin, without checking anything out."""
+    """[(label, revision)]: your checkout first, then common branches from origin, without checking anything out.
+
+    Used by the full scan (option 0), which deliberately stays scoped to the usual handful of
+    long-lived branches rather than every feature branch that happens to exist on origin.
+    """
     current = git(repo, "rev-parse", "--abbrev-ref", "HEAD")
     choices = [(f"{current} (your checkout)" if current != "HEAD" else "your checkout", "HEAD")]
     remote = set(git(repo, "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin").splitlines())
@@ -203,9 +207,21 @@ def branch_choices(repo: Path) -> list[tuple[str, str]]:
     return choices
 
 
+def all_branch_choices(repo: Path) -> list[tuple[str, str]]:
+    """[(label, revision)]: your checkout first, then every other branch on origin, for manual picking."""
+    current = git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+    choices = [(f"{current} (your checkout)" if current != "HEAD" else "your checkout", "HEAD")]
+    remote = sorted(name.removeprefix("origin/") for name in
+                    git(repo, "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin").splitlines()
+                    if name != "origin/HEAD")
+    common_first = [name for name in COMMON_BRANCHES if name in remote and name != current]
+    rest = [name for name in remote if name != current and name not in COMMON_BRANCHES]
+    for name in common_first + rest:
+        choices.append((name, f"origin/{name}"))
+    return choices
+
+
 def pick_branches(console: Console, choices: list[tuple[str, str]]) -> list[tuple[str, str]] | None:
-    if len(choices) == 1:
-        return choices
     console.print(Text("\nWhich branch?", style="bold"))
     for number, (label, _) in enumerate(choices, start=1):
         option(console, str(number), label)
@@ -299,7 +315,7 @@ def run_scan(console: Console) -> None:
     repo = prepare_project(console)
     if repo is None:
         return
-    selected = pick_branches(console, branch_choices(repo))
+    selected = pick_branches(console, all_branch_choices(repo))
     if not selected:
         return
     scanned = scan_branches(console, repo, selected)

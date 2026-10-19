@@ -8,7 +8,7 @@ from vaptkit.process import ToolError, stream
 from unittest.mock import patch
 
 from vaptkit.menu import (
-    MENU, ago, branch_choices, check_for_update, compare_scans, project_list, container_target, find_repos,
+    MENU, ago, all_branch_choices, branch_choices, check_for_update, compare_scans, project_list, container_target, find_repos,
     zap_alert_count, parse_selection, is_local_target, is_noisy_zap_line, local_url, missing_local_attack_images,
     offer_open, retry_input, scan_findings, staging_config, staging_recap, available_memory_mb,
 )
@@ -421,6 +421,25 @@ class BranchChoiceTests(unittest.TestCase):
                 git(work, *args)
             self.assertEqual(branch_choices(work), [("staging (your checkout)", "HEAD"), ("main", "origin/main")])
             self.assertEqual(git(work, "rev-parse", "--abbrev-ref", "HEAD"), "staging")
+
+    def test_all_branch_choices_includes_every_remote_branch_not_just_common_ones(self):
+        import subprocess
+        from vaptkit.process import git
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", "-q", "--bare", str(root / "remote.git")], check=True)
+            work = root / "work"
+            subprocess.run(["git", "init", "-q", "-b", "novs_wellness_leave_updates", str(work)], check=True)
+            for args in (["config", "user.email", "t@example.invalid"], ["config", "user.name", "T"],
+                         ["commit", "-q", "--allow-empty", "-m", "one"], ["remote", "add", "origin", str(root / "remote.git")],
+                         ["push", "-q", "origin", "novs_wellness_leave_updates", "novs_wellness_leave_updates:main",
+                          "novs_wellness_leave_updates:feature-x"], ["fetch", "-q"]):
+                git(work, *args)
+            self.assertEqual(all_branch_choices(work), [
+                ("novs_wellness_leave_updates (your checkout)", "HEAD"),
+                ("main", "origin/main"),
+                ("feature-x", "origin/feature-x"),
+            ])
 
 
 class ProjectListTests(unittest.TestCase):

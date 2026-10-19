@@ -52,7 +52,12 @@ if ($LASTEXITCODE -ne 0) {
     if ($LASTEXITCODE -ne 0) { Write-Host "PDF browser download failed; reports will be saved as HTML until you re-run install.ps1." }
 }
 
-if ($firstInstall -and -not (Get-Command docker -ErrorAction SilentlyContinue)) {
+# Not gated to $firstInstall: someone who installed before Docker support existed, or who
+# said "no" to Docker but later got nothing else working (no native Nuclei/ZAP either), would
+# otherwise never see this again. The decline marker (inside .venv, never committed) stops it
+# from nagging on every single run once someone has actually said no.
+$dockerDeclinedMarker = Join-Path $kitDir ".venv\.docker-prompt-declined"
+if (-not (Get-Command docker -ErrorAction SilentlyContinue) -and -not (Test-Path $dockerDeclinedMarker)) {
     Write-Host ""
     Write-Host "Docker was not found. It's needed for secret/dependency/static checks and local attack testing"
     Write-Host "(Nuclei/ZAP can also run natively without it - see 'vaptkit --help' for that path)."
@@ -65,6 +70,8 @@ if ($firstInstall -and -not (Get-Command docker -ErrorAction SilentlyContinue)) 
             Write-Host "then launch Docker Desktop once before using checks that need it."
         } else {
             Write-Host "Skipped. Install Docker Desktop later from https://www.docker.com/products/docker-desktop/ if needed."
+            Write-Host "This won't ask again; delete .venv\.docker-prompt-declined to be asked on the next run."
+            New-Item -ItemType File -Path $dockerDeclinedMarker -Force | Out-Null
         }
     } else {
         Write-Host "winget isn't available to install it automatically. Get Docker Desktop from"

@@ -38,7 +38,12 @@ if ! "$kit_dir/.venv/bin/python" -c 'from playwright.sync_api import sync_playwr
     printf '%s\n' "Downloading the browser used to print PDF reports (about 150 MB, one time)."
     "$kit_dir/.venv/bin/python" -m playwright install chromium || printf '%s\n' "PDF browser download failed; reports will be saved as HTML until you re-run ./install."
 fi
-if [ "$first_install" = 1 ] && ! command -v docker >/dev/null 2>&1; then
+# Not gated to first_install: someone who installed before Docker support existed, or who
+# said no to Docker but later got nothing else working (no native Nuclei/ZAP either), would
+# otherwise never see this again. The decline marker (inside .venv, never committed) stops it
+# from nagging on every single run once someone has actually said no.
+docker_declined_marker="$kit_dir/.venv/.docker-prompt-declined"
+if ! command -v docker >/dev/null 2>&1 && [ ! -e "$docker_declined_marker" ]; then
     printf '\n%s\n' "Docker was not found. It's needed for secret/dependency/static checks and local attack testing"
     printf '%s\n' "(Nuclei/ZAP can also run natively without it - see 'vaptkit --help' for that path)."
     if command -v brew >/dev/null 2>&1; then
@@ -50,6 +55,8 @@ if [ "$first_install" = 1 ] && ! command -v docker >/dev/null 2>&1; then
             printf '%s\n' "Launch Docker Desktop once from Applications before using checks that need it."
         else
             printf '%s\n' "Skipped. Install Docker from https://www.docker.com/products/docker-desktop/ if needed."
+            printf '%s\n' "This won't ask again; delete .venv/.docker-prompt-declined to be asked on the next run."
+            touch "$docker_declined_marker"
         fi
     elif command -v apt-get >/dev/null 2>&1; then
         printf '%s' "Install Docker Engine now via apt (needs sudo)? (y/N) "
@@ -61,6 +68,8 @@ if [ "$first_install" = 1 ] && ! command -v docker >/dev/null 2>&1; then
             printf '%s\n' "Installed. Log out and back in (or run 'newgrp docker') for group access to take effect."
         else
             printf '%s\n' "Skipped. Install Docker from https://docs.docker.com/engine/install/ if needed."
+            printf '%s\n' "This won't ask again; delete .venv/.docker-prompt-declined to be asked on the next run."
+            touch "$docker_declined_marker"
         fi
     else
         printf '%s\n' "No known package manager (brew/apt) found to install it automatically. Get Docker from"

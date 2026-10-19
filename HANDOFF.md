@@ -1,8 +1,159 @@
 # Matt VAPT Kit — Handoff
 
-**Date:** 2026-10-15 (session via Claude Code, latest session)
+**Date:** 2026-10-19 (session via Claude Code, latest session)
 
-## What this session added (2026-10-15, latest)
+## What this session added (2026-10-19, latest)
+
+Current version: **v0.11.0**. 420 Python tests pass. This session was almost entirely driven by
+a real pilot user (Noveel/cailight03) hitting the install and menu for the first time on Windows -
+every fix below came from an actual error he hit, not speculative hardening.
+
+### Removed accidental Co-Authored-By attribution from the entire Git history
+User's explicit instruction: never add Co-Authored-By lines, and it showed up in ~17 commits
+despite that. Stripped with `git filter-branch --msg-filter` across all refs, force-pushed. Also
+updated session instructions so future commits never add it again (this was a harness-level
+default fighting the user's own CLAUDE.md, now the user's instruction wins).
+
+### Fixed PyYAML failing to install on Python 3.14 (replaced with ruamel.yaml)
+Noveel's first `./install` failed outright: `error: Microsoft Visual C++ 14.0 or greater is
+required`. Root cause: PyYAML ships a compiled C extension with no prebuilt wheel for a Python
+version until weeks/months after that version ships; pip falls back to a source build needing a
+compiler Windows doesn't have by default. This isn't a one-time Python-3.14 problem - it recurs
+every October when Python cuts a new release, so patching around 3.14 specifically would just
+mean the same bug report again next year.
+
+Replaced PyYAML with `ruamel.yaml` everywhere (`vaptkit/yamlutil.py` wraps load/dump so callers
+don't touch its stream-based dump API directly) - its safe mode is pure Python with an optional
+C speedup that silently no-ops if it can't build, so installing it never needs a compiler on any
+Python version, present or future. `config.py`'s custom security hardening (reject YAML aliases,
+duplicate keys, non-string keys - defends against config-based attacks) was ported to ruamel's
+Composer/Constructor hooks and verified against the existing test that already covered all three
+cases. Verified with PyYAML fully uninstalled from the venv: all tests still pass.
+
+### Fixed a Windows-only UnicodeDecodeError reading repo content
+Next real error: `routes.py`'s API-review check (reads file contents via `git show`) crashed with
+`UnicodeDecodeError` scanning a real HRMIS_v22 repo. Root cause: `process.py::git()` ran
+`subprocess.run(text=True)` with no explicit encoding; on Windows that defaults to the system
+codepage (cp1252) with strict decoding, and a scanned repo's source files are not guaranteed to
+be cp1252-safe. Fixed with `encoding="utf-8", errors="replace"` on `git()`, `stream()`, and
+`usage.py`'s two subprocess calls that also read arbitrary repo content. 2 new tests in
+`tests/test_process.py` using a real scratch git repo (non-UTF-8 byte doesn't raise; real UTF-8
+round-trips correctly).
+
+### Branch picker was silently auto-selecting instead of asking
+`branch_choices()` only ever offered the 5 hardcoded common names (main/master/staging/develop/
+dev) plus whatever was checked out; on a repo whose checkout is a feature branch and none of
+those 5 exist on origin (confirmed live on HRMIS_v22, checked out to
+`novs_wellness_leave_updates`), it returned exactly one option, and `pick_branches()` silently
+auto-returned it without ever asking - looked like "it chose the branch for me." Added
+`all_branch_choices()` (every branch on origin, common ones first) for the manual picker (option
+1) and removed the single-choice auto-skip. The full scan (option 0) deliberately keeps using the
+original `branch_choices()` - it's documented as "every branch, no further questions," scoped to
+long-lived branches, not meant to explode into every feature branch on a busy repo.
+
+### Native Nuclei/ZAP fallback when Docker isn't installed, plus a binary-planting fix
+Local attack testing (option 5) hard-required Docker with no alternative. Added
+`vaptkit/native_scan.py`: native Nuclei reimplements the Docker path's fixed-port-template
+exclusion logic in Python (no find/xargs/grep on plain Windows); native ZAP drives its
+Automation Framework (`zap.sh/zap.cmd -cmd -autorun plan.yaml`), the documented headless CLI
+mode, since the Docker image's `zap-full-scan.py` isn't part of a normal ZAP install. Neither
+path has been run against a real installed copy of either tool - logically reviewed against each
+tool's documented CLI, not field-verified, flagged as such.
+
+Automated security review caught a real binary-planting risk in the lookup: `shutil.which()` on
+Windows implicitly prepends the current directory to PATH for certain commands - and this tool
+runs from inside the very repos it scans, so a malicious `nuclei.exe`/`zap.bat` planted in a
+scanned repo's working directory could've run instead of the real tool. First fix attempt
+(`shutil.which(name, path=...)`) was still broken - confirmed by reading `shutil.which`'s own
+source that the Windows cwd-prepend happens unconditionally, ignoring the custom `path=`
+argument entirely. Replaced with a from-scratch PATH search (`_which_on_path()`) that never calls
+`shutil.which`, searches only absolute PATH entries, applies PATHEXT on Windows, and rejects any
+match resolving into the current directory even if PATH itself were poisoned with it. 5 tests in
+`test_native_scan.py` including the exact PATH-poisoning case.
+
+### Docker install prompt (opt-in) + fixed it not firing for existing installs
+Added an opt-in Docker install prompt to both installers (`install`/`install.ps1`): asks "Install
+Docker Desktop now via winget? (y/N)" (Windows) or offers brew/apt (Linux/Mac) - never installs
+without an explicit yes, matching the kit's existing pattern for impactful-action confirmations.
+First version only fired on a brand-new install (`$firstInstall`); someone who'd installed before
+this feature existed (Noveel, mid-pilot) would never see it. Decoupled from first-install: now
+checks every run until Docker is found or the user explicitly declines once (remembered via a
+marker file inside `.venv`, never committed, so it doesn't nag forever either).
+
+### Docker now auto-starts instead of telling the user to open it manually
+User's explicit framing: "I want this to be hands off as much as possible... ever since from the
+start." Every Docker-dependent path only ever checked whether Docker was already running and
+told the user to start it themselves. Added `docker_running()`/`launch_docker()` in `process.py`
+(shared by `menu.py` and `scan.py` to avoid a circular import): silently starts Docker Desktop on
+Windows, `open -a Docker` on macOS, or a non-interactive `sudo -n systemctl start docker` on
+Linux (never prompts for a password - that would be its own kind of stuck). Polls with a visible
+"Starting Docker..." message up to 90s. Still degrades cleanly (native fallback, or "Docker is
+unavailable, other checks still run") if Docker isn't installed or doesn't start in time.
+
+Caught a real side effect while wiring this in: 5 existing tests in `test_scan.py` were faking
+Docker readiness by mocking `vaptkit.scan.subprocess.run` for a `["docker", "info"]` call that no
+longer lived there after the refactor - meaning those tests had started making real, unmocked
+`subprocess`/`sudo` calls silently. Fixed by mocking the actual relocated function
+(`vaptkit.scan.docker_running`) instead; confirmed no real system calls happen during tests by
+checking the module's run time stayed unchanged (0.48s).
+
+### Fixed a real NameError crash in local attack testing (GitHub issue #1, filed by the pilot user)
+`run_local_attack()` referenced an undefined `stamp` variable when naming Docker containers
+(`mvk-nuclei-{stamp}`, `mvk-zap-{stamp}`) - a pre-existing bug, never caught because no test
+exercised this function with `stream()` mocked, and nobody had hit the
+Docker-installed-and-actually-running path until a real pilot user did. First real bug report
+filed through the kit's own "Report a problem" (option 8) feature, on the now-public repo's
+issue tracker. Fixed by deriving `stamp` from the already-unique evidence output folder name.
+New `RunLocalAttackTests` in `test_menu.py`, confirmed it reproduces the exact NameError without
+the fix and passes with it.
+
+### Made the repo public, after finding and removing real exposure (three separate history rewrites)
+User's call: `mattxslv/matt-vapt-kit` went from private to public. Before flipping it, found and
+fixed real exposure that would otherwise have gone live:
+
+1. **`projects/*.vapt.yml` had real data committed**: real staging URLs, real GCP project IDs and
+   service account emails, and (in `dtap.vapt.yml`'s `ownership_checks`) a description of a
+   specific, real IDOR bug. Added `local_projects_dir()` (`~/.config/matt-vapt-kit/projects/`,
+   override via `XDG_CONFIG_HOME`) - real configs now live there, untracked, checked first by
+   `project_config_for()`/`matching_config()`, falling back to the committed directory. The 3
+   tracked files became `*.example.invalid` sanitized placeholders (same shape, so tests and the
+   schema still exercise real structure); the 4 regressions/standing-approval sidecar files were
+   removed from the repo entirely (lower-sensitivity but still operational - a real CERT-PH
+   ticket number, approval dates).
+2. **The weekly CI scan workflow made the config-in-secrets fix insufficient on its own**:
+   `.github/workflows/weekly-scan.yml` read `projects/dtap.vapt.yml`/`pemedes.vapt.yml` directly
+   from the repo - moving the real values into GitHub secrets (first attempt) would have kept the
+   *repo* clean, but GitHub Actions logs and uploaded artifacts on a public repo are publicly
+   visible to anyone regardless of who triggered the run, which would have re-exposed the real
+   scan output (and `startup-ph`'s private source, also checked out by that workflow) through a
+   different channel. Removed the workflow entirely rather than solve a problem with no safe
+   answer today; real scans run manually from the menu using the local config override.
+3. **Purged real data from Git history, not just the working tree**: `git filter-branch` to
+   remove the 7 real-data file paths from every commit; then found via a full blob-content sweep
+   that real URLs/project IDs had *also* leaked into `HANDOFF.md`'s own prose across ~29 blob
+   revisions (this file documents real infra as it's worked on) - used `git-filter-repo
+   --replace-text` to scrub those literal strings from every blob in history. Also discovered
+   mid-purge that 12 annotated version tags (v0.6.0-v0.7.5) were never actually rewritten by the
+   first (Co-Authored-By) `git filter-branch` pass earlier this session - `filter-branch` silently
+   leaves annotated tag *objects* pointing at their original pre-rewrite commits unless
+   `--tag-name-filter` is given, which hadn't been - so those real secrets were still live and
+   fetchable from GitHub via the old tags even after `main` itself was cleaned. Deleted all 12
+   tags from the remote immediately on discovery. Verified end to end with a fresh clone of the
+   actual public repo, scanning every blob in its real history for the specific leaked strings -
+   zero matches, confirmed independently rather than trusting the local repo's state alone.
+
+### Known gaps / not done this session
+- Native Nuclei/ZAP (native_scan.py) is logic-reviewed only, not field-verified against a real
+  installed copy of either tool - first real run by a pilot user is the actual test.
+- The weekly CI scan of real DTAP/PEMEDES/Startup PH staging is currently **off**. No safe way to
+  run it from a public repo was found this session (public-repo Actions logs/artifacts are
+  always public); re-enabling it needs either a separate private repo for just that workflow, or
+  accepting non-public logs some other way. Real scans are manual via the menu until then.
+- `install.ps1`'s Docker-install-via-winget path and the native ZAP Automation Framework path are
+  both unverified on an actual Windows machine from this session - same standing gap as the rest
+  of the Windows-specific code in this kit.
+
+## What this session added (2026-10-15, archived)
 
 Current version: **v0.9.8**. 406 Python tests pass.
 

@@ -32,7 +32,7 @@ from .drift import build_drift, render_markdown
 from .live import staging_recap
 from .native_scan import nuclei_binary, run_nuclei_native, run_zap_native, zap_binary
 from .support import diagnostics, issue_url, record_error, repo_slug, sanitize
-from .process import ToolError, git, stream
+from .process import DOCKER_START_TIMEOUT_SECONDS, ToolError, docker_running, git, launch_docker, stream
 from .report import generate as generate_report
 from .scan import ACCENT, dated_folder, path_link, print_header, project_slug, scan
 from .scan_report import pdf_available, write_scan_report
@@ -707,6 +707,27 @@ def local_url(entry: str) -> str:
 LOW_MEMORY_MB = 4096
 
 
+def ensure_docker_running(console: Console) -> bool:
+    """True if Docker is (or becomes) reachable. Auto-launches it if installed but not running,
+    so using a check that needs Docker doesn't require manually opening Docker Desktop first."""
+    if not shutil.which("docker"):
+        return False
+    if docker_running():
+        return True
+    if not launch_docker():
+        return False
+    console.print(Text("\nStarting Docker - this can take a minute on first launch...", style="dim"))
+    deadline = time.monotonic() + DOCKER_START_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        if docker_running():
+            console.print(Text("Docker is ready.", style="dim"))
+            return True
+        time.sleep(2)
+    console.print(Text(f"Docker didn't finish starting within {DOCKER_START_TIMEOUT_SECONDS}s; "
+                       "open it manually and try again.", style=ACCENT))
+    return False
+
+
 def available_memory_mb() -> int | None:
     """Available RAM in MiB from /proc/meminfo, or None if it can't be read (non-Linux)."""
     try:
@@ -732,7 +753,7 @@ def run_local_attack(console: Console) -> None:
         console.print(Text("\nStopped; nothing was run.", style="dim"))
         pause(console)
         return
-    docker_available = bool(shutil.which("docker"))
+    docker_available = ensure_docker_running(console)
     nuclei_bin = None if docker_available else nuclei_binary()
     zap_bin = None if docker_available else zap_binary()
     if not docker_available and not nuclei_bin and not zap_bin:
@@ -986,22 +1007,22 @@ def protect_all_pushes(console: Console) -> None:
     pause(console)
 
 
-def readiness_rows() -> tuple[list[tuple[str, bool, str]], bool]:
+def readiness_rows(console: Console) -> tuple[list[tuple[str, bool, str]], bool]:
     rows = [(check["name"], check["ready"], check["detail"]) for check in diagnose("push")["checks"]]
-    docker_running = False
+    running = False
     if shutil.which("docker"):
-        docker_running = subprocess.run(["docker", "info"], capture_output=True).returncode == 0
-        rows.append(("docker running", docker_running, "Docker is running." if docker_running else "Start Docker first."))
+        running = ensure_docker_running(console)
+        rows.append(("docker running", running, "Docker is running." if running else "Could not start Docker automatically; open it manually."))
     else:
         native = [name for name, found in (("Nuclei", nuclei_binary()), ("ZAP", zap_binary())) if found]
         rows.append(("local attack testing", bool(native),
                     f"Available natively: {', '.join(native)}." if native else
                     "No Docker and no native Nuclei/ZAP found; install one to enable local attack testing."))
-    return rows, docker_running
+    return rows, running
 
 
 def check_ready(console: Console) -> None:
-    rows, docker_running = readiness_rows()
+    rows, docker_running = readiness_rows(console)
     console.print()
     for name, ready, detail in rows:
         mark = Text("  OK    ", style="bold green") if ready else Text("  MISSING ", style=f"bold {ACCENT}")
@@ -1025,7 +1046,7 @@ def report_problem(console: Console) -> None:
     console.print(Text("Report a problem", style="bold"))
     console.print(Text("Collects diagnostics only: versions, your setup and the last error. No findings, code or "
                        "secrets, and your username is hidden. You'll see everything before it's sent.", style="dim"))
-    rows, _ = readiness_rows()
+    rows, _ = readiness_rows(console)
     protected = sum(is_protected(Path(entry)) for entry in load_recent())
     report = diagnostics(rows, protected)
     console.print()

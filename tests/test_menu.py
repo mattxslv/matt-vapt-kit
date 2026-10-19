@@ -14,6 +14,7 @@ from vaptkit.menu import (
     MENU, ago, all_branch_choices, branch_choices, check_for_update, compare_scans, project_list, container_target, find_repos,
     zap_alert_count, parse_selection, is_local_target, is_noisy_zap_line, local_url, missing_local_attack_images,
     offer_open, retry_input, run_local_attack, scan_findings, staging_config, staging_recap, available_memory_mb,
+    ensure_docker_running,
 )
 
 
@@ -348,6 +349,46 @@ class MissingLocalAttackImagesTests(unittest.TestCase):
             self.assertEqual(missing_local_attack_images(), [])
 
 
+class EnsureDockerRunningTests(unittest.TestCase):
+    def console(self):
+        return Console(file=io.StringIO(), force_terminal=False, width=100)
+
+    def test_already_running_is_a_fast_no_op(self):
+        with patch("vaptkit.menu.shutil.which", return_value="/usr/bin/docker"), \
+                patch("vaptkit.menu.docker_running", return_value=True) as running, \
+                patch("vaptkit.menu.launch_docker") as launch:
+            self.assertTrue(ensure_docker_running(self.console()))
+        launch.assert_not_called()
+        running.assert_called_once()
+
+    def test_docker_not_installed_returns_false_without_attempting_to_launch(self):
+        with patch("vaptkit.menu.shutil.which", return_value=None), \
+                patch("vaptkit.menu.launch_docker") as launch:
+            self.assertFalse(ensure_docker_running(self.console()))
+        launch.assert_not_called()
+
+    def test_not_running_launches_and_waits_until_ready(self):
+        with patch("vaptkit.menu.shutil.which", return_value="/usr/bin/docker"), \
+                patch("vaptkit.menu.docker_running", side_effect=[False, False, True]), \
+                patch("vaptkit.menu.launch_docker", return_value=True), \
+                patch("vaptkit.menu.time.sleep"):
+            self.assertTrue(ensure_docker_running(self.console()))
+
+    def test_gives_up_after_the_timeout_if_it_never_starts(self):
+        with patch("vaptkit.menu.shutil.which", return_value="/usr/bin/docker"), \
+                patch("vaptkit.menu.docker_running", return_value=False), \
+                patch("vaptkit.menu.launch_docker", return_value=True), \
+                patch("vaptkit.menu.time.sleep"), \
+                patch("vaptkit.menu.time.monotonic", side_effect=[0, 1, 200]):
+            self.assertFalse(ensure_docker_running(self.console()))
+
+    def test_launch_failure_returns_false_immediately(self):
+        with patch("vaptkit.menu.shutil.which", return_value="/usr/bin/docker"), \
+                patch("vaptkit.menu.docker_running", return_value=False), \
+                patch("vaptkit.menu.launch_docker", return_value=False):
+            self.assertFalse(ensure_docker_running(self.console()))
+
+
 class RunLocalAttackTests(unittest.TestCase):
     """Regression test for a real crash: the Docker container-naming code referenced an
     undefined `stamp` variable, raising NameError the moment Docker was actually available and
@@ -362,7 +403,7 @@ class RunLocalAttackTests(unittest.TestCase):
     def test_docker_path_names_containers_without_crashing(self):
         with tempfile.TemporaryDirectory() as directory:
             with patch("vaptkit.menu.PRIVATE", Path(directory)), \
-                    patch("shutil.which", return_value="/usr/bin/docker"), \
+                    patch("vaptkit.menu.ensure_docker_running", return_value=True), \
                     patch("vaptkit.menu.available_memory_mb", return_value=None), \
                     patch("vaptkit.menu.stream", return_value=("", 0, False)) as mock_stream:
                 console = self.console("3000", "y", "")

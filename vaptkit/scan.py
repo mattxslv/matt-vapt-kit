@@ -28,7 +28,7 @@ from .config import load_config
 from .live import (NotCovered, Partial, browser_sign_in_possible, regression_checks, regressions_path,
                    run_read_only, run_regressions, standing_approval_path, staging_counts, staging_recap,
                    standing_approval)
-from .process import ToolError, git
+from .process import DOCKER_START_TIMEOUT_SECONDS, ToolError, docker_running, git, launch_docker
 from .routes import Tree, review
 from .usage import SOURCE as SOURCE_FILE, reachable_files
 
@@ -351,13 +351,14 @@ def scan(repo: Path, *, config_path: Path | None = None, output: Path | None = N
 
     docker_ready = False
     if shutil.which("docker"):
-        try:
-            with loading(console, "Checking Docker", animate):
-                result = subprocess.run(["docker", "info", "--format={{.ServerVersion}}"],
-                                        capture_output=True, timeout=15)
-            docker_ready = result.returncode == 0
-        except (OSError, subprocess.TimeoutExpired):
-            docker_ready = False
+        with loading(console, "Checking Docker", animate):
+            docker_ready = docker_running()
+        if not docker_ready and launch_docker():
+            with loading(console, "Starting Docker", animate):
+                deadline = time.monotonic() + DOCKER_START_TIMEOUT_SECONDS
+                while time.monotonic() < deadline and not docker_ready:
+                    time.sleep(2)
+                    docker_ready = docker_running()
     docker_gap = None if docker_ready else "Docker is unavailable. Start Docker and rerun; remaining independent checks still run."
     def secrets():
         found = history_findings(repo, sha)

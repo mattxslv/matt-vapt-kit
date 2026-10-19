@@ -1,11 +1,49 @@
+import os
 import re
 import subprocess
+import sys
 import threading
 from pathlib import Path
 
 
 class ToolError(RuntimeError):
     pass
+
+
+DOCKER_START_TIMEOUT_SECONDS = 90
+WINDOWS_DOCKER_DESKTOP_PATHS = (
+    r"C:\Program Files\Docker\Docker\Docker Desktop.exe",
+    r"C:\ProgramData\DockerDesktop\Docker Desktop.exe",
+)
+
+
+def docker_running() -> bool:
+    try:
+        return subprocess.run(["docker", "info"], capture_output=True, timeout=10).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def launch_docker() -> bool:
+    """Best-effort, silent attempt to start Docker Desktop/Engine. True only if a launch was
+    actually attempted (not that it necessarily finished starting - caller still has to wait)."""
+    try:
+        if os.name == "nt":
+            path = os.environ.get("DOCKER_DESKTOP_PATH") or next(
+                (path for path in WINDOWS_DOCKER_DESKTOP_PATHS if os.path.isfile(path)), None)
+            if not path:
+                return False
+            subprocess.Popen([path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return True
+        if sys.platform == "darwin":
+            return subprocess.run(["open", "-a", "Docker"], capture_output=True).returncode == 0
+        # Linux: only a non-interactive sudo attempt - never prompt for a password, that would
+        # hang a flow that's supposed to be hands-off. Most desktop Docker installs enable the
+        # service already, so this mainly covers "installed but not yet started this boot".
+        return subprocess.run(["sudo", "-n", "systemctl", "start", "docker"],
+                              capture_output=True, timeout=10).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
 
 
 def stream(command: list[str], printer, *, cwd: Path | None = None,

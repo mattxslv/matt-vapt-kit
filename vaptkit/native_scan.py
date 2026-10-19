@@ -12,6 +12,7 @@ Neither path has been exercised against a real installed copy of Nuclei or ZAP i
 this kit's own test environment (no such environment is available here) - treat this
 as logically-reviewed, not field-verified, until it's been run once for real.
 """
+import os
 import re
 import shutil
 from pathlib import Path
@@ -27,12 +28,21 @@ ZAP_CANDIDATES = ("zap.sh", "zap.cmd", "zap.bat", "zap")
 FIXED_PORT_PATTERN = re.compile(r"\{\{(BaseURL|RootURL|Host|Hostname)\}\}:[0-9]{2,5}")
 
 
+def _which_on_path(name: str) -> str | None:
+    """Like shutil.which(), but never matches the current directory (or any other relative/empty
+    PATH entry) - shutil.which() on Windows implicitly prepends '.', which would let a malicious
+    nuclei.exe/zap.bat planted in a scanned repo's working directory run instead of the real tool."""
+    search_dirs = [entry for entry in os.environ.get("PATH", "").split(os.pathsep) if os.path.isabs(entry)]
+    found = shutil.which(name, path=os.pathsep.join(search_dirs))
+    return os.path.abspath(found) if found else None
+
+
 def nuclei_binary() -> str | None:
-    return next((name for name in NUCLEI_CANDIDATES if shutil.which(name)), None)
+    return next((path for name in NUCLEI_CANDIDATES if (path := _which_on_path(name))), None)
 
 
 def zap_binary() -> str | None:
-    return next((name for name in ZAP_CANDIDATES if shutil.which(name)), None)
+    return next((path for name in ZAP_CANDIDATES if (path := _which_on_path(name))), None)
 
 
 def nuclei_templates_dir() -> Path:
